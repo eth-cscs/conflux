@@ -13,6 +13,12 @@ find_package(MKL REQUIRED COMPONENTS BLAS_32BIT_OMP SCALAPACK_32BIT_OMP)
 set(BLAS_TARGET "mkl::blas_32bit_omp")
 set(SCALAPACK_TARGET "mkl::scalapack_32bit_omp")
 
+ if (CONFLUX_WITH_PROFILING)
+    option(SEMIPROF_WITH_INSTALL "" ${CONFLUX_WITH_INSTALL})
+    add_subdirectory(libs/semiprof)
+endif ()
+
+
 add_executable(conflux "conflux.cpp")
 target_compile_features(conflux PUBLIC cxx_std_17)
 target_link_libraries(conflux PUBLIC MPI::MPI_CXX
@@ -25,3 +31,12 @@ target_link_libraries(conflux_opt PUBLIC MPI::MPI_CXX
                          PRIVATE ${BLAS_TARGET}
                                  ${SCALAPACK_TARGET}
                      )
+
+if(CONFLUX_WITH_PROFILING)
+    target_link_libraries(conflux PRIVATE semiprof)
+    target_compile_definitions(conflux PRIVATE CONFLUX_WITH_PROFILING)
+
+    target_link_libraries(conflux_opt PRIVATE semiprof)
+    target_compile_definitions(conflux_opt PRIVATE CONFLUX_WITH_PROFILING)
+endif()
+

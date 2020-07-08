@@ -13,6 +13,8 @@
 #include <mpi.h>
 #include <mkl.h>
 
+#include "profiler.hpp"
+
 #define dtype double
 #define mtype MPI_DOUBLE
 
@@ -22,6 +24,7 @@ template <class T>
 void mcopy(T* src, T* dst,
            int ssrow, int serow, int sscol, int secol, int sstride,
            int dsrow, int derow, int dscol, int decol, int dstride) {
+    PE(mcopy);
     auto srow = ssrow;
     auto drow = dsrow;
     for (auto i = 0; i < serow - ssrow; ++i) {
@@ -31,6 +34,7 @@ void mcopy(T* src, T* dst,
         srow++;
         drow++;
     }
+    PL();
 }
 
 long long l2g(long long pi, long long ind, long long sqrtp1) {
@@ -113,64 +117,11 @@ private:
     }
 
     void InitMatrix() {
+        matrix = new T[N * N];
 
-//         if (N == 16) {
-//             matrix = new T[N * N]{1, 8, 2, 7, 3, 8, 2, 4, 8, 7, 5, 5, 1, 4, 4, 9,
-//                                   8, 4, 9, 2, 8, 6, 9, 9, 3, 7, 7, 7, 8, 7, 2, 8,
-//                                   3, 5, 4, 8, 9, 2, 7, 1, 2, 2, 7, 9, 8, 2, 1, 3,
-//                                   6, 4, 1, 5, 3, 7, 9, 1, 1, 3, 2, 9, 9, 5, 1, 9,
-//                                   8, 7, 1, 2, 9, 1, 1, 9, 3, 5, 8, 8, 5, 5, 3, 3,
-//                                   4, 2, 9, 3, 7, 3, 4, 5, 1, 9, 7, 7, 2, 4, 5, 2,
-//                                   1, 9, 8, 3, 5, 5, 1, 3, 6, 8, 3, 4, 3, 9, 1, 9,
-//                                   3, 9, 2, 7, 9, 2, 3, 9, 8, 6, 3, 5, 5, 2, 2, 9,
-//                                   9, 9, 5, 4, 3, 4, 6, 6, 9, 2, 1, 5, 6, 9, 5, 7,
-//                                   3, 2, 4, 5, 2, 4, 5, 3, 6, 5, 2, 6, 2, 7, 8, 2,
-//                                   4, 4, 4, 5, 2, 5, 3, 4, 1, 7, 8, 1, 8, 8, 5, 4,
-//                                   4, 5, 9, 5, 7, 9, 2, 9, 4, 6, 4, 3, 5, 8, 1, 2,
-//                                   7, 8, 1, 4, 7, 6, 5, 7, 1, 2, 7, 3, 8, 1, 4, 4,
-//                                   7, 6, 7, 8, 2, 2, 4, 6, 6, 8, 3, 6, 5, 2, 6, 5,
-//                                   4, 5, 1, 5, 3, 7, 4, 4, 7, 5, 8, 2, 4, 7, 1, 7,
-//                                   8, 3, 2, 4, 3, 8, 1, 6, 9, 6, 3, 6, 4, 8, 7, 8};
-//         } else if (N == 32) {
-//             matrix = new T[N * N] {9.0, 4.0, 8.0, 8.0, 3.0, 8.0, 0.0, 5.0, 2.0, 1.0, 0.0, 6.0, 3.0, 7.0, 0.0, 3.0, 5.0, 7.0, 3.0, 6.0, 8.0, 6.0, 2.0, 0.0, 8.0, 0.0, 8.0, 5.0, 9.0, 7.0, 9.0, 3.0,
-// 7.0, 4.0, 4.0, 6.0, 8.0, 9.0, 7.0, 4.0, 4.0, 7.0, 2.0, 1.0, 3.0, 2.0, 2.0, 2.0, 0.0, 0.0, 9.0, 4.0, 3.0, 6.0, 2.0, 9.0, 7.0, 0.0, 4.0, 8.0, 9.0, 4.0, 6.0, 1.0,
-// 9.0, 2.0, 9.0, 6.0, 6.0, 5.0, 2.0, 1.0, 2.0, 1.0, 7.0, 3.0, 0.0, 9.0, 8.0, 9.0, 9.0, 1.0, 3.0, 7.0, 6.0, 1.0, 8.0, 2.0, 2.0, 5.0, 5.0, 5.0, 0.0, 8.0, 2.0, 1.0,
-// 8.0, 9.0, 8.0, 8.0, 6.0, 5.0, 0.0, 4.0, 3.0, 2.0, 7.0, 4.0, 0.0, 2.0, 6.0, 0.0, 8.0, 4.0, 4.0, 5.0, 8.0, 3.0, 6.0, 5.0, 2.0, 8.0, 7.0, 6.0, 8.0, 8.0, 7.0, 8.0,
-// 6.0, 6.0, 6.0, 7.0, 1.0, 8.0, 8.0, 0.0, 8.0, 1.0, 3.0, 7.0, 1.0, 8.0, 8.0, 5.0, 0.0, 2.0, 6.0, 9.0, 6.0, 2.0, 6.0, 5.0, 7.0, 1.0, 7.0, 5.0, 9.0, 3.0, 6.0, 9.0,
-// 1.0, 9.0, 6.0, 0.0, 3.0, 7.0, 0.0, 5.0, 3.0, 6.0, 0.0, 8.0, 9.0, 9.0, 7.0, 1.0, 7.0, 0.0, 0.0, 3.0, 4.0, 7.0, 6.0, 4.0, 2.0, 9.0, 4.0, 4.0, 1.0, 7.0, 6.0, 2.0,
-// 0.0, 6.0, 6.0, 2.0, 9.0, 1.0, 4.0, 9.0, 4.0, 6.0, 3.0, 2.0, 9.0, 4.0, 8.0, 2.0, 2.0, 0.0, 6.0, 3.0, 8.0, 4.0, 9.0, 1.0, 8.0, 7.0, 7.0, 8.0, 7.0, 6.0, 1.0, 0.0,
-// 9.0, 6.0, 7.0, 4.0, 1.0, 1.0, 6.0, 4.0, 2.0, 4.0, 0.0, 5.0, 2.0, 7.0, 3.0, 4.0, 0.0, 0.0, 3.0, 4.0, 6.0, 2.0, 6.0, 8.0, 7.0, 0.0, 4.0, 1.0, 2.0, 9.0, 1.0, 4.0,
-// 6.0, 7.0, 5.0, 0.0, 3.0, 5.0, 0.0, 3.0, 0.0, 0.0, 3.0, 1.0, 5.0, 6.0, 8.0, 2.0, 1.0, 1.0, 6.0, 7.0, 0.0, 9.0, 0.0, 5.0, 7.0, 8.0, 7.0, 8.0, 3.0, 8.0, 0.0, 8.0,
-// 5.0, 8.0, 4.0, 6.0, 5.0, 7.0, 0.0, 0.0, 2.0, 1.0, 8.0, 2.0, 9.0, 3.0, 1.0, 7.0, 6.0, 4.0, 5.0, 7.0, 2.0, 9.0, 9.0, 6.0, 1.0, 6.0, 0.0, 0.0, 2.0, 4.0, 8.0, 7.0,
-// 7.0, 4.0, 3.0, 3.0, 9.0, 0.0, 8.0, 5.0, 4.0, 7.0, 4.0, 8.0, 9.0, 4.0, 2.0, 5.0, 9.0, 2.0, 6.0, 6.0, 7.0, 1.0, 7.0, 9.0, 1.0, 2.0, 9.0, 1.0, 8.0, 4.0, 2.0, 8.0,
-// 4.0, 5.0, 3.0, 5.0, 1.0, 3.0, 9.0, 2.0, 6.0, 3.0, 7.0, 1.0, 9.0, 4.0, 2.0, 0.0, 1.0, 5.0, 3.0, 8.0, 4.0, 2.0, 6.0, 7.0, 1.0, 1.0, 0.0, 7.0, 6.0, 4.0, 8.0, 8.0,
-// 5.0, 8.0, 2.0, 1.0, 2.0, 0.0, 5.0, 9.0, 0.0, 1.0, 4.0, 9.0, 3.0, 5.0, 0.0, 1.0, 9.0, 9.0, 0.0, 9.0, 6.0, 8.0, 4.0, 5.0, 4.0, 6.0, 1.0, 0.0, 3.0, 7.0, 2.0, 6.0,
-// 9.0, 0.0, 6.0, 4.0, 8.0, 1.0, 6.0, 8.0, 9.0, 6.0, 4.0, 6.0, 8.0, 5.0, 0.0, 9.0, 6.0, 6.0, 2.0, 6.0, 3.0, 6.0, 1.0, 6.0, 9.0, 0.0, 9.0, 4.0, 8.0, 7.0, 5.0, 7.0,
-// 8.0, 4.0, 3.0, 6.0, 8.0, 7.0, 7.0, 4.0, 8.0, 1.0, 5.0, 0.0, 3.0, 3.0, 3.0, 6.0, 3.0, 4.0, 2.0, 3.0, 2.0, 0.0, 6.0, 6.0, 6.0, 4.0, 3.0, 8.0, 5.0, 4.0, 0.0, 3.0,
-// 3.0, 3.0, 5.0, 5.0, 6.0, 7.0, 8.0, 7.0, 9.0, 0.0, 1.0, 0.0, 6.0, 8.0, 2.0, 9.0, 0.0, 9.0, 3.0, 1.0, 4.0, 2.0, 2.0, 3.0, 8.0, 5.0, 3.0, 6.0, 7.0, 2.0, 4.0, 1.0,
-// 1.0, 6.0, 1.0, 5.0, 7.0, 1.0, 5.0, 2.0, 9.0, 4.0, 8.0, 5.0, 0.0, 6.0, 9.0, 6.0, 8.0, 8.0, 2.0, 2.0, 6.0, 4.0, 8.0, 9.0, 3.0, 2.0, 7.0, 2.0, 8.0, 4.0, 6.0, 0.0,
-// 6.0, 4.0, 5.0, 1.0, 7.0, 8.0, 2.0, 0.0, 0.0, 6.0, 6.0, 5.0, 2.0, 3.0, 5.0, 4.0, 9.0, 1.0, 6.0, 4.0, 4.0, 7.0, 6.0, 9.0, 1.0, 1.0, 7.0, 5.0, 2.0, 0.0, 0.0, 8.0,
-// 1.0, 3.0, 2.0, 3.0, 0.0, 5.0, 0.0, 8.0, 2.0, 5.0, 8.0, 6.0, 5.0, 3.0, 3.0, 6.0, 9.0, 6.0, 5.0, 7.0, 4.0, 0.0, 5.0, 9.0, 1.0, 6.0, 2.0, 5.0, 0.0, 4.0, 7.0, 3.0,
-// 6.0, 7.0, 9.0, 2.0, 3.0, 1.0, 9.0, 9.0, 5.0, 8.0, 5.0, 6.0, 0.0, 7.0, 1.0, 8.0, 7.0, 7.0, 0.0, 3.0, 2.0, 3.0, 0.0, 9.0, 5.0, 3.0, 3.0, 4.0, 6.0, 5.0, 9.0, 4.0,
-// 9.0, 8.0, 2.0, 9.0, 1.0, 8.0, 3.0, 8.0, 8.0, 8.0, 7.0, 3.0, 0.0, 4.0, 1.0, 6.0, 3.0, 9.0, 6.0, 8.0, 1.0, 8.0, 9.0, 4.0, 6.0, 7.0, 1.0, 5.0, 3.0, 1.0, 3.0, 0.0,
-// 0.0, 1.0, 9.0, 5.0, 9.0, 4.0, 3.0, 5.0, 4.0, 1.0, 6.0, 2.0, 6.0, 6.0, 1.0, 0.0, 7.0, 4.0, 0.0, 9.0, 0.0, 6.0, 9.0, 2.0, 1.0, 1.0, 3.0, 1.0, 6.0, 0.0, 5.0, 9.0,
-// 8.0, 6.0, 3.0, 6.0, 5.0, 4.0, 1.0, 8.0, 4.0, 1.0, 3.0, 4.0, 8.0, 7.0, 7.0, 0.0, 4.0, 4.0, 0.0, 2.0, 7.0, 1.0, 5.0, 2.0, 0.0, 2.0, 9.0, 8.0, 9.0, 4.0, 1.0, 5.0,
-// 4.0, 8.0, 0.0, 4.0, 1.0, 3.0, 7.0, 4.0, 3.0, 3.0, 4.0, 7.0, 8.0, 9.0, 7.0, 3.0, 6.0, 4.0, 2.0, 8.0, 0.0, 9.0, 4.0, 6.0, 6.0, 8.0, 6.0, 6.0, 0.0, 5.0, 1.0, 7.0,
-// 5.0, 6.0, 0.0, 0.0, 7.0, 0.0, 0.0, 0.0, 9.0, 7.0, 3.0, 2.0, 3.0, 7.0, 6.0, 1.0, 1.0, 0.0, 6.0, 7.0, 2.0, 0.0, 0.0, 9.0, 2.0, 7.0, 6.0, 3.0, 2.0, 1.0, 6.0, 7.0,
-// 6.0, 5.0, 0.0, 9.0, 7.0, 2.0, 9.0, 6.0, 5.0, 7.0, 8.0, 6.0, 1.0, 3.0, 9.0, 2.0, 3.0, 4.0, 4.0, 6.0, 9.0, 2.0, 1.0, 1.0, 8.0, 6.0, 2.0, 8.0, 8.0, 8.0, 9.0, 2.0,
-// 7.0, 4.0, 8.0, 7.0, 7.0, 6.0, 1.0, 5.0, 9.0, 9.0, 0.0, 1.0, 1.0, 7.0, 8.0, 2.0, 5.0, 8.0, 7.0, 5.0, 5.0, 5.0, 2.0, 5.0, 6.0, 8.0, 6.0, 7.0, 1.0, 4.0, 0.0, 2.0,
-// 7.0, 9.0, 0.0, 4.0, 8.0, 2.0, 5.0, 7.0, 6.0, 1.0, 3.0, 7.0, 5.0, 0.0, 7.0, 0.0, 7.0, 2.0, 9.0, 3.0, 3.0, 1.0, 3.0, 8.0, 9.0, 3.0, 4.0, 7.0, 8.0, 5.0, 3.0, 4.0,
-// 6.0, 0.0, 6.0, 3.0, 7.0, 0.0, 5.0, 4.0, 6.0, 0.0, 5.0, 5.0, 5.0, 6.0, 6.0, 8.0, 2.0, 8.0, 4.0, 0.0, 0.0, 3.0, 7.0, 7.0, 7.0, 5.0, 4.0, 1.0, 3.0, 4.0, 0.0, 2.0,
-// 5.0, 7.0, 9.0, 9.0, 6.0, 4.0, 6.0, 7.0, 1.0, 4.0, 8.0, 3.0, 5.0, 5.0, 1.0, 3.0, 3.0, 0.0, 0.0, 8.0, 2.0, 5.0, 2.0, 9.0, 2.0, 4.0, 8.0, 8.0, 1.0, 8.0, 4.0, 4.0,
-// 1.0, 0.0, 7.0, 4.0, 4.0, 7.0, 7.0, 1.0, 6.0, 1.0, 7.0, 6.0, 9.0, 0.0, 0.0, 2.0, 2.0, 2.0, 9.0, 2.0, 2.0, 7.0, 4.0, 7.0, 0.0, 4.0, 0.0, 0.0, 9.0, 1.0, 5.0, 4.0,
-// 3.0, 8.0, 0.0, 6.0, 9.0, 5.0, 9.0, 0.0, 4.0, 2.0, 7.0, 9.0, 2.0, 6.0, 1.0, 5.0, 4.0, 9.0, 6.0, 3.0, 1.0, 1.0, 2.0, 2.0, 8.0, 5.0, 5.0, 1.0, 8.0, 7.0, 0.0, 7.0};
-//         } else {
-            matrix = new T[N * N];
-
-            std::mt19937_64 eng(seed);
-            std::uniform_real_distribution<T> dist;
-            std::generate(matrix, matrix + N * N, std::bind(dist, eng));
-        // }
+        std::mt19937_64 eng(seed);
+        std::uniform_real_distribution<T> dist;
+        std::generate(matrix, matrix + N * N, std::bind(dist, eng));
     }
 
 public:
@@ -207,124 +158,6 @@ long long flipbit(long long n, long long k) {
 }
 
 template <class T>
-void gemm(T* A, T* B, T* C, T alpha, T beta, int M, int K, int N) {      
-    #pragma omp parallel for
-    for (auto i = 0; i < M; ++i) {
-        for (auto j = 0; j < N; ++j) {
-            T tmp = 0;
-            for (auto k = 0; k < K; ++k) {
-                tmp += alpha * A[i * K + k] * B[k * N + j];
-            }
-            C[i * N + j] = tmp + beta * C[i * N + j];
-        }
-    }
-}
-
-template <class T>
-void mm(T* A, T* B, T* C, int M, int K, int N) {
-    // #pragma omp parallel for
-    // for (auto i = 0; i < M; ++i) {
-    //     for (auto j = 0; j < N; ++j) {     
-    //         C[i * N + j] = A[i * K] * B[j];
-    //     }
-    // }
-    // for (auto k = 1; k < K; ++k) {
-    //     #pragma omp parallel for
-    //     for (auto i = 0; i < M; ++i) {
-    //         for (auto j = 0; j < N; ++j) {
-    //             C[i * N + j] += A[i * K + k] * B[k * N + j];
-    //         }
-    //     }
-    // }
-    #pragma omp parallel for
-    for (auto ti = 0; ti < 16; ++ti) {
-        for (auto tj = 0; tj < 5; ++tj) { 
-            T tmp[48];
-            for (auto i = 0; i < 4; ++i) {
-                for (auto j = 0; j < 12; ++j) {
-                    tmp[i * 12 + j] = A[(ti * 4 + i) * K] * B[tj * 12 + j];
-                }
-            }
-            for (auto k = 1; k < K; ++k) {
-                for (auto i = 0; i < 4; ++i) {
-                    for (auto j = 0; j < 12; ++j) {
-                        tmp[i * 12 + j] += A[(ti * 4 + i) * K + k] * B[k * N + tj * 12 + j];
-                    }
-                }
-            }
-            mcopy(tmp, C, 0, 4, 0, 12, 12, ti * 4, (ti + 1) * 4, tj * 12, (tj + 1) * 12, N);
-        }
-        T tmp[20];
-        for (auto i = 0; i < 4; ++i) {
-            for (auto j = 60; j < N; ++j) {
-                tmp[i * 5 + j - 60] = A[(ti * 4 + i) * K] * B[j];
-            }
-        }
-        for (auto k = 1; k < K; ++k) {
-            for (auto i = 0; i < 4; ++i) {
-                for (auto j = 60; j < N; ++j) {
-                    tmp[i * 5 + j - 60] += A[(ti * 4 + i) * K + k] * B[k * N + j];
-                }
-            }
-        }
-        mcopy(tmp, C, 0, 4, 0, 5, 5, ti * 4, (ti + 1) * 4, 60, N, N);
-    }
-}
-
-template <class T>
-void mm2(T* A, T* B, T* C, bool* mask, int M, int K, int N) {
-    // #pragma omp parallel for
-    for (auto ti = 0; ti < 16; ++ti) {
-        for (auto tj = 0; tj < 5; ++tj) { 
-            T tmp[48] = {0};
-            for (auto i = 0; i < 4; ++i) {
-                if (mask + (ti * 4 + i)) {
-                    for (auto j = 0; j < 12; ++j) {
-                        tmp[i * 12 + j] = A[(ti * 4 + i) * K] * B[tj * 12 + j];
-                    }
-                }
-            }
-            for (auto k = 1; k < K; ++k) {
-                for (auto i = 0; i < 4; ++i) {
-                    if (mask + (ti * 4 + i)) {
-                        for (auto j = 0; j < 12; ++j) {
-                            tmp[i * 12 + j] += A[(ti * 4 + i) * K + k] * B[k * N + tj * 12 + j];
-                        }
-                    }
-                }
-            }
-            for (auto i = 0; i < 4; ++i) {
-                for (auto j = 0; j < 12; ++j) {
-                    C[(ti * 4 + i) * N + tj * 12 + j] -= tmp[i * 12 + j];
-                }
-            }
-        }
-        T tmp[16] = {0};
-        for (auto i = 0; i < 4; ++i) {
-            if (mask + (ti * 4 + i)) {
-                for (auto j = 60; j < N; ++j) {
-                    tmp[i * 4 + j - 60] = A[(ti * 4 + i) * K] * B[j];
-                }
-            }
-        }
-        for (auto k = 1; k < K; ++k) {
-            for (auto i = 0; i < 4; ++i) {
-                if (mask + (ti * 4 + i)) {
-                    for (auto j = 60; j < N; ++j) {
-                        tmp[i * 4 + j - 60] += A[(ti * 4 + i) * K + k] * B[k * N + j];
-                    }
-                }
-            }
-        }
-        for (auto i = 0; i < 4; ++i) {
-            for (auto j = 0; j < 4; ++j) {
-                C[(ti * 4 + i) * N + 60 + j] -= tmp[i * 4 + j];
-            }
-        }
-    }
-}
-
-template <class T>
 void LUPv2(T* inpA, T* Perm, int m0, int n0, T* origA, T* A, long long v,
            int rank, int k, lapack_int* ipiv, lapack_int* p) {
 
@@ -333,7 +166,9 @@ void LUPv2(T* inpA, T* Perm, int m0, int n0, T* origA, T* A, long long v,
 
     mcopy(inpA, A, 0, m0, 1, n0, n0, 0, m0, 0, v, v);
     // std::fill(ipiv, ipiv + m0, 0);
+    PE(dgetrf);
     LAPACKE_dgetrf(LAPACK_ROW_MAJOR, m0, v, A, v, ipiv);
+    PL();
     std::fill(Perm, Perm + m0 * m0, 0);
     for (auto i = 0; i < m0; ++i)
         p[i] = i;
@@ -418,12 +253,10 @@ void LUPv2(T* inpA, T* Perm, int m0, int n0, T* origA, T* A, long long v,
     }
     #endif
 
-    #ifdef BLAS
+    PE(dgemm);
     cblas_dgemm(CblasRowMajor, CblasNoTrans, CblasNoTrans, v, n0, m0,
                 1.0, Perm, m0, inpA, n0, 0.0, origA, n0);
-    #else
-    mm(Perm, inpA, origA, v, m0, n0);
-    #endif
+    PL();
 }
 
 template <class T>
@@ -432,7 +265,7 @@ void TournPivotMPI(int rank, int k, T* PivotBuff, MPI_Win& PivotWin,
                    bool* A10Mask, bool* A11Mask, int layrK,
                    GlobalVars<T>& gv, long long& comm_count, long long& local_comm,
                    T* A, T* origA, T* Perm, lapack_int* ipiv, lapack_int* p) {
-
+    PE(tpivoting_other);
     auto doprint = (k == -1);
     auto printrank = (rank == -1);
 
@@ -445,7 +278,6 @@ void TournPivotMPI(int rank, int k, T* PivotBuff, MPI_Win& PivotWin,
     c = gv.c;
     tA10 = gv.tA10;
     tA11 = gv.tA11;
-
 
     // long long comm_count = 0;
 
@@ -471,9 +303,9 @@ void TournPivotMPI(int rank, int k, T* PivotBuff, MPI_Win& PivotWin,
         // # that's why with the flipBit strategy, src_pi can actually be larger than sqrtp1
         auto src_pi = std::min(flipbit(pi, 0ll), sqrtp1 - 1ll);
         auto src_p = X2p(src_pi, pj, pk, p1, sqrtp1);
-    
+        PL();
         LUPv2(PivotBuff, Perm, v * std::max(2ll, tA11), v + 1, origA, A, v, rank, k, ipiv, p);
-        
+        PE(tpivoting_firstcopy);
         if (src_p < rank) {
             // # move my candidates below
             // [PivotBuff[v: 2*v, :], _] = LUPv2(PivotBuff)
@@ -488,9 +320,9 @@ void TournPivotMPI(int rank, int k, T* PivotBuff, MPI_Win& PivotWin,
             //       0, v, 0, v + 1, v + 1);
             std::copy(origA, origA + v * (v + 1), PivotBuff);
         }
+        PL();
+        PE(tpivoting_other);
     }
-
-    MPI_Win_fence(0, PivotWin);
 
     #ifdef DEBUG_PRINT
     if (doprint && printrank) {
@@ -510,7 +342,13 @@ void TournPivotMPI(int rank, int k, T* PivotBuff, MPI_Win& PivotWin,
     long long numRounds = (long long) (std::ceil(std::log2(sqrtp1)));
 
     for (auto r = 0; r < numRounds; ++r) {
+        PL();
+        PE(tpivoting_firstfence_get);
+        // no MPI_Put until next fence
+        MPI_Win_fence(MPI_MODE_NOPUT, PivotWin);
         p2X(rank, p1, sqrtp1, pi, pj, pk);
+
+        int pending_flush = -1;
         if (pj == k % sqrtp1 && pk == layrK) {
             // # find with which rank we will communicate
             auto src_pi = std::min(flipbit(pi, r), sqrtp1 - 1ll);
@@ -520,17 +358,17 @@ void TournPivotMPI(int rank, int k, T* PivotBuff, MPI_Win& PivotWin,
             if (src_p > rank) {
                 MPI_Get(PivotBuff + v * (v + 1), v * (v + 1), mtype, src_p,
                         v * (v + 1), v * (v + 1), mtype, PivotWin);
+                pending_flush = src_p;
                 comm_count += v * (v + 1);
             } else if (src_p < rank) {
                 MPI_Get(PivotBuff, v * (v + 1), mtype, src_p,
                         0, v * (v + 1), mtype, PivotWin);
+                pending_flush = src_p;
                 comm_count += v * (v + 1);
             } else {
                 local_comm += v * (v + 1);
             }
         }
-
-        MPI_Win_fence(0, PivotWin);
 
         // # local computation step
         p2X(rank, p1, sqrtp1, pi, pj, pk);
@@ -538,7 +376,17 @@ void TournPivotMPI(int rank, int k, T* PivotBuff, MPI_Win& PivotWin,
             // # find local pivots
             // std::fill(ipiv, ipiv + v * std::max(2ll, tA11), -1);
             // std::fill(p, p + v * std::max(2ll, tA11), -1);
+            // MPI_Win_fence(0, PivotWin);
+            // flush completes the operation locally
+            // but since this is a Get operation,
+            // then it also means that after flush
+            // it will also be completed remotely
+            if (pending_flush > 0) {
+                MPI_Win_flush_local(pending_flush, PivotWin);
+            }
+            PL();
             LUPv2(PivotBuff, Perm, 2 * v, v + 1, origA, A, v, rank, k, ipiv, p);
+            PE(tpivoting_firstfence_copy);
             if (r == numRounds - 1) {
                 // mcopy(origA, PivotBuff,
                 //       0, v, 0, v + 1, v + 1,
@@ -567,9 +415,10 @@ void TournPivotMPI(int rank, int k, T* PivotBuff, MPI_Win& PivotWin,
                 }
             }
         }
-
-        MPI_Win_fence(0, PivotWin);
     }
+
+    MPI_Win_fence(0, PivotWin);
+    PL();
 
     #ifdef DEBUG_PRINT
     if (doprint && printrank) {
@@ -580,6 +429,7 @@ void TournPivotMPI(int rank, int k, T* PivotBuff, MPI_Win& PivotWin,
     }
     #endif
 
+    PE(tpivoting_A00buff);
     // # distribute A00buff
     // # !! COMMUNICATION !!
     p2X(rank, p1, sqrtp1, pi, pj, pk);
@@ -610,6 +460,9 @@ void TournPivotMPI(int rank, int k, T* PivotBuff, MPI_Win& PivotWin,
 
     MPI_Win_fence(0, A00Win);
     MPI_Win_fence(0, pivotsWin);
+    PL();
+
+    PE(tpivoting_local);
 
     #ifdef DEBUG_PRINT
     if (doprint && printrank) {
@@ -643,8 +496,31 @@ void TournPivotMPI(int rank, int k, T* PivotBuff, MPI_Win& PivotWin,
     // delete Perm;
 
     // return comm_count;
+    PL();
 }
 
+// taken from COSMA
+template <typename T>
+MPI_Win
+create_window(MPI_Comm comm, T *pointer, size_t size, bool no_locks) {
+    MPI_Info info;
+    MPI_Info_create(&info);
+    if (no_locks) {
+        MPI_Info_set(info, "no_locks", "true");
+    } else {
+        MPI_Info_set(info, "no_locks", "false");
+    }
+    MPI_Info_set(info, "accumulate_ops", "same_op");
+    MPI_Info_set(info, "accumulate_ordering", "none");
+
+    MPI_Win win;
+    MPI_Win_create(
+        pointer, size * sizeof(T), sizeof(T), info, comm, &win);
+
+    MPI_Info_free(&info);
+
+    return win;
+}
 
 template <class T>
 void LU_rep(T*& A, T*& C, T*& PP, GlobalVars<T>& gv, int rank, int size) {
@@ -719,29 +595,26 @@ void LU_rep(T*& A, T*& C, T*& PP, GlobalVars<T>& gv, int rank, int size) {
     T* tmpA11 = new T[omp_get_max_threads() * v * v]{0};
 
     // Create windows
-    MPI_Win A00Win, A10Win, A10RcvWin, A01Win, A01RcvWin, A11Win;
-    MPI_Win PivotWin, PivotA11Win, pivotsWin;
-
-    MPI_Win_create(A00Buff, sizeof(T) * v * v, sizeof(T), MPI_INFO_NULL, lu_comm, &A00Win);
-    MPI_Win_create(A10Buff, sizeof(T) * tA10 * v * v, sizeof(T), MPI_INFO_NULL, lu_comm, &A10Win);
-    MPI_Win_create(A10BuffRcv, sizeof(T) * tA11 * v * nlayr, sizeof(T), MPI_INFO_NULL, lu_comm, &A10RcvWin);
-    MPI_Win_create(A01Buff, sizeof(T) * tA10* v * v, sizeof(T), MPI_INFO_NULL, lu_comm, &A01Win);
-    MPI_Win_create(A01BuffRcv, sizeof(T) * tA11 * nlayr * v, sizeof(T), MPI_INFO_NULL, lu_comm, &A01RcvWin);
-    MPI_Win_create(A11Buff, sizeof(T) * tA11 * tA11 * v * v, sizeof(T), MPI_INFO_NULL, lu_comm, &A11Win);
-    MPI_Win_create(PivotBuff, sizeof(T) * v * std::max(2ll, tA11) * (v + 1), sizeof(T), MPI_INFO_NULL, lu_comm, &PivotWin);
-    MPI_Win_create(PivotA11ReductionBuff, sizeof(T) * tA11 * v * v, sizeof(T), MPI_INFO_NULL, lu_comm, &PivotA11Win);
-    MPI_Win_create(pivotIndsBuff, sizeof(int) * N, sizeof(int), MPI_INFO_NULL, lu_comm, &pivotsWin);
+    MPI_Win A00Win = create_window(lu_comm, A00Buff, v * v, true);
+    MPI_Win A10Win = create_window(lu_comm, A10Buff, tA10 * v * v, true);
+    MPI_Win A10RcvWin = create_window(lu_comm, A10BuffRcv, tA11 * v * nlayr, true);
+    MPI_Win A01Win = create_window(lu_comm, A01Buff, tA10 * v * v, true);
+    MPI_Win A01RcvWin = create_window(lu_comm, A01BuffRcv, tA11 * nlayr * v, true);
+    MPI_Win A11Win = create_window(lu_comm, A11Buff, tA11 * tA11 * v * v, true);
+    MPI_Win PivotWin = create_window(lu_comm, PivotBuff, v * std::max(2ll, tA11) * (v + 1), true);
+    MPI_Win PivotA11Win = create_window(lu_comm, PivotA11ReductionBuff, tA11 * v * v, true);
+    MPI_Win pivotsWin = create_window(lu_comm, pivotIndsBuff, N, true);
 
     // Sync all windows
-    MPI_Win_fence(0, A00Win);
-    MPI_Win_fence(0, A10Win);
-    MPI_Win_fence(0, A10RcvWin);
-    MPI_Win_fence(0, A01Win);
-    MPI_Win_fence(0, A01RcvWin);
-    MPI_Win_fence(0, A11Win);
-    MPI_Win_fence(0, PivotWin);
-    MPI_Win_fence(0, PivotA11Win);
-    MPI_Win_fence(0, pivotsWin);
+    MPI_Win_fence(MPI_MODE_NOPRECEDE, A00Win);
+    MPI_Win_fence(MPI_MODE_NOPRECEDE, A10Win);
+    MPI_Win_fence(MPI_MODE_NOPRECEDE, A10RcvWin);
+    MPI_Win_fence(MPI_MODE_NOPRECEDE, A01Win);
+    MPI_Win_fence(MPI_MODE_NOPRECEDE, A01RcvWin);
+    MPI_Win_fence(MPI_MODE_NOPRECEDE, A11Win);
+    MPI_Win_fence(MPI_MODE_NOPRECEDE, PivotWin);
+    MPI_Win_fence(MPI_MODE_NOPRECEDE, PivotA11Win);
+    MPI_Win_fence(MPI_MODE_NOPRECEDE, pivotsWin);
 
     long long comm_count[7]{0};
     long long local_comm[7]{0};
@@ -809,6 +682,7 @@ void LU_rep(T*& A, T*& C, T*& PP, GlobalVars<T>& gv, int rank, int size) {
         // # ----------------------------------------------------------------- #
         // # 1. reduce first tile column from A11buff to PivotA11ReductionBuff #
         // # ----------------------------------------------------------------- #
+        MPI_Barrier(lu_comm);
         auto ts = std::chrono::high_resolution_clock::now();
         p2X(rank, p1, sqrtp1, pi, pj, pk);
         // # Currently, we dump everything to processors in layer pk == 0, and only this layer choose pivots
@@ -840,10 +714,12 @@ void LU_rep(T*& A, T*& C, T*& PP, GlobalVars<T>& gv, int rank, int size) {
                 }
             }
         }
+        MPI_Win_fence(0, PivotA11Win);
+
+        MPI_Barrier(lu_comm);
         auto te = std::chrono::high_resolution_clock::now();
         timers[0] += std::chrono::duration_cast<std::chrono::microseconds>( te - ts ).count();
 
-        MPI_Win_fence(0, PivotA11Win);
 
         #ifdef DEBUG_PRINT
         if (doprint && printrank) {
@@ -911,6 +787,7 @@ void LU_rep(T*& A, T*& C, T*& PP, GlobalVars<T>& gv, int rank, int size) {
         }
 
         MPI_Win_fence(0, A10Win);
+        MPI_Barrier(lu_comm);
         te = std::chrono::high_resolution_clock::now();
         timers[1] += std::chrono::duration_cast<std::chrono::microseconds>( te - ts ).count();
 
@@ -933,11 +810,13 @@ void LU_rep(T*& A, T*& C, T*& PP, GlobalVars<T>& gv, int rank, int size) {
                       PivotA11ReductionBuff + tA11 * v * v, 0);
         }
 
+        MPI_Barrier(lu_comm);
         ts = std::chrono::high_resolution_clock::now();
         TournPivotMPI(rank, k, PivotBuff, PivotWin, A00Buff, A00Win,
                       pivotIndsBuff, pivotsWin, A10MaskBuff, A11MaskBuff,
                       layrK, gv, comm_count[2], local_comm[2],
                       luA, origA, Perm, ipiv, p);
+        MPI_Barrier(lu_comm);
         te = std::chrono::high_resolution_clock::now();
         timers[2] += std::chrono::duration_cast<std::chrono::microseconds>( te - ts ).count();
 
@@ -961,6 +840,7 @@ void LU_rep(T*& A, T*& C, T*& PP, GlobalVars<T>& gv, int rank, int size) {
         // # ---------------------------------------------- #
         // # 4. reduce pivot rows from A11buff to PivotA01ReductionBuff #
         // # ---------------------------------------------- #
+        MPI_Barrier(lu_comm);
         ts = std::chrono::high_resolution_clock::now();
         p2X(rank, p1, sqrtp1, pi, pj, pk);
         // curPivots = pivotIndsBuff[k * v: (k + 1) * v]
@@ -1011,6 +891,7 @@ void LU_rep(T*& A, T*& C, T*& PP, GlobalVars<T>& gv, int rank, int size) {
         }
 
         MPI_Win_fence(0, PivotA11Win);
+        MPI_Barrier(lu_comm);
         te = std::chrono::high_resolution_clock::now();
         timers[3] += std::chrono::duration_cast<std::chrono::microseconds>( te - ts ).count();
 
@@ -1052,6 +933,7 @@ void LU_rep(T*& A, T*& C, T*& PP, GlobalVars<T>& gv, int rank, int size) {
         }
 
         MPI_Win_fence(0, A01Win);
+        MPI_Barrier(lu_comm);
         te = std::chrono::high_resolution_clock::now();
         timers[4] += std::chrono::duration_cast<std::chrono::microseconds>( te - ts ).count();
 
@@ -1073,6 +955,7 @@ void LU_rep(T*& A, T*& C, T*& PP, GlobalVars<T>& gv, int rank, int size) {
         // # ---------------------------------------------- #
         // # 6. compute A10 and broadcast it to A10BuffRecv #
         // # ---------------------------------------------- #
+        MPI_Barrier(lu_comm);
         ts = std::chrono::high_resolution_clock::now();
         p2X(rank, p1, sqrtp1, pi, pj, pk);
 
@@ -1080,10 +963,14 @@ void LU_rep(T*& A, T*& C, T*& PP, GlobalVars<T>& gv, int rank, int size) {
         #pragma omp for
         for (auto ltiA10 = 0; ltiA10 < tA10; ++ltiA10) {
             int tid = omp_get_thread_num();
+            PE(copy);
             std::copy(A10Buff + ltiA10 * v * v, A10Buff + (ltiA10 + 1) * v * v,
                       tmpA11 + tid * v * v);
+            PL();
+            PE(dtrsm);
             cblas_dtrsm(CblasRowMajor, CblasRight, CblasUpper, CblasNoTrans, CblasNonUnit,
                         v, v, 1.0, A00Buff, v, tmpA11 + tid * v * v, v);
+            PL();
             for (auto ii = 0; ii < v; ++ii) {
                 if (A10MaskBuff[ltiA10 * v + ii]) {
                     for (auto ij = 0; ij < v; ++ij) {
@@ -1263,6 +1150,7 @@ void LU_rep(T*& A, T*& C, T*& PP, GlobalVars<T>& gv, int rank, int size) {
 
         MPI_Win_fence(0, A01RcvWin);
         MPI_Win_fence(0, A10RcvWin);
+        MPI_Barrier(lu_comm);
         te = std::chrono::high_resolution_clock::now();
         timers[5] += std::chrono::duration_cast<std::chrono::microseconds>( te - ts ).count();
 
@@ -1326,6 +1214,7 @@ void LU_rep(T*& A, T*& C, T*& PP, GlobalVars<T>& gv, int rank, int size) {
         //     }
         // }
 
+        MPI_Barrier(lu_comm);
         ts = std::chrono::high_resolution_clock::now();
         #pragma omp parallel for
         for (auto lti = 0; lti < tA11; ++lti) {
@@ -1353,10 +1242,13 @@ void LU_rep(T*& A, T*& C, T*& PP, GlobalVars<T>& gv, int rank, int size) {
                 //         }
                 //     }
                 // }
+                PE(dgemm);
                 cblas_dgemm(CblasRowMajor, CblasNoTrans, CblasNoTrans, v, v, nlayr,
                             1.0, &A10BuffRcv[lti * v * nlayr], nlayr,
                             &A01BuffRcv[ltj * nlayr * v], v,
                             0.0,  tmpA11 + tid * v * v, v);
+                PL();
+                PE(mask);
                 for (auto ii = 0; ii < v; ++ii) {
                     auto row = A11MaskBuff[lti * v + ii];
                     if (row) {
@@ -1365,11 +1257,10 @@ void LU_rep(T*& A, T*& C, T*& PP, GlobalVars<T>& gv, int rank, int size) {
                         }
                     }
                 }
-                // mm2(&A10BuffRcv[lti * v * nlayr], &A01BuffRcv[ltj * nlayr * v],
-                //     &A11Buff[(lti * tA11 + ltj) * v * v], &A11MaskBuff[lti * v],
-                //     v, nlayr, v);
+                PL();
             }
         }
+        MPI_Barrier(lu_comm);
         te = std::chrono::high_resolution_clock::now();
         timers[6] += std::chrono::duration_cast<std::chrono::microseconds>( te - ts ).count();
 
@@ -1608,8 +1499,14 @@ int main(int argc, char **argv) {
     dtype* C = new dtype[gv.N * gv.N]{0};
     dtype* PP = new dtype[gv.N * gv.N]{0}; 
 
-    for (int i = 0; i < 3; ++i) 
+    for (int i = 0; i < 3; ++i) {
+        PC();
         LU_rep<dtype>(gv.matrix, C, PP, gv, rank, size);
+    }
+
+    if (rank == 0) {
+        PP();
+    }
 
     #ifdef VALIDATE
 
