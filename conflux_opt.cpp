@@ -259,9 +259,8 @@ void TournPivotMPI(int rank, int k, T* PivotBuff, MPI_Win& PivotWin,
         std::cout << std::endl << std::flush;
     }
     #endif
-
-    // # ------------- REMAINING STEPS -------------- #
-    // # now we do numRounds parallel steps with synchronization after each step
+// # ------------- REMAINING STEPS -------------- # 
+// # now we do numRounds parallel steps with synchronization after each step 
     long long numRounds = (long long) (std::ceil(std::log2(sqrtp1)));
 
     for (auto r = 0; r < numRounds; ++r) {
@@ -270,7 +269,6 @@ void TournPivotMPI(int rank, int k, T* PivotBuff, MPI_Win& PivotWin,
         // no MPI_Put until next fence
         p2X(rank, p1, sqrtp1, pi, pj, pk);
 
-        int pending_flush = -1;
         if (pj == k % sqrtp1 && pk == layrK) {
             // # find with which rank we will communicate
             auto src_pi = std::min(flipbit(pi, r), sqrtp1 - 1ll);
@@ -280,12 +278,10 @@ void TournPivotMPI(int rank, int k, T* PivotBuff, MPI_Win& PivotWin,
             if (src_p > rank) {
                 MPI_Get(PivotBuff + v * (v + 1), v * (v + 1), mtype, src_p,
                         v * (v + 1), v * (v + 1), mtype, PivotWin);
-                pending_flush = src_p;
                 comm_count += v * (v + 1);
             } else if (src_p < rank) {
                 MPI_Get(PivotBuff, v * (v + 1), mtype, src_p,
                         0, v * (v + 1), mtype, PivotWin);
-                pending_flush = src_p;
                 comm_count += v * (v + 1);
             } else {
                 local_comm += v * (v + 1);
@@ -726,10 +722,12 @@ void LU_rep(T*& A, T*& C, T*& PP, GlobalVars<T>& gv, int rank, int size) {
 
         MPI_Barrier(lu_comm);
         ts = std::chrono::high_resolution_clock::now();
+        /*
         TournPivotMPI(rank, k, PivotBuff, PivotWin, A00Buff, A00Win,
                       pivotIndsBuff, pivotsWin, A10MaskBuff, A11MaskBuff,
                       layrK, gv, comm_count[2], local_comm[2],
                       luA, origA, Perm, ipiv, p);
+                      */
         MPI_Barrier(lu_comm);
         te = std::chrono::high_resolution_clock::now();
         timers[2] += std::chrono::duration_cast<std::chrono::microseconds>( te - ts ).count();
