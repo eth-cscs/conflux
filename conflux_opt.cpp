@@ -177,69 +177,6 @@ void LUPv2(T* inpA, T* Perm, int m0, int n0, T* origA, T* A, long long v,
     for (auto i = 0; i < m0; ++i)
         Perm[i * m0 + p[i]] = 1;
 
-    // T* la = A;
-    // T* lperm = Perm;
-
-    // if (k == 0 and rank == 0) {
-
-    //     T* tmpA = new T[m0 * n0]{0};
-    //     A = tmpA;
-    //     T* tmpP = new T[m0 * m0]{0};
-    //     Perm = tmpP;
-
-    //     std::copy(inpA, inpA + m0 * n0, A);
-    //     // # first column of A holds original indices of rows
-    //     // n0--;
-    //     // T* Perm = new T[m0 * m0]{0};
-    //     std::fill(Perm, Perm + m0 * m0, 0);
-    //     #pragma omp parallel for
-    //     for (auto i = 0; i < m0; ++i)
-    //         Perm[i * m0 + i] = 1;
-
-    //     for (auto k = 0; k < n0 - 1; ++k) {
-    //         auto max_abs = std::abs(A[k * n0 + k + 1]);
-    //         int pivotRow = k;
-    //         for (auto i = k + 1; i < m0; ++i) {
-    //             if (max_abs < std::abs(A[i * n0 + k + 1])) {
-    //                 max_abs = std::abs(A[i * n0 + k + 1]);
-    //                 pivotRow = i;
-    //             }
-    //         }
-    //         // A[k * n0 + pivotRow] = A[pivotRow * n0 + k];
-    //         // Perm[k * m0 + pivotRow] = Perm[pivotRow * m0 + k];
-    //         std::swap_ranges(A + k * n0, A + (k + 1) * n0, A + pivotRow * n0);
-    //         std::swap_ranges(Perm + k * m0, Perm + (k + 1) * m0, Perm + pivotRow * m0);
-    //         for (auto i = k + 1; i < m0; ++i) {
-    //             A[i * n0 + k+1] /= A[k * n0 + k+1];
-    //             for (auto j = k + 2; j < n0; ++j)
-    //                 A[i * n0 + j] -= A[i * n0 + k + 1] * A[k * n0 + j];
-    //         }
-    //     }
-
-    //     for (auto i = 0; i < m0; ++i) {
-    //         for (auto j = 0; j < m0; ++j) {
-    //             // if (Perm[i * m0 + j] != lperm[i * m0 + j])
-    //             if (Perm[i * m0 + j] == 1)
-    //                 std::cout << "(" << i << ", " << j << ") ";
-    //         }
-    //     }
-    //     std::cout << std::endl << std::flush;
-    //     for (auto i = 0; i < m0; ++i) {
-    //         std::cout << p[i] << " ";
-    //     }
-    //     std::cout << std::endl << std::flush;
-    //     for (auto i = 0; i < m0; ++i) {
-    //         std::cout << ipiv[i] << " ";
-    //     }
-    //     std::cout << std::endl << std::flush;
-
-    //     A = la;
-    //     Perm = lperm;
-
-    //     delete tmpA;
-    //     delete tmpP;
-    // }
-
     #ifdef DEBUG_PRINT
     if (doprint && printrank) {
         for (auto i = 0; i < m0 * n0; ++i) {
@@ -279,14 +216,6 @@ void TournPivotMPI(int rank, int k, T* PivotBuff, MPI_Win& PivotWin,
     tA10 = gv.tA10;
     tA11 = gv.tA11;
 
-    // long long comm_count = 0;
-
-    // T* A = new T[v * std::max(2ll, tA11) * (v + 1)]{0};
-    // T* origA = new T[v * (v + 1)]{0};
-    // auto m0 = v * std::max(2ll, tA11);
-    // T* Perm = new T[m0 * m0]{0};
-
-    // # done with the copying, let's get to work !
     // # ---------------- FIRST STEP ----------------- #
     // # in first step, we do pivot on the whole PivotBuff array (may be larger than [2v, v]
     // # local computation step
@@ -308,21 +237,15 @@ void TournPivotMPI(int rank, int k, T* PivotBuff, MPI_Win& PivotWin,
         PE(tpivoting_firstcopy);
         if (src_p < rank) {
             // # move my candidates below
-            // [PivotBuff[v: 2*v, :], _] = LUPv2(PivotBuff)
-            // mcopy(origA, PivotBuff,
-            //       0, v, 0, v + 1, v + 1,
-            //       v, 2 * v, 0, v + 1, v + 1);
             std::copy(origA, origA + v * (v + 1), PivotBuff + v * (v + 1));
         } else {
-            // [PivotBuff[:v, :], _] = LUPv2(PivotBuff)
-            // mcopy(origA, PivotBuff,
-            //       0, v, 0, v + 1, v + 1,
-            //       0, v, 0, v + 1, v + 1);
             std::copy(origA, origA + v * (v + 1), PivotBuff);
         }
         PL();
         PE(tpivoting_other);
     }
+
+    MPI_Win_fence(MPI_MODE_NOPUT, PivotWin);
 
     #ifdef DEBUG_PRINT
     if (doprint && printrank) {
@@ -338,14 +261,13 @@ void TournPivotMPI(int rank, int k, T* PivotBuff, MPI_Win& PivotWin,
     #endif
 
     // # ------------- REMAINING STEPS -------------- #
-    // # now we do numRounds parallel steps which synchronization after each step
+    // # now we do numRounds parallel steps with synchronization after each step
     long long numRounds = (long long) (std::ceil(std::log2(sqrtp1)));
 
     for (auto r = 0; r < numRounds; ++r) {
         PL();
         PE(tpivoting_firstfence_get);
         // no MPI_Put until next fence
-        MPI_Win_fence(MPI_MODE_NOPUT, PivotWin);
         p2X(rank, p1, sqrtp1, pi, pj, pk);
 
         int pending_flush = -1;
@@ -370,20 +292,12 @@ void TournPivotMPI(int rank, int k, T* PivotBuff, MPI_Win& PivotWin,
             }
         }
 
+        MPI_Win_fence(MPI_MODE_NOPUT, PivotWin);
+
         // # local computation step
-        p2X(rank, p1, sqrtp1, pi, pj, pk);
+        // p2X(rank, p1, sqrtp1, pi, pj, pk);
         if (pj == k % sqrtp1 && pk == layrK) {
             // # find local pivots
-            // std::fill(ipiv, ipiv + v * std::max(2ll, tA11), -1);
-            // std::fill(p, p + v * std::max(2ll, tA11), -1);
-            // MPI_Win_fence(0, PivotWin);
-            // flush completes the operation locally
-            // but since this is a Get operation,
-            // then it also means that after flush
-            // it will also be completed remotely
-            if (pending_flush > 0) {
-                MPI_Win_flush_local(pending_flush, PivotWin);
-            }
             PL();
             LUPv2(PivotBuff, Perm, 2 * v, v + 1, origA, A, v, rank, k, ipiv, p);
             PE(tpivoting_firstfence_copy);
@@ -415,9 +329,9 @@ void TournPivotMPI(int rank, int k, T* PivotBuff, MPI_Win& PivotWin,
                 }
             }
         }
+        MPI_Win_fence(0, PivotWin);
     }
 
-    MPI_Win_fence(0, PivotWin);
     PL();
 
     #ifdef DEBUG_PRINT
