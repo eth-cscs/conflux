@@ -554,8 +554,9 @@ void LU_rep(T*& A, T*& C, T*& PP, GlobalVars<T>& gv, int rank, int size) {
     MPI_Win A01RcvWin = create_window(lu_comm, A01BuffRcv, tA11 * nlayr * v, true);
     MPI_Win A11Win = create_window(lu_comm, A11Buff, tA11 * tA11 * v * v, true);
     MPI_Win PivotWin = create_window(lu_comm, PivotBuff, v * std::max(2ll, tA11) * (v + 1), true);
-    MPI_Win PivotA11Win = create_window(lu_comm, PivotA11ReductionBuff, tA11 * v * v, true);
     MPI_Win pivotsWin = create_window(lu_comm, pivotIndsBuff, N, true);
+
+    MPI_Win PivotA11Win = create_window(lu_comm, PivotA11ReductionBuff, tA11 * v * v, true);
 
     // Sync all windows
     MPI_Win_fence(MPI_MODE_NOPRECEDE, A00Win);
@@ -647,25 +648,40 @@ void LU_rep(T*& A, T*& C, T*& PP, GlobalVars<T>& gv, int rank, int size) {
         // # reduce first tile column. In this part, only pj == k % sqrtp1 participate:
         if (pj == k % sqrtp1) {
             if (rank != p0) {
-                // # here we always go through all rows, and then filter it by Mask array
+                // fill with 0-s, instead of using a mask
+#pragma omp parallel for
                 for (auto lti = 0;  lti < tA11; ++lti) {
                     // # filter which rows of this tile should be reduced:
                     for (auto i = 0; i < v; ++i) {
                         auto row = A11MaskBuff[lti * v + i];
-                        if (row) {
-                            MPI_Accumulate(&A11Buff[((lti * tA11 + k / sqrtp1) * v + i) * v],
-                                           v, mtype, p0, v*(i + v*lti), v, mtype, MPI_SUM, PivotA11Win);
-                            comm_count[0] += v;
+                        if (!row) {
+                            auto start = &A11Buff[((lti * tA11 + k / sqrtp1) * v + i) * v];
+                            std::fill_n(start, v, 0);
                         }
                     }
                 }
+
+                // perform just a single accumulate, instead of multiple
+                // for all tiles at once
+                // we can do this, because the irrelevant rows have been
+                // annulated previously
+                MPI_Accumulate(&A11Buff[((k / sqrtp1) * v) * v],
+                               tA11*v*v, 
+                               mtype, 
+                               // layrK, 
+                               p0,
+                               0, 
+                               tA11*v*v, 
+                               mtype, 
+                               MPI_SUM, 
+                               PivotA11Win);
             } else {
 #pragma omp parallel for 
                 for (auto lti = 0;  lti < tA11; ++lti) {
                     // # filter which rows of this tile should be reduced:
                     for (auto i = 0; i < v; ++i) {
+                        auto row = A11MaskBuff[lti * v + i];
                         for (auto j = 0; j < v; ++j) {
-                            auto row = A11MaskBuff[lti * v + i];
                             if (row) {
                                 PivotA11ReductionBuff[(lti * v + i) * v + j] +=
                                     A11Buff[((lti * tA11 + k / sqrtp1) * v + i) * v + j];
