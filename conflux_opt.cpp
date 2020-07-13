@@ -646,31 +646,31 @@ void LU_rep(T*& A, T*& C, T*& PP, GlobalVars<T>& gv, int rank, int size) {
 
         // # reduce first tile column. In this part, only pj == k % sqrtp1 participate:
         if (pj == k % sqrtp1) {
-            // # here we always go through all rows, and then filter it by Mask array
-            for (auto lti = 0;  lti < tA11; ++lti) {
-                // # filter which rows of this tile should be reduced:
-                for (auto i = 0; i < v; ++i) {
-                    auto row = A11MaskBuff[lti * v + i];
-                    if (row) {
-                        if (rank != p0) {
+            if (rank != p0) {
+                // # here we always go through all rows, and then filter it by Mask array
+                for (auto lti = 0;  lti < tA11; ++lti) {
+                    // # filter which rows of this tile should be reduced:
+                    for (auto i = 0; i < v; ++i) {
+                        auto row = A11MaskBuff[lti * v + i];
+                        if (row) {
                             MPI_Accumulate(&A11Buff[((lti * tA11 + k / sqrtp1) * v + i) * v],
                                            v, mtype, p0, v*(i + v*lti), v, mtype, MPI_SUM, PivotA11Win);
                             comm_count[0] += v;
                         }
                     }
                 }
-            }
+            } else {
 #pragma omp parallel for 
-            for (auto lti = 0;  lti < tA11; ++lti) {
-                // # filter which rows of this tile should be reduced:
-                for (auto i = 0; i < v; ++i) {
-                    auto row = A11MaskBuff[lti * v + i];
-                    if (rank == p0) {
+                for (auto lti = 0;  lti < tA11; ++lti) {
+                    // # filter which rows of this tile should be reduced:
+                    for (auto i = 0; i < v; ++i) {
                         for (auto j = 0; j < v; ++j) {
-                            PivotA11ReductionBuff[(lti * v + i) * v + j] +=
-                                A11Buff[((lti * tA11 + k / sqrtp1) * v + i) * v + j];
+                            auto row = A11MaskBuff[lti * v + i];
+                            if (row) {
+                                PivotA11ReductionBuff[(lti * v + i) * v + j] +=
+                                    A11Buff[((lti * tA11 + k / sqrtp1) * v + i) * v + j];
+                            }
                         }
-                        local_comm[0] += v;
                     }
                 }
             }
