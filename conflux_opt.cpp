@@ -432,6 +432,46 @@ create_window(MPI_Comm comm, T *pointer, size_t size, bool no_locks) {
     return win;
 }
 
+MPI_Comm create_comm(MPI_Comm& comm, std::vector<int>& ranks) {
+    MPI_Comm newcomm;
+    MPI_Group subgroup;
+
+    MPI_Group comm_group;
+    MPI_Comm_group(comm, &comm_group);
+
+    MPI_Group_incl(comm_group, ranks.size(), ranks.data(), &subgroup);
+    MPI_Comm_create_group(comm, subgroup, 0, &newcomm);
+
+    MPI_Group_free(&subgroup);
+    MPI_Group_free(&comm_group);
+
+    return newcomm;
+}
+
+MPI_Comm pivot_buff_reduction_comm(int p1, int sqrtp1, MPI_Comm comm) {
+    // global communicator
+    int rank, P;
+    MPI_Comm_size(comm, &P);
+    MPI_Comm_rank(comm, &rank);
+
+    // coordinates of current rank
+    long long pi, pj, pk;
+    p2X(rank, p1, sqrtp1, pi, pj, pk);
+
+    long long pi_max = sqrtp1;
+    long long pj_max = sqrtp1;
+    long long pk_max = P / (pi_max * pj_max);
+
+    std::vector<int> ranks;
+
+    for (long long new_pk = 0; new_pk < pk_max; ++new_pk) {
+        auto p = X2p(pi, pj, new_pk, p1, sqrtp1);
+        ranks.push_back(p);
+    }
+
+    return create_comm(comm, ranks);
+}
+
 template <class T>
 void LU_rep(T*& A, T*& C, T*& PP, GlobalVars<T>& gv, int rank, int size) {
 
@@ -447,8 +487,8 @@ void LU_rep(T*& A, T*& C, T*& PP, GlobalVars<T>& gv, int rank, int size) {
     tA11 = gv.tA11;
     tA10 = gv.tA10;
 
-    // Make new communicator for P ranks
 
+    // Make new communicator for P ranks
     int* participating_ranks = new int[P];
     for (auto i = 0; i < P; ++i) {
         participating_ranks[i] = i;
@@ -459,6 +499,8 @@ void LU_rep(T*& A, T*& C, T*& PP, GlobalVars<T>& gv, int rank, int size) {
     MPI_Comm_group(MPI_COMM_WORLD, &world_group);
     MPI_Group_incl(world_group, P, participating_ranks, &lu_group);
     MPI_Comm_create_group(MPI_COMM_WORLD, lu_group, 0, &lu_comm);
+
+    MPI_Comm k_comm = pivot_buff_reduction_comm(p1, sqrtp1, lu_comm);
 
     delete participating_ranks;
     if (rank >= P) {
@@ -585,6 +627,7 @@ void LU_rep(T*& A, T*& C, T*& PP, GlobalVars<T>& gv, int rank, int size) {
         auto off = k * v;
         // # in this step, layrK is the "lucky" one to receive all reduces
         auto layrK = dist(eng);
+
         // layrK = 0;
         // if (k == 0) layrK = 0; 
         // if (k == 1) layrK = 1;
@@ -594,10 +637,10 @@ void LU_rep(T*& A, T*& C, T*& PP, GlobalVars<T>& gv, int rank, int size) {
         // # ----------------------------------------------------------------- #
         MPI_Barrier(lu_comm);
         auto ts = std::chrono::high_resolution_clock::now();
-        p2X(rank, p1, sqrtp1, pi, pj, pk);
         // # Currently, we dump everything to processors in layer pk == 0, and only this layer choose pivots
-        // # that is, each processor [pi, pj, pk] sends to [pi, pj, 0]
+        // # that is, each processor [pi, pj, pk] sends to [pi, pj, layK]
         // # note that processors in layer pk == 0 locally copy their data from A11buff to PivotA11ReductionBuff
+        p2X(rank, p1, sqrtp1, pi, pj, pk);
         auto p0 = X2p(pi, pj, layrK, p1, sqrtp1);
         // if (doprint && printrank) std::cout << "p0: " << p0 << std::endl << std::flush;
 
@@ -609,17 +652,25 @@ void LU_rep(T*& A, T*& C, T*& PP, GlobalVars<T>& gv, int rank, int size) {
                 for (auto i = 0; i < v; ++i) {
                     auto row = A11MaskBuff[lti * v + i];
                     if (row) {
-                        if (rank == p0) {
-                            for (auto j = 0; j < v; ++j) {
-                                PivotA11ReductionBuff[(lti * v + i) * v + j] +=
-                                    A11Buff[((lti * tA11 + k / sqrtp1) * v + i) * v + j];
-                            }
-                            local_comm[0] += v;
-                        } else {
+                        if (rank != p0) {
                             MPI_Accumulate(&A11Buff[((lti * tA11 + k / sqrtp1) * v + i) * v],
                                            v, mtype, p0, v*(i + v*lti), v, mtype, MPI_SUM, PivotA11Win);
                             comm_count[0] += v;
                         }
+                    }
+                }
+            }
+#pragma omp parallel for 
+            for (auto lti = 0;  lti < tA11; ++lti) {
+                // # filter which rows of this tile should be reduced:
+                for (auto i = 0; i < v; ++i) {
+                    auto row = A11MaskBuff[lti * v + i];
+                    if (rank == p0) {
+                        for (auto j = 0; j < v; ++j) {
+                            PivotA11ReductionBuff[(lti * v + i) * v + j] +=
+                                A11Buff[((lti * tA11 + k / sqrtp1) * v + i) * v + j];
+                        }
+                        local_comm[0] += v;
                     }
                 }
             }
@@ -890,17 +941,6 @@ void LU_rep(T*& A, T*& C, T*& PP, GlobalVars<T>& gv, int rank, int size) {
                     }
                 }
             }
-            // for (auto ik = 0; ik < v; ++ik) {
-            //     for (auto ii = 0; ii < v; ++ii) {
-            //         if (A10MaskBuff[ltiA10 * v + ii]) {
-            //             A10Buff[(ltiA10 * v + ii) * v + ik] /= A00Buff[ik * v + ik];
-            //             for (auto ij = ik + 1; ij < v; ++ij) {
-            //                 A10Buff[(ltiA10 * v + ii) * v + ij] -=
-            //                     A10Buff[(ltiA10 * v + ii) * v + ik] * A00Buff[ik * v + ij];
-            //             }
-            //         }
-            //     }
-            // }
         }
         // # here we always go through all rows, and then filter it by the remainingMask array
         for (auto ltiA10 = 0; ltiA10 < tA10; ++ltiA10) {
@@ -918,32 +958,6 @@ void LU_rep(T*& A, T*& C, T*& PP, GlobalVars<T>& gv, int rank, int size) {
             long long tmp, lti_rcv;
             g2l(gti, sqrtp1, tmp, lti_rcv);
 
-            // # filter which rows of this tile should be processed:
-            // rows = A10MaskBuff[ltiA10, :]
-            // A10 = A10Buff[ltiA10, rows]
-            // A00 = A00Buff
-            // A10Buff[ltiA10, rows] = compA10(A00, A10)
-
-            // for (auto ii = 0; ii < v; ++ii) {
-            //     if (A10MaskBuff[ltiA10 * v + ii]) {
-            //         cblas_dtrsm(CblasRowMajor, CblasRight, CblasUpper, CblasNoTrans, CblasNonUnit,
-            //                     1, v, 1.0, A00Buff, v, &A10Buff[(ltiA10 * v + ii) * v], v);
-            //     }
-            // }
-
-            // // Comp A10
-            // for (auto ik = 0; ik < v; ++ik) {
-            //     for (auto ii = 0; ii < v; ++ii) {
-            //         if (A10MaskBuff[ltiA10 * v + ii]) {
-            //             A10Buff[(ltiA10 * v + ii) * v + ik] /= A00Buff[ik * v + ik];
-            //             for (auto ij = ik + 1; ij < v; ++ij) {
-            //                 A10Buff[(ltiA10 * v + ii) * v + ij] -=
-            //                     A10Buff[(ltiA10 * v + ii) * v + ik] * A00Buff[ik * v + ij];
-            //             }
-            //         }
-            //     }
-            // }
-
             // # -- BROADCAST -- #
             // # after compute, send it to sqrt(p1) * c processors
             for (auto pk_rcv = 0; pk_rcv < c; ++pk_rcv) {
@@ -959,10 +973,6 @@ void LU_rep(T*& A, T*& C, T*& PP, GlobalVars<T>& gv, int rank, int size) {
                                           A10BuffRcv + (lti_rcv * v + i) * nlayr);
                                 local_comm[5] += nlayr;
                             } else {
-                                // A10RcvWin.Put(
-                                //     [A10Buff[ltiA10, i, pk_rcv*nlayr : (pk_rcv+1)*nlayr],
-                                //     nlayr, MPI.DOUBLE], p_rcv,
-                                //     target=[nlayr*(i + v*lti_rcv), nlayr, MPI.DOUBLE])
                                 MPI_Put(&A10Buff[(ltiA10 * v + i) * v + pk_rcv * nlayr],
                                         nlayr, mtype, p_rcv,
                                         nlayr*(i + v*lti_rcv), nlayr, mtype, A10RcvWin);                         
@@ -1004,30 +1014,6 @@ void LU_rep(T*& A, T*& C, T*& PP, GlobalVars<T>& gv, int rank, int size) {
             // # which is local tile in A11:
             long long pj_rcv, ltj_rcv;
             g2l(gtj, sqrtp1, pj_rcv, ltj_rcv);
-
-            // if (doprint) {
-            //     std::cout << rank << ": " << ltjA01 << ", " << gtj << ", "
-            //               << pj_rcv << ", " << ltj_rcv << std::endl << std::flush;
-            // }
-
-            // # initial data for A01 is already waiting for us
-            // # A00 is waiting for us too. Good to go!
-            // A01 = A01Buff[ltjA01]
-            // A00 = A00Buff
-            // A01Buff[ltjA01] = compA01(A00, A01)
-
-            // cblas_dtrsm(CblasRowMajor, CblasLeft, CblasLower, CblasNoTrans, CblasUnit,
-            //             v, v, 1.0, A00Buff, v, &A01Buff[ltjA01], v);
-
-            // // Comp A01
-            // for (auto ik = 0; ik < v - 1; ++ik) {
-            //     for (auto ij = 0; ij < v; ++ij) {
-            //         for (auto ii = ik + 1; ii < v; ++ii) {
-            //             A01Buff[(ltjA01 * v + ii) * v + ij] -=
-            //                 A00Buff[ii *v + ik] * A01Buff[(ltjA01 * v + ik) * v + ij];
-            //         }
-            //     }
-            // }
 
             // # -- BROADCAST -- #
             // # after compute, send it to sqrt(p1) * c processors
@@ -1086,45 +1072,6 @@ void LU_rep(T*& A, T*& C, T*& PP, GlobalVars<T>& gv, int rank, int size) {
             std::cout << std::endl << std::flush;
         }
         #endif
-
-        // # ---------------------------------------------- #
-        // # 8. compute A11  ------------------------------ #
-        // # ---------------------------------------------- #
-
-        // std::fill(BigA11, BigA11 + tA11 * tA11 * v * v, 0);
-        // std::fill(BigA10, BigA10 + tA11 * v * nlayr, 0);
-        // int rows = 0;
-        // int cols = (tA11 - k / P) * v;
-        // for (auto lti = 0; lti < tA11; ++lti) {
-        //     for (auto ii = 0; ii < v; ++ii) {
-        //         if (A11MaskBuff[lti * v + ii]) {
-        //             std::copy(&A10BuffRcv[(lti * v + ii) * nlayr],
-        //                       &A10BuffRcv[(lti * v + ii + 1) * nlayr],
-        //                       &BigA10[rows * v]);
-        //             for (auto ltj = k / P; ltj < tA11; ++ltj) {
-        //                 std::copy(&A11Buff[((lti * tA11 + ltj) * v + ii) * v],
-        //                           &A11Buff[((lti * tA11 + ltj) * v + ii + 1) * v],
-        //                           &BigA11[rows * cols + (ltj - k/P) * v]);
-        //             }   
-        //             rows++;
-        //         }
-        //     }
-        // }
-        // cblas_dgemm(CblasRowMajor, CblasNoTrans, CblasNoTrans, rows, cols, nlayr,
-        //             -1.0, BigA10, nlayr, A01BuffRcv + (k / P) * nlayr * v, cols, 1.0, BigA11, cols);
-        // rows = 0;
-        // for (auto lti = 0; lti < tA11; ++lti) {
-        //     for (auto ii = 0; ii < v; ++ii) {
-        //         if (A11MaskBuff[lti * v + ii]) {
-        //             for (auto ltj = k / P; ltj < tA11; ++ltj) {
-        //                 std::copy(&BigA11[rows * cols + (ltj - k/P) * v],
-        //                           &BigA11[rows * cols + (ltj - k/P + 1) * v],
-        //                           &A11Buff[((lti * tA11 + ltj) * v + ii) * v]);
-        //             } 
-        //             rows++;  
-        //         }
-        //     }
-        // }
 
         MPI_Barrier(lu_comm);
         ts = std::chrono::high_resolution_clock::now();
