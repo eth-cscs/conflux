@@ -1005,10 +1005,10 @@ void LU_rep(T*& A, T*& C, T*& PP, GlobalVars<T>& gv, int rank, int size) {
         // # ---------------------------------------------- #
 
         // Comp A01
+        #pragma omp parallel for 
         for (auto ltjA01 = k / P; ltjA01 < tA10; ++ltjA01) {  
             // cblas_dtrsm(CblasRowMajor, CblasLeft, CblasLower, CblasNoTrans, CblasUnit,
             //             v, v, 1.0, A00Buff, v, &A01Buff[ltjA01], v);
-            #pragma omp for 
             for (auto ik = 0; ik < v - 1; ++ik) {
                 for (auto ij = 0; ij < v; ++ij) {
                     for (auto ii = ik + 1; ii < v; ++ii) {
