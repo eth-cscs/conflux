@@ -939,22 +939,31 @@ void LU_rep(T*& A, T*& C, T*& PP, GlobalVars<T>& gv, int rank, int size) {
         p2X(rank, p1, sqrtp1, pi, pj, pk);
 
         // Comp A10
-        #pragma omp for
+        #pragma omp parallel for
         for (auto ltiA10 = 0; ltiA10 < tA10; ++ltiA10) {
             int tid = omp_get_thread_num();
             PE(copy);
             std::copy(A10Buff + ltiA10 * v * v, A10Buff + (ltiA10 + 1) * v * v,
                       tmpA11 + tid * v * v);
             PL();
+        }
+
+        #pragma omp parallel for
+        for (auto ltiA10 = 0; ltiA10 < tA10; ++ltiA10) {
+            int tid = omp_get_thread_num();
             PE(dtrsm);
             cblas_dtrsm(CblasRowMajor, CblasRight, CblasUpper, CblasNoTrans, CblasNonUnit,
                         v, v, 1.0, A00Buff, v, tmpA11 + tid * v * v, v);
             PL();
+        }
+        #pragma omp parallel for
+        for (auto ltiA10 = 0; ltiA10 < tA10; ++ltiA10) {
+            int tid = omp_get_thread_num();
             for (auto ii = 0; ii < v; ++ii) {
                 if (A10MaskBuff[ltiA10 * v + ii]) {
-                    for (auto ij = 0; ij < v; ++ij) {
-                        A10Buff[(ltiA10 * v + ii) * v + ij] = tmpA11[tid * v * v + ii * v + ij];
-                    }
+                    std::copy_n(&tmpA11[tid * v * v + ii * v],
+                                v,
+                                &A10Buff[(ltiA10 * v + ii) * v]);
                 }
             }
         }
@@ -983,16 +992,48 @@ void LU_rep(T*& A, T*& C, T*& PP, GlobalVars<T>& gv, int rank, int size) {
                     for (auto i = 0; i < v; ++i) {
                         auto row = A10MaskBuff[ltiA10 * v + i];
                         if (row) {
-                            if (rank == p_rcv) {
-                                std::copy(A10Buff + (ltiA10 * v + i) * v + pk_rcv * nlayr,
-                                          A10Buff + (ltiA10 * v + i) * v + (pk_rcv + 1) * nlayr,
-                                          A10BuffRcv + (lti_rcv * v + i) * nlayr);
-                                local_comm[5] += nlayr;
-                            } else {
+                            if (rank != p_rcv) {
                                 MPI_Put(&A10Buff[(ltiA10 * v + i) * v + pk_rcv * nlayr],
                                         nlayr, mtype, p_rcv,
                                         nlayr*(i + v*lti_rcv), nlayr, mtype, A10RcvWin);                         
                                 comm_count[5] += nlayr;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // # here we always go through all rows, and then filter it by the remainingMask array
+#pragma omp parallel for
+        for (auto ltiA10 = 0; ltiA10 < tA10; ++ltiA10) {
+            // # this is updating A10 based on A00
+            // # initial data for A10 is already waiting for us (from initial redundant decomposition or from
+            // # the previous reduction of A11)
+            // # A00 is waiting for us too. Good to go!
+
+            // # we will compute global tile:
+            long long gti = l2gA10(rank, ltiA10, P);
+            if (gti < Nt) {
+                // # which is local tile in A11:
+                long long tmp, lti_rcv;
+                g2l(gti, sqrtp1, tmp, lti_rcv);
+
+                // # -- BROADCAST -- #
+                // # after compute, send it to sqrt(p1) * c processors
+                for (auto pk_rcv = 0; pk_rcv < c; ++pk_rcv) {
+                    for (auto pj_rcv = 0; pj_rcv < sqrtp1; ++pj_rcv) {
+                        auto p_rcv = X2p(pi, pj_rcv, pk_rcv, p1, sqrtp1);
+                        // # A10buffRcv[p_rcv, lti_rcv, rows] = A10buff[p, ltiA10, rows, pk_rcv*nlayr : (pk_rcv+1)*nlayr]
+                        for (auto i = 0; i < v; ++i) {
+                            auto row = A10MaskBuff[ltiA10 * v + i];
+                            if (row) {
+                                if (rank == p_rcv) {
+                                    std::copy(A10Buff + (ltiA10 * v + i) * v + pk_rcv * nlayr,
+                                              A10Buff + (ltiA10 * v + i) * v + (pk_rcv + 1) * nlayr,
+                                              A10BuffRcv + (lti_rcv * v + i) * nlayr);
+                                    local_comm[5] += nlayr;
+                                }
                             }
                         }
                     }
@@ -1010,14 +1051,15 @@ void LU_rep(T*& A, T*& C, T*& PP, GlobalVars<T>& gv, int rank, int size) {
             // cblas_dtrsm(CblasRowMajor, CblasLeft, CblasLower, CblasNoTrans, CblasUnit,
             //             v, v, 1.0, A00Buff, v, &A01Buff[ltjA01], v);
             for (auto ik = 0; ik < v - 1; ++ik) {
-                for (auto ij = 0; ij < v; ++ij) {
-                    for (auto ii = ik + 1; ii < v; ++ii) {
+                for (auto ii = ik + 1; ii < v; ++ii) {
+                    for (auto ij = 0; ij < v; ++ij) {
                         A01Buff[(ltjA01 * v + ii) * v + ij] -=
                             A00Buff[ii *v + ik] * A01Buff[(ltjA01 * v + ik) * v + ij];
                     }
                 }
             }
         }
+
         for (auto ltjA01 = k / P; ltjA01 < tA10; ++ltjA01) {
             // # we are computing the global tile:
             auto gtj = l2gA10(rank, ltjA01, P);
@@ -1036,27 +1078,40 @@ void LU_rep(T*& A, T*& C, T*& PP, GlobalVars<T>& gv, int rank, int size) {
             for (auto pk_rcv = 0; pk_rcv < c; ++pk_rcv) {
                 for (auto pi_rcv = 0; pi_rcv < sqrtp1; ++pi_rcv) {
                     auto p_rcv = X2p(pi_rcv, pj_rcv, pk_rcv, p1, sqrtp1);
-                    // if (doprint && p_rcv == 0) {
-                    //     std::cout << "Rank : " << rank << " sending to rank 0 "
-                    //               << "on " << ltj_rcv  << " from " << ltjA01
-                    //               << std::endl << std::flush;
-                    // }
-                    if (p_rcv == rank) {
-                        mcopy(A01Buff + ltjA01 * v * v,
-                              A01BuffRcv + ltj_rcv * nlayr * v,
-                              pk_rcv * nlayr, (pk_rcv + 1) * nlayr, 0, v, v,
-                              0, nlayr, 0, v, v);
-                        local_comm[6] += nlayr * v;
-                    } else {
-                        // # A01buffRcv[p_rcv, ltj_rcv] = A01buff[p, ltjA01, pk_rcv*nlayr : (pk_rcv+1)*nlayr, :]
-                        // A01RcvWin.Put(
-                        //     [A01Buff[ltjA01, pk_rcv*nlayr : (pk_rcv+1)*nlayr, :],
-                        //     nlayr*v, MPI.DOUBLE],
-                        //     p_rcv, target=[ltj_rcv*nlayr*v, nlayr*v, MPI.DOUBLE])
+                    if (p_rcv != rank) {
                         MPI_Put(&A01Buff[(ltjA01 * v + pk_rcv * nlayr) * v],
                                          nlayr * v, mtype, p_rcv,
                                          ltj_rcv*nlayr*v, nlayr * v, mtype, A01RcvWin);                         
                         comm_count[6] += nlayr * v;
+                    }
+                }
+            }
+        }
+
+#pragma omp parallel for
+        for (auto ltjA01 = k / P; ltjA01 < tA10; ++ltjA01) {
+            // # we are computing the global tile:
+            auto gtj = l2gA10(rank, ltjA01, P);
+            if (gtj <= k) {
+                continue;
+            }
+            if (gtj < Nt) {
+                // # which is local tile in A11:
+                long long pj_rcv, ltj_rcv;
+                g2l(gtj, sqrtp1, pj_rcv, ltj_rcv);
+
+                // # -- BROADCAST -- #
+                // # after compute, send it to sqrt(p1) * c processors
+                for (auto pk_rcv = 0; pk_rcv < c; ++pk_rcv) {
+                    for (auto pi_rcv = 0; pi_rcv < sqrtp1; ++pi_rcv) {
+                        auto p_rcv = X2p(pi_rcv, pj_rcv, pk_rcv, p1, sqrtp1);
+                        if (p_rcv == rank) {
+                            mcopy(A01Buff + ltjA01 * v * v,
+                                  A01BuffRcv + ltj_rcv * nlayr * v,
+                                  pk_rcv * nlayr, (pk_rcv + 1) * nlayr, 0, v, v,
+                                  0, nlayr, 0, v, v);
+                            local_comm[6] += nlayr * v;
+                        }
                     }
                 }
             }
@@ -1091,38 +1146,30 @@ void LU_rep(T*& A, T*& C, T*& PP, GlobalVars<T>& gv, int rank, int size) {
 
         MPI_Barrier(lu_comm);
         ts = std::chrono::high_resolution_clock::now();
-        #pragma omp parallel for
+        #pragma omp parallel for collapse(2)
         for (auto lti = 0; lti < tA11; ++lti) {
-            int tid = omp_get_thread_num();
             // # filter which rows of this tile should be processed:
             // rows = A11MaskBuff[lti, :]
             // A10 = A10BuffRcv[lti, rows]
-
             for (auto ltj = k / P; ltj < tA11; ++ltj) {
+                int tid = omp_get_thread_num();
                 // # Every processor computes only v/c "layers" in k dimension
-                // A01 = A01BuffRcv[ltj]
-                // A11 = A11Buff[lti, ltj, rows]
-
-                // A11Buff[lti, ltj, rows] = A11 - A10 @ A01
-
-                // Comp A11
-                // for (auto ii = 0; ii < v; ++ii) {
-                //     auto row = A11MaskBuff[lti * v + ii];
-                //     if (row) {
-                //         for (auto ij = 0; ij < v; ++ij) {
-                //             for (auto ik = 0; ik < nlayr; ++ik) {
-                //                 A11Buff[((lti * tA11 + ltj) * v + ii) * v + ij] -=
-                //                     A10BuffRcv[(lti * v + ii) * nlayr + ik] * A01BuffRcv[(ltj * nlayr + ik) * v + ij];
-                //             }
-                //         }
-                //     }
-                // }
                 PE(dgemm);
                 cblas_dgemm(CblasRowMajor, CblasNoTrans, CblasNoTrans, v, v, nlayr,
                             1.0, &A10BuffRcv[lti * v * nlayr], nlayr,
                             &A01BuffRcv[ltj * nlayr * v], v,
                             0.0,  tmpA11 + tid * v * v, v);
                 PL();
+            }
+        }
+        #pragma omp parallel for collapse(2)
+        for (auto lti = 0; lti < tA11; ++lti) {
+            // # filter which rows of this tile should be processed:
+            // rows = A11MaskBuff[lti, :]
+            // A10 = A10BuffRcv[lti, rows]
+
+            for (auto ltj = k / P; ltj < tA11; ++ltj) {
+                int tid = omp_get_thread_num();
                 PE(mask);
                 for (auto ii = 0; ii < v; ++ii) {
                     auto row = A11MaskBuff[lti * v + ii];
@@ -1135,6 +1182,7 @@ void LU_rep(T*& A, T*& C, T*& PP, GlobalVars<T>& gv, int rank, int size) {
                 PL();
             }
         }
+
         MPI_Barrier(lu_comm);
         te = std::chrono::high_resolution_clock::now();
         timers[6] += std::chrono::duration_cast<std::chrono::microseconds>( te - ts ).count();
