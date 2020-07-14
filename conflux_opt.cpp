@@ -828,7 +828,28 @@ void LU_rep(T*& A, T*& C, T*& PP, GlobalVars<T>& gv, int rank, int size) {
         // # so layer pk == 0 do a LOCAL copy from A11Buff to PivotBuff, other layers do the communication
         // # that is, each processor [pi, pj, pk] sends to [pi, pj, 0]
         auto pi0 = k % sqrtp1;
+        auto p_rcv = X2p(pi0, pj, layrK, p1, sqrtp1);
         // # reduce v pivot rows.
+        for (auto i = 0; i < v; ++i) {
+            auto piv = pivotIndsBuff[k * v + i];
+            // # pi_own is the pi'th index of the owner rank of pivot piv
+            long long gti, lri, pi_own, lti;
+            gr2gt(piv, v, gti, lri);
+            g2l(gti, sqrtp1, pi_own, lti);
+            if (pi == pi_own) {
+                // # ok, I'm the owner of the piv row, let me send it to p_rcv !
+                if (p_rcv != rank) {
+                    auto ltj = k / sqrtp1;
+                    auto size = (tA11 - ltj) * v;
+                    MPI_Accumulate(&A11Buff[((lti * tA11 + ltj) * v + lri) * v],
+                                   size, mtype, p_rcv, v*(i + v*ltj), size, mtype, MPI_SUM, PivotA11Win);
+
+                }
+            }
+        }
+
+        // # reduce v pivot rows.
+#pragma omp parallel for
         for (auto i = 0; i < v; ++i) {
             auto piv = pivotIndsBuff[k * v + i];
             // # pi_own is the pi'th index of the owner rank of pivot piv
@@ -849,21 +870,6 @@ void LU_rep(T*& A, T*& C, T*& PP, GlobalVars<T>& gv, int rank, int size) {
                                     A11Buff[((lti * tA11 + ltj) * v + lri) * v + j];
                         }
                         local_comm[3] += v;
-                    }
-                } else {
-                    for (auto ltj = k / sqrtp1; ltj < tA11; ++ltj) {
-                        auto gtj = l2g(rank, ltj, sqrtp1);
-                        if (gtj <= k) {
-                            continue;
-                        }
-                        // # REDUCTION HERE !
-                        // # PivotA11ReductionBuff[p_rcv, ltj, i, :] += np.copy(A11buff[p, lti, ltj, lri, :])
-                        // PivotA11Win.Accumulate(
-                        //     [A11Buff[lti, ltj, lri, :], v, MPI.DOUBLE],
-                        //     p_rcv, target=[v*(i + v*ltj), v, MPI.DOUBLE], op=MPI.SUM)
-                        MPI_Accumulate(&A11Buff[((lti * tA11 + ltj) * v + lri) * v],
-                                       v, mtype, p_rcv, v*(i + v*ltj), v, mtype, MPI_SUM, PivotA11Win);
-                        comm_count[3] += v;
                     }
                 }
             }
