@@ -19,7 +19,7 @@ set(SCALAPACK_TARGET "mkl::scalapack_32bit_omp")
 endif ()
 
 
-add_executable(conflux "conflux.cpp")
+add_executable(conflux "conflux/conflux.cpp")
 target_compile_features(conflux PUBLIC cxx_std_17)
 target_link_libraries(conflux PUBLIC MPI::MPI_CXX
                          PRIVATE ${BLAS_TARGET}
@@ -27,7 +27,7 @@ target_link_libraries(conflux PUBLIC MPI::MPI_CXX
                      )
 target_compile_definitions(conflux PRIVATE "VALIDATE")
 
-add_executable(conflux_opt "conflux_opt.cpp")
+add_executable(conflux_opt "conflux/conflux_opt.cpp")
 target_compile_features(conflux_opt PUBLIC cxx_std_17)
 target_link_libraries(conflux_opt PUBLIC MPI::MPI_CXX
                          PRIVATE ${BLAS_TARGET}
