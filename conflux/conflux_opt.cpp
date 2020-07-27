@@ -218,50 +218,26 @@ long long flipbit(long long n, long long k) {
 }
 
 template <class T>
-void LUPv2(T* inpA, T* Perm, int m0, int n0, T* origA, T* A, long long v,
-           int rank, int k, lapack_int* ipiv, lapack_int* p) {
+void LUP(std::vector<T>& PivotBuff, T* L, T* U, T* Perm, int v) {
+    // global global_vars
+    // v = global_vars['v']
+    int n = v;
+    int m = PivotBuff.size() / n;
 
-    auto doprint = (k == -1);
-    auto printrank = (rank == -1);
-
-    mcopy(inpA, A, 0, m0, 1, n0, n0, 0, m0, 0, v, v);
-    // std::fill(ipiv, ipiv + m0, 0);
-    PE(dgetrf);
-    LAPACKE_dgetrf(LAPACK_ROW_MAJOR, m0, v, A, v, ipiv);
-    PL();
-    std::fill(Perm, Perm + m0 * m0, 0);
-    for (auto i = 0; i < m0; ++i)
-        p[i] = i;
-    for (auto i = 0; i < v; ++i)
-        std::swap(p[i], p[ipiv[i] - 1]);
-    for (auto i = 0; i < m0; ++i)
-        Perm[i * m0 + p[i]] = 1;
-
-    #ifdef DEBUG_PRINT
-    if (doprint && printrank) {
-        for (auto i = 0; i < m0 * n0; ++i) {
-            std::cout << A[i] << ", ";
-        }
-        std::cout << std::endl << std::flush;
-        for (auto i = 0; i < m0 * m0; ++i) {
-            std::cout << Perm[i] << ", ";
-        }
-        std::cout << std::endl << std::flush;
-    }
-    #endif
-
-    PE(dgemm);
-    cblas_dgemm(CblasRowMajor, CblasNoTrans, CblasNoTrans, v, n0, m0,
-                1.0, Perm, m0, inpA, n0, 0.0, origA, n0);
-    PL();
+    [Perm, L, U] = la.lu(inpA)
+    origA = Perm.T @ inpA
+    [m, n] = inpA.shape
+    res = (L +
+           np.concatenate((U, np.zeros([m-n,n])), axis = 0) -
+           np.eye(m, n))[:v,:]
+    return [origA[:v,], res[:v,], Perm]
 }
 
 template <class T>
-void TournPivotMPI(int rank, int k, T* PivotBuff, MPI_Win& PivotWin,
+void EmptyPivotMPI(int rank, int k, T* PivotBuff, MPI_Win& PivotWin,
                    T* A00Buff, MPI_Win& A00Win, int* pivots, MPI_Win& pivotsWin,
                    bool* A10Mask, bool* A11Mask, int layrK,
-                   GlobalVars<T>& gv, long long& comm_count, long long& local_comm,
-                   T* A, T* origA, T* Perm, lapack_int* ipiv, lapack_int* p) {
+                   GlobalVars<T>& gv) {
     PE(tpivoting_other);
     auto doprint = (k == -1);
     auto printrank = (rank == -1);
@@ -275,223 +251,49 @@ void TournPivotMPI(int rank, int k, T* PivotBuff, MPI_Win& PivotWin,
     c = gv.c;
     tA10 = gv.tA10;
     tA11 = gv.tA11;
+    auto Nl = tA11 * v;
 
     // # ---------------- FIRST STEP ----------------- #
     // # in first step, we do pivot on the whole PivotBuff array (may be larger than [2v, v]
     // # local computation step
     long long pi, pj, pk;
     p2X(rank, p1, sqrtp1, pi, pj, pk);
-    if (pj == k % sqrtp1 && pk == layrK) {
+    if (k % sqrtp1 != pi || k % sqrtp1 != pj || pk != 0)
+        return;
 
-        // # tricky part! to preserve the order of the rows between swapping pairs (e.g., if ranks 0 and 1 exchange their
-        // # candidate rows), we want to preserve that candidates of rank 0 are always above rank 1 candidates. Otherwise,
-        // # we can get inconsistent results. That's why,in each communication pair, higher rank puts his candidates below:
+    // data = densified A11Buff with respect to A11MaskBuff
+    auto& rows = A11MaskBuff;
+    std::vector<T> data;
+    // filter A11buff by masked pivot rows (local) and densify it
+    for (const auto& row : rows) {
+        auto col_start = (k / sqrtp1) * v;
+        auto col_end = (k / sqrtp1 + 1) * v;
+        data.insert(dense_A11Buff.end(),
+                             &A11Buff[row * Nl + col_start],
+                             &A11Buff[row * Nl + col_end]);
+    }
 
-        // # find with which rank we will communicate
-        // # ANOTHER tricky part ! If sqrtp1 is not 2^n, then we will not have a nice butterfly communication graph.
-        // # that's why with the flipBit strategy, src_pi can actually be larger than sqrtp1
+    // flush the buffer
+    std::fill_n(PivotBuff.data(), PivotBuff.size(), 0);
+    std::copy_n(data.data(), data.size(), PivotBuff.data());
+
+    // In round robin fashion, only one rank chooses pivots among its local rows
+    if (k % sqrtp1 == pi) {
+        [PivotBuff[p, :v, :], A00Buff[p], Perm] = LUP(PivotBuff[p, :len(data)])
+
+        grows = l2gnoTile(np.nonzero(rows)[0], pi)
+        gpivots = (grows @ Perm)[:v]
+        [lpivots, loffsets] = g2lnoTile(gpivots)
+
+        // # locally set curPivots
+        curPivots[p, 0] = len(lpivots[pi])
+        curPivots[p, 1 : 1 + len(lpivots[pi])] = lpivots[pi]
+        curPivOrder[p, :len(loffsets[pi])] = loffsets[pi]
+        pivotIndsBuff[p, k*v:(k+1)*v] = gpivots
+
         auto src_pi = std::min(flipbit(pi, 0ll), sqrtp1 - 1ll);
         auto src_p = X2p(src_pi, pj, pk, p1, sqrtp1);
         PL();
-        LUPv2(PivotBuff, Perm, v * std::max(2ll, tA11), v + 1, origA, A, v, rank, k, ipiv, p);
-        PE(tpivoting_firstcopy);
-        if (src_p < rank) {
-            // # move my candidates below
-            std::copy(origA, origA + v * (v + 1), PivotBuff + v * (v + 1));
-        } else {
-            std::copy(origA, origA + v * (v + 1), PivotBuff);
-        }
-        PL();
-        PE(tpivoting_other);
-    }
-
-    MPI_Win_fence(MPI_MODE_NOPUT, PivotWin);
-
-    #ifdef DEBUG_PRINT
-    if (doprint && printrank) {
-        for (auto i = 0; i < v * (v + 1); ++i) {
-            std::cout << origA[i] << ", ";
-        }
-        std::cout << std::endl << std::flush;
-        for (auto i = 0; i < v * std::max(2ll, tA11) * (v + 1); ++i) {
-            std::cout << PivotBuff[i] << ", ";
-        }
-        std::cout << std::endl << std::flush;
-    }
-    #endif
-// # ------------- REMAINING STEPS -------------- # 
-// # now we do numRounds parallel steps with synchronization after each step 
-    long long numRounds = (long long) (std::ceil(std::log2(sqrtp1)));
-
-
-    for (auto r = 0; r < numRounds; ++r) {
-        if (rank == 0) {
-            std::cout << "PivotBuff = " << std::endl;
-            for (int i = 0; i < 4; ++i) {
-                for (int j = 0; j < 3; ++j) {
-                    std::cout << PivotBuff[i * 3 + j] << ", ";
-                }
-                std::cout << std::endl;
-            }
-        }
-
-        PL();
-        PE(tpivoting_firstfence_get);
-        // no MPI_Put until next fence
-        p2X(rank, p1, sqrtp1, pi, pj, pk);
-
-        if (pj == k % sqrtp1 && pk == layrK) {
-            // # find with which rank we will communicate
-            auto src_pi = std::min(flipbit(pi, r), sqrtp1 - 1ll);
-            auto src_p = X2p(src_pi, pj, pk, p1, sqrtp1);
-
-            // # see comment above for the communication pattern:
-            if (src_p > rank) {
-                MPI_Get(PivotBuff + v * (v + 1), v * (v + 1), mtype, src_p,
-                        v * (v + 1), v * (v + 1), mtype, PivotWin);
-                comm_count += v * (v + 1);
-            } else if (src_p < rank) {
-                MPI_Get(PivotBuff, v * (v + 1), mtype, src_p,
-                        0, v * (v + 1), mtype, PivotWin);
-                comm_count += v * (v + 1);
-            } else {
-                local_comm += v * (v + 1);
-            }
-        }
-
-        MPI_Win_fence(0, PivotWin);
-
-        // # local computation step
-        // p2X(rank, p1, sqrtp1, pi, pj, pk);
-        if (pj == k % sqrtp1 && pk == layrK) {
-            // # find local pivots
-            PL();
-            LUPv2(PivotBuff, Perm, 2 * v, v + 1, origA, A, v, rank, k, ipiv, p);
-            PE(tpivoting_firstfence_copy);
-            if (r == numRounds - 1) {
-                // mcopy(origA, PivotBuff,
-                //       0, v, 0, v + 1, v + 1,
-                //       0, v, 0, v + 1, v + 1);
-                std::copy(origA, origA + v * (v + 1), PivotBuff);
-                // mcopy(A, A00Buff,
-                //       0, v, 1, v + 1, v + 1,
-                //       0, v, 0, v, v);
-                std::copy(A, A + v * v, A00Buff);
-            } else {
-                auto src_pi = std::min(flipbit(pi, r+1), sqrtp1 - 1ll);
-                auto src_p = X2p(src_pi, pj, pk, p1, sqrtp1);
-                if (src_p < rank) {
-                    // # move my candidates below
-                    // [PivotBuff[v:2 * v, :], _] = LUPv2(PivotBuff[:2*v])
-                    // mcopy(origA, PivotBuff,
-                    //       0, v, 0, v + 1, v + 1,
-                    //       v, 2 * v, 0, v + 1, v + 1);
-                    std::copy(origA, origA + v * (v + 1), PivotBuff + v * (v + 1));
-                } else {
-                    // [PivotBuff[:v, :], _] = LUPv2(PivotBuff[:2*v])
-                    // mcopy(origA, PivotBuff,
-                    //       0, v, 0, v + 1, v + 1,
-                    //       0, v, 0, v + 1, v + 1);
-                    std::copy(origA, origA + v * (v + 1), PivotBuff);
-                }
-            }
-        }
-        MPI_Win_fence(0, PivotWin);
-    }
-
-    PL();
-
-    MPI_Win_fence(0, PivotWin);
-
-    #ifdef DEBUG_PRINT
-    if (doprint && printrank) {
-        for (auto i = 0; i < v * v; ++i) {
-            std::cout << A00Buff[i] << ", ";
-        }
-        std::cout << std::endl << std::flush;
-    }
-    #endif
-
-    if (rank == 0) {
-        std::cout << "A00Buff = " << std::endl;
-        for (int i = 0; i < 2; ++i) {
-            for (int j = 0; j < 2; ++j) {
-                std::cout << A00Buff[i * 2 + j] << ", ";
-            }
-            std::cout << std::endl;
-        }
-    }
-
-    MPI_Abort(-1, MPI_COMM_WORLD);
-
-    PE(tpivoting_A00buff);
-    // # distribute A00buff
-    // # !! COMMUNICATION !!
-    p2X(rank, p1, sqrtp1, pi, pj, pk);
-    if (pj == k % sqrtp1 and pk == layrK) {
-        for (auto i = 0; i < v; ++i) {
-            pivots[k * v + i] = (int) (PivotBuff[i * (v + 1)]);
-        }
-        for (auto destpj = 0; destpj < sqrtp1; ++destpj) {
-            for (auto destpk = 0; destpk < c; ++destpk) {
-                auto destp = X2p(pi,destpj, destpk, p1, sqrtp1);
-                if (destp != rank) {
-                    // # A00buff[destp] = np.copy(A00buff[p])
-                    // A00Win.Put([A00buff, v*v, MPI.DOUBLE], destp)
-                    MPI_Put(A00Buff, v * v, mtype, destp,
-                            0, v * v, mtype, A00Win);
-                    // # pivots[destp, k * v: (k + 1) * v] = pivots[p, k * v: (k + 1) * v]
-                    // pivotsWin.Put([pivots[k * v: (k + 1) * v], v, MPI.LONG_LONG],
-                    //               destp, target=[k*v, v, MPI.LONG_LONG])
-                    MPI_Put(pivots + k * v, v, MPI_INT, destp,
-                            k * v, v, MPI_INT, pivotsWin);
-                    comm_count += v * (v + 1);
-                } else {
-                    local_comm += v * (v + 1);
-                }
-            }
-        }
-    }
-
-    MPI_Win_fence(0, A00Win);
-    MPI_Win_fence(0, pivotsWin);
-    PL();
-
-    PE(tpivoting_local);
-
-    #ifdef DEBUG_PRINT
-    if (doprint && printrank) {
-        for (auto i = 0; i < v * v; ++i) {
-            std::cout << A00Buff[i] << ", ";
-        }
-        std::cout << std::endl << std::flush;
-    }
-    #endif
-
-    // # now every processor locally updates its local masks. No communication involved
-    p2X(rank, p1, sqrtp1, pi, pj, pk);
-    #pragma omp parallel for
-    for (auto i = 0; i < v; ++i) {
-        auto piv = pivots[k * v + i];
-        // # translating global row index (piv) to global tile index and row index inside the tile
-        long long gti, lri, pown, lti;
-        gr2gt(piv, v, gti, lri);
-        g2lA10(gti, P, pown, lti);
-        if (rank == pown) {
-            A10Mask[lti * v + lri] = false;
-        }
-        g2l(gti, sqrtp1, pown, lti);
-        if (pi == pown) {
-            A11Mask[lti * v + lri] = false;
-        }
-    }
-
-    // delete A;
-    // delete origA;
-    // delete Perm;
-
-    // return comm_count;
-    PL();
 }
 
 // taken from COSMA
@@ -615,45 +417,45 @@ void LU_rep(T*& A, T*& C, T*& PP, GlobalVars<T>& gv, int rank, int size) {
     std::vector<T> PivotA11ReductionBuff(tA11 * v * v);
     std::vector<int> pivotIndsBuff(N, -1);
 
-    std::vector<int> curPivots(v + 1);
-    std::vector<int> curPivOrder(v);
+    std::vector<int> curPivots(P * (v + 1));
+    std::vector<int> curPivOrder(P * v);
 
     // Create windows
-    MPI_Win A00Win = create_window(lu_comm, 
-                                   A00Buff.data(), 
-                                   A00Buff.size(), 
+    MPI_Win A00Win = create_window(lu_comm,
+                                   A00Buff.data(),
+                                   A00Buff.size(),
                                    true);
-    MPI_Win A10Win = create_window(lu_comm, 
-                                   A10Buff.data(), 
-                                   A10Buff.size(), 
+    MPI_Win A10Win = create_window(lu_comm,
+                                   A10Buff.data(),
+                                   A10Buff.size(),
                                    true);
     MPI_Win A10RcvWin = create_window(lu_comm,
                                       A10BuffRcv.data(),
                                       A10BuffRcv.size(),
                                       true);
-    MPI_Win A01Win = create_window(lu_comm, 
-                                   A01Buff.data(), 
-                                   A01Buff.size(), 
+    MPI_Win A01Win = create_window(lu_comm,
+                                   A01Buff.data(),
+                                   A01Buff.size(),
                                    true);
-    MPI_Win A01RcvWin = create_window(lu_comm, 
-                                      A01BuffRcv.data(), 
-                                      A01BuffRcv.size(), 
+    MPI_Win A01RcvWin = create_window(lu_comm,
+                                      A01BuffRcv.data(),
+                                      A01BuffRcv.size(),
                                       true);
     MPI_Win A11Win = create_window(lu_comm,
-                                   A11Buff.data(), 
-                                   A11Buff.size(), 
+                                   A11Buff.data(),
+                                   A11Buff.size(),
                                    true);
-    MPI_Win PivotWin = create_window(lu_comm, 
+    MPI_Win PivotWin = create_window(lu_comm,
                                      PivotBuff.data(),
-                                     PivotBuff.size(), 
+                                     PivotBuff.size(),
                                      true);
-    MPI_Win pivotsWin = create_window(lu_comm, 
-                                      pivotIndsBuff.data(), 
-                                      pivotIndsBuff.size(), 
+    MPI_Win pivotsWin = create_window(lu_comm,
+                                      pivotIndsBuff.data(),
+                                      pivotIndsBuff.size(),
                                       true);
-    MPI_Win PivotA11Win = create_window(lu_comm, 
-                                        PivotA11ReductionBuff.data(), 
-                                        PivotA11ReductionBuff.size(), 
+    MPI_Win PivotA11Win = create_window(lu_comm,
+                                        PivotA11ReductionBuff.data(),
+                                        PivotA11ReductionBuff.size(),
                                         true);
 
     // Sync all windows
@@ -693,7 +495,7 @@ void LU_rep(T*& A, T*& C, T*& PP, GlobalVars<T>& gv, int rank, int size) {
                       0, v, 0, v, v);
                 assert(B[gti * v * N + gtj * v] == A11Buff[(lti * tA11 + ltj) * v * v]);
             }
-        }      
+        }
     }
 
     long long timers[8] = {0};
@@ -729,11 +531,11 @@ void LU_rep(T*& A, T*& C, T*& PP, GlobalVars<T>& gv, int rank, int size) {
         auto layrK = dist(eng);
 
         // layrK = 0;
-        // if (k == 0) layrK = 0; 
+        // if (k == 0) layrK = 0;
         // if (k == 1) layrK = 1;
         // if (doprint && printrank) std::cout << "layrK: " << layrK << std::endl << std::flush;
         // # ----------------------------------------------------------------- #
-        // # 1. reduce first tile column from A11buff to PivotA11ReductionBuff #
+        // # 0. reduce first tile column from A11buff to PivotA11ReductionBuff #
         // # ----------------------------------------------------------------- #
         MPI_Barrier(lu_comm);
         auto ts = std::chrono::high_resolution_clock::now();
@@ -744,13 +546,10 @@ void LU_rep(T*& A, T*& C, T*& PP, GlobalVars<T>& gv, int rank, int size) {
         auto p_rcv = X2p(pi, pj, layrK, p1, sqrtp1);
 
         // flush the buffer
-        curPivots[0] = 0;
-
-        if (pk == layrK) 
-            continue;
+        curPivots[rank * (v+1) + 0] = 0;
 
         // # reduce first tile column. In this part, only pj == k % sqrtp1 participate:
-        if (pj == k % sqrtp1) {
+        if (pk != layrK && pj == k % sqrtp1) {
             // rows = A11MaskBuff
             // here it's guaranteed that rank != p_rcv because pk != layrK
             /*
@@ -758,110 +557,31 @@ void LU_rep(T*& A, T*& C, T*& PP, GlobalVars<T>& gv, int rank, int size) {
             for (const auto& rows : A11MaskBuff) {
                 auto dspls = rows * Nl + loff;
                 auto origin_ptr = &A11Buff[dspls];
-                MPI_Accumulate(origin_ptr, v, MPI_DOUBLE, 
-                               p_rcv, dspls, v, MPI_DOUBLE, 
+                MPI_Accumulate(origin_ptr, v, MPI_DOUBLE,
+                               p_rcv, dspls, v, MPI_DOUBLE,
                                MPI_SUM, A11Win);
             }
             */
             auto dspls = 0;
             auto origin_ptr = &A11Buff[dspls];
-            MPI_Accumulate(origin_ptr, A11Buff.size(), MPI_DOUBLE, 
-                           p_rcv, dspls, A11Buff.size(), MPI_DOUBLE, 
+            MPI_Accumulate(origin_ptr, A11Buff.size(), MPI_DOUBLE,
+                           p_rcv, dspls, A11Buff.size(), MPI_DOUBLE,
                            MPI_SUM, A11Win);
         }
 
         MPI_Win_fence(0, A11Win);
 
         MPI_Barrier(lu_comm);
-
         auto te = std::chrono::high_resolution_clock::now();
         timers[0] += std::chrono::duration_cast<std::chrono::microseconds>( te - ts ).count();
 
 
-        /*
-        #ifdef DEBUG_PRINT
-        if (doprint && printrank) {
-            for (auto i = 0; i < tA11 * v * v; ++i) {
-                std::cout << PivotA11ReductionBuff[i] << ", ";
-            }
-            std::cout << std::endl << std::flush;
-        }
-        #endif
-        */
-
         // # --------------------------------------------------------------------- #
-        // # 2. coalesce PivotA11ReductionBuff to PivotBuff and scatter to A10buff #
+        // # 1. coalesce PivotA11ReductionBuff to PivotBuff and scatter to A10buff #
         // # --------------------------------------------------------------------- #
-        ts = std::chrono::high_resolution_clock::now();
-        p2X(rank, p1, sqrtp1, pi, pj, pk);
-        if (pj == k % sqrtp1 && pk == layrK) {
-            int index = 0;
-            // # here we always go through all rows, and then filter it by the remainingMask array
-            for (auto lti = 0;  lti < tA11; ++lti) {
-                // # we are now in gt'ith global tile index
-                auto gti = l2g(pi, lti, sqrtp1);
-                // # during A10, p_rcv will need this data
-                long long p_rcv, lt_rcv;
-                g2lA10(gti, P, p_rcv, lt_rcv);
-                // # ---- SCATTER COMMUNICATION -- #
-                // # A10buff[p_rcv, lt_rcv, rowMask] = np.copy(data)
-                for (auto i = 0; i < v; ++i) {
-                    auto row = A11MaskBuff[lti * v + i];
-                    if (row) {
-                        if (rank == p_rcv) {
-                            // for (auto j = 0; j < v; ++j) {
-                            //     A10Buff[v * (i + v * lt_rcv) + j] =
-                            //         PivotA11ReductionBuff[(lti * v + i) * v + j];
-                            // }
-                            std::copy(&PivotA11ReductionBuff[(lti * v + i) * v],
-                                      &PivotA11ReductionBuff[(lti * v + i + 1) * v],
-                                      &A10Buff[v * (i + v * lt_rcv)]);
-                            local_comm[1] += v;
-                        } else {
-                            MPI_Put(&PivotA11ReductionBuff[(lti * v + i) * v],
-                                    v, mtype, p_rcv, v * (i + v * lt_rcv), v, mtype, A10Win);
-                            comm_count[1] += v;
-                        }
-
-                        // TODO: Greg needs to verify this
-                        auto gris = i + l2g(pi, lti, sqrtp1) * v;
-                        PivotBuff[index * (v + 1)] = gris;
-                        // for (auto j = 0; j < v; ++j) {
-                        //     PivotBuff[index * (v + 1) + j + 1] =
-                        //         PivotA11ReductionBuff[(lti * v + i) * v + j];
-                        // }
-                        std::copy(&PivotA11ReductionBuff[(lti * v + i) * v],
-                                  &PivotA11ReductionBuff[(lti * v + i + 1) * v],
-                                  &PivotBuff[index * (v + 1) + 1]);
-                        index++;
-                    }
-                }
-            }
-            // # pad the buffer with zeros
-            for (auto idx = index; idx < v * std::max(2ll, tA11); ++idx) {
-                PivotBuff[idx * (v + 1)] = -1;
-                std::fill(PivotBuff + idx * (v + 1) + 1,
-                          PivotBuff + idx * (v + 1) + v + 1, 0);
-            }
-        }
-
-        MPI_Win_fence(0, A10Win);
         MPI_Barrier(lu_comm);
         te = std::chrono::high_resolution_clock::now();
         timers[1] += std::chrono::duration_cast<std::chrono::microseconds>( te - ts ).count();
-
-        #ifdef DEBUG_PRINT
-        if (doprint && printrank) {
-            for (auto i = 0; i < tA10 * v * v; ++i) {
-                std::cout << A10Buff[i] << ", ";
-            }
-            std::cout << std::endl << std::flush;
-            for (auto i = 0; i < v * std::max(2ll, tA11) * (v + 1); ++i) {
-                std::cout << PivotBuff[i] << ", ";
-            }
-            std::cout << std::endl << std::flush;
-        }
-        #endif
 
         //# flush the buffer
         if (pj == k % sqrtp1 && pk == layrK) {
@@ -871,33 +591,19 @@ void LU_rep(T*& A, T*& C, T*& PP, GlobalVars<T>& gv, int rank, int size) {
 
         MPI_Barrier(lu_comm);
         ts = std::chrono::high_resolution_clock::now();
-        TournPivotMPI(rank, k, PivotBuff, PivotWin, A00Buff, A00Win,
+        EmptyPivotMPI(rank, k, PivotBuff, PivotWin, A00Buff, A00Win,
                       pivotIndsBuff, pivotsWin, A10MaskBuff, A11MaskBuff,
-                      layrK, gv, comm_count[2], local_comm[2],
-                      luA, origA, Perm, ipiv, p);
+                      layrK, gv, luA, origA, Perm, ipiv, p);
         MPI_Barrier(lu_comm);
         te = std::chrono::high_resolution_clock::now();
         timers[2] += std::chrono::duration_cast<std::chrono::microseconds>( te - ts ).count();
 
-        #ifdef DEBUG_PRINT
-        if (doprint && printrank) {
-            for (auto i = 0; i < v * std::max(2ll, tA11) * (v + 1); ++i) {
-                std::cout << PivotBuff[i] << ", ";
-            }
-            std::cout << std::endl << std::flush;
-            for (auto i = 0; i < v * v; ++i) {
-                std::cout << A00Buff[i] << ", ";
-            }
-            std::cout << std::endl << std::flush;
-            for (auto i = 0; i < N; ++i) {
-                std::cout << pivotIndsBuff[i] << ", ";
-            }
-            std::cout << std::endl << std::flush;
-        }
-        #endif
-        
+        // get the global information on curPivots and curPivOrder
+        MPI_Allgather(MPI_IN_PLACE, v+1, MPI_DOUBLE, curPivots.data(), v+1, lu_comm);
+        MPI_Allgather(MPI_IN_PLACE, v, MPI_DOUBLE, curPivOrder.data(), v, lu_comm);
+
         // # ---------------------------------------------- #
-        // # 4. reduce pivot rows from A11buff to PivotA01ReductionBuff #
+        // # 2. reduce pivot rows from A11buff to PivotA01ReductionBuff #
         // # ---------------------------------------------- #
         MPI_Barrier(lu_comm);
         ts = std::chrono::high_resolution_clock::now();
@@ -907,67 +613,49 @@ void LU_rep(T*& A, T*& C, T*& PP, GlobalVars<T>& gv, int rank, int size) {
         // # and only this strip distributes reduced pivot rows
         // # so layer pk == 0 do a LOCAL copy from A11Buff to PivotBuff, other layers do the communication
         // # that is, each processor [pi, pj, pk] sends to [pi, pj, 0]
-        auto pi0 = k % sqrtp1;
-        auto p_rcv = X2p(pi0, pj, layrK, p1, sqrtp1);
-        // # reduce v pivot rows.
-        for (auto i = 0; i < v; ++i) {
-            auto piv = pivotIndsBuff[k * v + i];
-            // # pi_own is the pi'th index of the owner rank of pivot piv
-            long long gti, lri, pi_own, lti;
-            gr2gt(piv, v, gti, lri);
-            g2l(gti, sqrtp1, pi_own, lti);
-            if (pi == pi_own) {
-                // # ok, I'm the owner of the piv row, let me send it to p_rcv !
-                if (p_rcv != rank) {
-                    auto ltj = k / sqrtp1;
-                    auto size = (tA11 - ltj) * v;
-                    MPI_Accumulate(&A11Buff[((lti * tA11 + ltj) * v + lri) * v],
-                                   size, mtype, p_rcv, v*(i + v*ltj), size, mtype, MPI_SUM, PivotA11Win);
+        auto p_rcv = X2p(pi, pj, layrK, p1, sqrtp1);
+        // update the row mask
+        if (pk != layrK) {
+            auto dspls = 0;
+            auto origin_ptr = &A11Buff[dspls];
+            MPI_Accumulate(origin_ptr, A11Buff.size(), MPI_DOUBLE,
+                           p_rcv, dspls, A11Buff.size(), MPI_DOUBLE,
+                           MPI_SUM, A11Win);
+        }
 
-                }
+        // # -------------------------------------------------- #
+        // # 3. distribute v pivot rows from A11buff to A01Buff #
+        // # here, only processors pk == layrK participate      #
+        // # -------------------------------------------------- #
+        if (pk == layrK) {
+            auto p_rcv = X2p(k % sqrtp1, pj, layrK, p1, sqrtp1);
+            for (int i = 0; i < curPivots[rank * (v+1) + 0]; ++i) {
+                pivot = curPivots[rank * (v+1) + i+1]
+                offset = curPivOrder[rank * v + i]
+
+                // A11BuffWin -> A11Buff
+                // A01BuffWin -> A01Buff
+                // Options:
+                // 1. MPI_Put(A01Buff )
+                // 2. broadcasting all
+                // 3. what ranks are taking part
+                A01Buff[p_rcv, offset, loff:] = np.copy(A11Buff[p, pivot, loff:])
+
+                auto origin_dspls = pivot * Nl + loff;
+                auto origin_ptr = &A11Buff[origin_dspls];
+                auto size = Nl - loff;
+
+                auto dest_dspls = offset * Nl + loff;
+                auto dest_ptr = &A01Buff[dest_dspls];
+
+                MPI_Isend(origin_ptr, size, MPI_DOUBLE, dest_ptr, i, lu_comm, &send_reqs[i]);
             }
         }
 
-        // # reduce v pivot rows.
-#pragma omp parallel for
-        for (auto i = 0; i < v; ++i) {
-            auto piv = pivotIndsBuff[k * v + i];
-            // # pi_own is the pi'th index of the owner rank of pivot piv
-            long long gti, lri, pi_own, lti;
-            gr2gt(piv, v, gti, lri);
-            g2l(gti, sqrtp1, pi_own, lti);
-            if (pi == pi_own) {
-                // # ok, I'm the owner of the piv row, let me send it to p_rcv !
-                auto p_rcv = X2p(pi0, pj, layrK, p1, sqrtp1);
-                if (p_rcv == rank) {
-                    for (auto ltj = k / sqrtp1; ltj < tA11; ++ltj) {
-                        auto gtj = l2g(rank, ltj, sqrtp1);
-                        if (gtj <= k) {
-                            continue;
-                        }
-                        for (auto j = 0; j < v; ++j) {
-                            PivotA11ReductionBuff[(ltj * v + i) * v + j] +=
-                                    A11Buff[((lti * tA11 + ltj) * v + lri) * v + j];
-                        }
-                        local_comm[3] += v;
-                    }
-                }
-            }
-        }
 
-        MPI_Win_fence(0, PivotA11Win);
         MPI_Barrier(lu_comm);
         te = std::chrono::high_resolution_clock::now();
         timers[3] += std::chrono::duration_cast<std::chrono::microseconds>( te - ts ).count();
-
-        #ifdef DEBUG_PRINT
-        if (doprint && printrank) {
-            for (auto i = 0; i < tA11 * v * v; ++i) {
-                std::cout << PivotA11ReductionBuff[i] << ", ";
-            }
-            std::cout << std::endl << std::flush;
-        }
-        #endif
 
         // # ---------------------------------------------- #
         // # 5. scatter PivotA01ReductionBuff to A01Buff    #
@@ -1081,7 +769,7 @@ void LU_rep(T*& A, T*& C, T*& PP, GlobalVars<T>& gv, int rank, int size) {
                             if (rank != p_rcv) {
                                 MPI_Put(&A10Buff[(ltiA10 * v + i) * v + pk_rcv * nlayr],
                                         nlayr, mtype, p_rcv,
-                                        nlayr*(i + v*lti_rcv), nlayr, mtype, A10RcvWin);                         
+                                        nlayr*(i + v*lti_rcv), nlayr, mtype, A10RcvWin);
                                 comm_count[5] += nlayr;
                             }
                         }
@@ -1132,8 +820,8 @@ void LU_rep(T*& A, T*& C, T*& PP, GlobalVars<T>& gv, int rank, int size) {
         // # ---------------------------------------------- #
 
         // Comp A01
-        #pragma omp parallel for 
-        for (auto ltjA01 = k / P; ltjA01 < tA10; ++ltjA01) {  
+        #pragma omp parallel for
+        for (auto ltjA01 = k / P; ltjA01 < tA10; ++ltjA01) {
             // cblas_dtrsm(CblasRowMajor, CblasLeft, CblasLower, CblasNoTrans, CblasUnit,
             //             v, v, 1.0, A00Buff, v, &A01Buff[ltjA01], v);
             for (auto ik = 0; ik < v - 1; ++ik) {
@@ -1167,7 +855,7 @@ void LU_rep(T*& A, T*& C, T*& PP, GlobalVars<T>& gv, int rank, int size) {
                     if (p_rcv != rank) {
                         MPI_Put(&A01Buff[(ltjA01 * v + pk_rcv * nlayr) * v],
                                          nlayr * v, mtype, p_rcv,
-                                         ltj_rcv*nlayr*v, nlayr * v, mtype, A01RcvWin);                         
+                                         ltj_rcv*nlayr*v, nlayr * v, mtype, A01RcvWin);
                         comm_count[6] += nlayr * v;
                     }
                 }
@@ -1471,7 +1159,7 @@ int main(int argc, char **argv) {
       std::cout << "USAGE: conflux <N>" << std::endl;
       return 1;
     }
-    
+
     GlobalVars<dtype> gv = GlobalVars<dtype>(atoi(argv[1]), size);
     std::cout << "Rank: " << rank << " N: " << gv.N << ", P:" << gv.P
               << ", v:" << gv.v << ", c:" << gv.c
@@ -1493,7 +1181,7 @@ int main(int argc, char **argv) {
     // }
 
     dtype* C = new dtype[gv.N * gv.N]{0};
-    dtype* PP = new dtype[gv.N * gv.N]{0}; 
+    dtype* PP = new dtype[gv.N * gv.N]{0};
 
     for (int i = 0; i < 1; ++i) {
         PC();
@@ -1538,11 +1226,11 @@ int main(int argc, char **argv) {
     }
 
     #endif
-    
+
     MPI_Finalize();
 
     delete C;
     delete PP;
 
-    return 0; 
+    return 0;
 }
