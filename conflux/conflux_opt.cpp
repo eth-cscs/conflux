@@ -417,8 +417,8 @@ void LU_rep(T*& A, T*& C, T*& PP, GlobalVars<T>& gv, int rank, int size) {
     std::vector<T> PivotA11ReductionBuff(tA11 * v * v);
     std::vector<int> pivotIndsBuff(N, -1);
 
-    std::vector<int> curPivots(P * (v + 1));
-    std::vector<int> curPivOrder(P * v);
+    std::vector<int> curPivots(v + 1);
+    std::vector<int> curPivOrder(v);
 
     // Create windows
     MPI_Win A00Win = create_window(lu_comm,
@@ -546,7 +546,7 @@ void LU_rep(T*& A, T*& C, T*& PP, GlobalVars<T>& gv, int rank, int size) {
         auto p_rcv = X2p(pi, pj, layrK, p1, sqrtp1);
 
         // flush the buffer
-        curPivots[rank * (v+1) + 0] = 0;
+        curPivots[0] = 0;
 
         // # reduce first tile column. In this part, only pj == k % sqrtp1 participate:
         if (pk != layrK && pj == k % sqrtp1) {
@@ -598,10 +598,6 @@ void LU_rep(T*& A, T*& C, T*& PP, GlobalVars<T>& gv, int rank, int size) {
         te = std::chrono::high_resolution_clock::now();
         timers[2] += std::chrono::duration_cast<std::chrono::microseconds>( te - ts ).count();
 
-        // get the global information on curPivots and curPivOrder
-        MPI_Allgather(MPI_IN_PLACE, v+1, MPI_DOUBLE, curPivots.data(), v+1, lu_comm);
-        MPI_Allgather(MPI_IN_PLACE, v, MPI_DOUBLE, curPivOrder.data(), v, lu_comm);
-
         // # ---------------------------------------------- #
         // # 2. reduce pivot rows from A11buff to PivotA01ReductionBuff #
         // # ---------------------------------------------- #
@@ -629,9 +625,9 @@ void LU_rep(T*& A, T*& C, T*& PP, GlobalVars<T>& gv, int rank, int size) {
         // # -------------------------------------------------- #
         if (pk == layrK) {
             auto p_rcv = X2p(k % sqrtp1, pj, layrK, p1, sqrtp1);
-            for (int i = 0; i < curPivots[rank * (v+1) + 0]; ++i) {
-                pivot = curPivots[rank * (v+1) + i+1]
-                offset = curPivOrder[rank * v + i]
+            for (int i = 0; i < curPivots[0]; ++i) {
+                pivot = curPivots[i+1]
+                offset = curPivOrder[i]
 
                 // A11BuffWin -> A11Buff
                 // A01BuffWin -> A01Buff
@@ -644,61 +640,20 @@ void LU_rep(T*& A, T*& C, T*& PP, GlobalVars<T>& gv, int rank, int size) {
                 auto origin_dspls = pivot * Nl + loff;
                 auto origin_ptr = &A11Buff[origin_dspls];
                 auto size = Nl - loff;
-
                 auto dest_dspls = offset * Nl + loff;
-                auto dest_ptr = &A01Buff[dest_dspls];
-
-                MPI_Isend(origin_ptr, size, MPI_DOUBLE, dest_ptr, i, lu_comm, &send_reqs[i]);
+                MPI_Put(origin_ptr, size, MPI_DOUBLE,
+                        p_rcv, dest_dspls, MPI_DOUBLE,
+                        A01Win);
             }
         }
 
+        MPI_Win_fence(0, A01Win);
 
         MPI_Barrier(lu_comm);
         te = std::chrono::high_resolution_clock::now();
         timers[3] += std::chrono::duration_cast<std::chrono::microseconds>( te - ts ).count();
 
-        // # ---------------------------------------------- #
-        // # 5. scatter PivotA01ReductionBuff to A01Buff    #
-        // # ---------------------------------------------- #
-        ts = std::chrono::high_resolution_clock::now();
-        p2X(rank, p1, sqrtp1, pi, pj, pk);
-        if (pi == k % sqrtp1 and pk == layrK) {
-            for (auto ltj = k / sqrtp1; ltj < tA11; ++ltj) {
-                auto gtj = l2g(pj, ltj, sqrtp1);
-                long long p_rcv, lt_rcv;
-                g2lA10(gtj, P, p_rcv, lt_rcv);
-                // # scatter
-                // if (doprint && printrank) std::cout << "p_rcv: " << p_rcv << std::endl << std::flush;
-                if (p_rcv == rank) {
-                    mcopy(PivotA11ReductionBuff + ltj * v * v,
-                          A01Buff + lt_rcv * v * v,
-                          0, v, 0, v, v, 0, v, 0, v, v);
-                    local_comm[4] += v * v;
-                } else {
-                    // # A01buff[p_rcv, lt_rcv] = np.copy(PivotA11ReductionBuff[p, ltj])
-                    // A01Win.Put([PivotA11ReductionBuff[ltj], v*v, MPI.DOUBLE], p_rcv,
-                    //            target=[lt_rcv*v*v, v*v, MPI.DOUBLE])
-                    MPI_Put(&PivotA11ReductionBuff[ltj * v * v], v * v, mtype, p_rcv,
-                            lt_rcv * v * v, v * v, mtype, A01Win);
-                    comm_count[4] += v * v;
-                }
-            }
-        }
-
-        MPI_Win_fence(0, A01Win);
-        MPI_Barrier(lu_comm);
-        te = std::chrono::high_resolution_clock::now();
-        timers[4] += std::chrono::duration_cast<std::chrono::microseconds>( te - ts ).count();
-
-        #ifdef DEBUG_PRINT
-        if (doprint && printrank) {
-            for (auto i = 0; i < tA10 * v * v; ++i) {
-                std::cout << A01Buff[i] << ", ";
-            }
-            std::cout << std::endl << std::flush;
-        }
-        #endif
-
+        ////////////////////////////////
         if (pi == k % sqrtp1 && pk == layrK) {
             // # flush the buffer
             std::fill(PivotA11ReductionBuff + (int)(k / sqrtp1) * v * v,
