@@ -107,21 +107,13 @@ class GlobalVars {
 private:
 
     void CalculateParameters(long long inpN, long long inpP) {
-        // CalculateDecomposition(inpP, sqrtp1, c);
-        // v = std::lcm(sqrtp1, c);
+        CalculateDecomposition(inpP, sqrtp1, c);
+        v = std::lcm(sqrtp1, c);
         // v = 64;
-        // long long nLocalTiles = (long long) (std::ceil((double) inpN / (v * sqrtp1)));
-        // N = v * sqrtp1 * nLocalTiles;
+        long long nLocalTiles = (long long) (std::ceil((double) inpN / (v * sqrtp1)));
+        N = v * sqrtp1 * nLocalTiles;
         // std::cout << sqrtp1 << " " << c << std::endl << std::flush;
         // std::cout << v << " " << nLocalTiles << std::endl << std::flush;
-        N = 16;
-        Nt = 8;
-        P = 8;
-        c = 2;
-        sqrtp1 = 2;
-        tA10 = 1;
-        tA11 = 4;
-        v = 2;
     }
 
     void InitMatrix() {
