@@ -394,6 +394,7 @@ void LU_rep(T*& A, T*& C, T*& PP, GlobalVars<T>& gv, int rank, int size) {
         Perm[i * N + i] = 1;
     }
 
+
     // Create buffers
     std::vector<T> A00Buff(v * v);
     std::vector<T> A10Buff(tA10 * v * v);
@@ -401,6 +402,7 @@ void LU_rep(T*& A, T*& C, T*& PP, GlobalVars<T>& gv, int rank, int size) {
     std::vector<T> A01Buff(v * Nl);
     std::vector<T> A01BuffRcv(nlayr * Nl);
     std::vector<T> A11Buff(Nl * Nl);
+    std::vector<T> A11BuffTransposed(Nl * Nl);
 
     std::vector<bool> A11MaskBuff(Nl, true);
 
@@ -436,6 +438,10 @@ void LU_rep(T*& A, T*& C, T*& PP, GlobalVars<T>& gv, int rank, int size) {
     MPI_Win A11Win = create_window(lu_comm,
                                    A11Buff.data(),
                                    A11Buff.size(),
+                                   true);
+    MPI_Win A11TransposedWin = create_window(lu_comm,
+                                   A11BuffTransposed.data(),
+                                   A11BuffTransposed.size(),
                                    true);
     MPI_Win PivotWin = create_window(lu_comm,
                                      PivotBuff.data(),
@@ -644,6 +650,61 @@ void LU_rep(T*& A, T*& C, T*& PP, GlobalVars<T>& gv, int rank, int size) {
         MPI_Barrier(lu_comm);
         te = std::chrono::high_resolution_clock::now();
         timers[3] += std::chrono::duration_cast<std::chrono::microseconds>( te - ts ).count();
+
+        // # ---------------------------------------------- #
+        // # 4. compute A10 and broadcast it to A10BuffRecv #
+        // # ---------------------------------------------- #
+        if (pk == layrK && pj == k % sqrtp1) {
+            // # this could basically be a sparse-dense A10 = A10 * U^(-1)   (BLAS tiangular solve) with A10 sparse and U dense
+            // however, since we are ignoring the mask, it's dense, potentially with more computation than necessary.
+            cblas_dtrsm(CblasRowMajor, // side
+                   CblasRight, // uplo
+                   CblasUpper,
+                   CblasNoTrans,
+                   CblasNonUnit,
+                   Nl, //  M
+                   v,  // N
+                   1.0, // alpha
+                   A00Buff.data(), // triangular A
+                   v, // leading dim triangular
+                   &A11Buff[loff], // A11
+                   v);
+
+            /*
+             * X = B * A^-1
+             * X' = A'^-1 * B'
+             */
+
+
+            // transpose matrix A11Buff for easier sending
+            mkl_domatcopy('R', 'T', Nl, Nl, 1.0, A11Buff.data(), Nl, A11BuffTransposed.data(), Nl);
+
+            // # -- BROADCAST -- #
+            // # after compute, send it to sqrt(p1) * c processors
+            for (int pk_rcv = 0; pk_rcv < c; ++pk_rcv) {
+                // # for the receive layer pk_rcv, its A10BuffRcv is formed by the following columns of A11Buff[p]
+                colStart = loff + pk_rcv*nlayr;
+                colEnd   = loff + (pk_rcv+1)*nlayr;
+
+                // # all pjs receive the same data A11Buff[p, rows, colStart : colEnd]
+                for (int pj_rcv = 0; pj_rcv <  sqrtp1; ++pj_rcv) {
+                    p_rcv = X2p(pi, pj_rcv, pk_rcv, p1, sqrtp1)
+                    A10BuffRcv[p_rcv, rows] = np.copy(A11Buff[p, rows, colStart : colEnd])
+                    int offset = colStart * Nl;
+                    int size = nlayr;
+                    // ASSUMES: receiving ranks only receive from a single rank
+                    MPI_Put(&A11BuffTransposed[offset]), size, MPI_DOUBLE,
+                        p_rcv, 0, size, MPI_DOUBLE, A11TransposedWin);
+                }
+        }
+
+        MPI_Win_fence(0, A11TransposedWin);
+
+        if (pk != layrK) {
+            // transpose back what is received
+            mkl_domatcopy('C', 'T', Nl, Nl, 1.0,
+                    A11BuffTransposed.data(), Nl, A11Buff.data(), Nl);
+        }
 
         ////////////////////////////////
         if (pi == k % sqrtp1 && pk == layrK) {
