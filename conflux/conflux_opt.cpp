@@ -703,7 +703,7 @@ void LU_rep(T*& A, T*& C, T*& PP, GlobalVars<T>& gv, int rank, int size) {
         if (pk != layrK) {
             // transpose back what is received
             mkl_domatcopy('C', 'T', Nl, Nl, 1.0,
-                    A11BuffTransposed.data(), Nl, A11Buff.data(), Nl);
+                    A11BuffTransposed.data(), Nl, A10BuffRcv.data(), Nl);
         }
 
         ////////////////////////////////
