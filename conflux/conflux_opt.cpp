@@ -504,17 +504,19 @@ void LU_rep(T*& A, T*& C, T*& PP, GlobalVars<T>& gv, int rank, int size) {
 
     long long timers[8] = {0};
 
-    // # ---------------------------------------------- #
-    // # ----------------- MAIN LOOP ------------------ #
-    // # 1. reduce first tile column from A11buff to PivotA11ReductionBuff
-    // # 2. coalesce PivotA11ReductionBuff to PivotBuff and scatter to A10buff
-    // # 3. find v pivots and compute A00
-    // # 4. reduce pivot rows from A11buff to PivotA11ReductionBuff
-    // # 5. scatter PivotA01ReductionBuff to A01Buff
-    // # 6. compute A10 and broadcast it to A10BuffRecv
-    // # 7. compute A01 and broadcast it to A01BuffRecv
-    // # 8. compute A11
-    // # ---------------------------------------------- #
+    /*
+    # ---------------------------------------------- #
+    # ----------------- MAIN LOOP ------------------ #
+    # 0. reduce first tile column from A11buff to PivotA11ReductionBuff
+    # 1. coalesce PivotA11ReductionBuff to PivotBuff and scatter to A10buff
+    # 2. find v pivots and compute A00
+    # 3. reduce pivot rows from A11buff to PivotA11ReductionBuff
+    # 4. scatter PivotA01ReductionBuff to A01Buff
+    # 5. compute A10 and broadcast it to A10BuffRecv
+    # 6. compute A01 and broadcast it to A01BuffRecv
+    # 7. compute A11
+    # ---------------------------------------------- #
+    */
 
     MPI_Barrier(lu_comm);
     auto t1 = std::chrono::high_resolution_clock::now();
@@ -780,11 +782,13 @@ void LU_rep(T*& A, T*& C, T*& PP, GlobalVars<T>& gv, int rank, int size) {
     }
 
     // # recreate the permutation matrix
-    PP = np.zeros([N,N])
-    C = np.zeros([N,N])
-    for i in range(N):
-        C[i, :] = B[pivotIndsBuff[0,i], :]
-        PP[i, :] = Perm[pivotIndsBuff[0, i], :]
+    std::vector<T> PP(N * N);
+    std::vector<T> C(N * N);
+    for (int i = 0; i < N; ++i) {
+        auto row = pivotIndsBuff[i];
+        std::copy_n(B[row * N], N, &C[i * N]);
+        std::copy_n(Perm[row * N], N, &PP[i * N]);
+    }
 
     if (rank == 0) {
         auto t2 = std::chrono::high_resolution_clock::now();
