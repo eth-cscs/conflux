@@ -400,6 +400,7 @@ void LU_rep(T*& A, T*& C, T*& PP, GlobalVars<T>& gv, int rank, int size) {
     std::vector<T> A10Buff(tA10 * v * v);
     std::vector<T> A10BuffRcv(Nl * nlayr);
     std::vector<T> A01Buff(v * Nl);
+    std::vector<T> A01BuffTemp(v * Nl);
     std::vector<T> A01BuffRcv(nlayr * Nl);
     std::vector<T> A11Buff(Nl * Nl);
     std::vector<T> A11BuffTransposed(Nl * Nl);
@@ -430,6 +431,10 @@ void LU_rep(T*& A, T*& C, T*& PP, GlobalVars<T>& gv, int rank, int size) {
     MPI_Win A01Win = create_window(lu_comm,
                                    A01Buff.data(),
                                    A01Buff.size(),
+                                   true);
+    MPI_Win A01TempWin = create_window(lu_comm,
+                                   A01BuffTemp.data(),
+                                   A01BuffTemp.size(),
                                    true);
     MPI_Win A01RcvWin = create_window(lu_comm,
                                       A01BuffRcv.data(),
@@ -463,6 +468,7 @@ void LU_rep(T*& A, T*& C, T*& PP, GlobalVars<T>& gv, int rank, int size) {
     MPI_Win_fence(MPI_MODE_NOPRECEDE, A01Win);
     MPI_Win_fence(MPI_MODE_NOPRECEDE, A01RcvWin);
     MPI_Win_fence(MPI_MODE_NOPRECEDE, A11Win);
+    MPI_Win_fence(MPI_MODE_NOPRECEDE, A11TransposedWin);
     MPI_Win_fence(MPI_MODE_NOPRECEDE, PivotWin);
     MPI_Win_fence(MPI_MODE_NOPRECEDE, PivotA11Win);
     MPI_Win_fence(MPI_MODE_NOPRECEDE, pivotsWin);
@@ -626,15 +632,6 @@ void LU_rep(T*& A, T*& C, T*& PP, GlobalVars<T>& gv, int rank, int size) {
             for (int i = 0; i < curPivots[0]; ++i) {
                 pivot = curPivots[i+1]
                 offset = curPivOrder[i]
-
-                // A11BuffWin -> A11Buff
-                // A01BuffWin -> A01Buff
-                // Options:
-                // 1. MPI_Put(A01Buff )
-                // 2. broadcasting all
-                // 3. what ranks are taking part
-                A01Buff[p_rcv, offset, loff:] = np.copy(A11Buff[p, pivot, loff:])
-
                 auto origin_dspls = pivot * Nl + loff;
                 auto origin_ptr = &A11Buff[origin_dspls];
                 auto size = Nl - loff;
@@ -670,12 +667,6 @@ void LU_rep(T*& A, T*& C, T*& PP, GlobalVars<T>& gv, int rank, int size) {
                    &A11Buff[loff], // A11
                    v);
 
-            /*
-             * X = B * A^-1
-             * X' = A'^-1 * B'
-             */
-
-
             // transpose matrix A11Buff for easier sending
             mkl_domatcopy('R', 'T', Nl, Nl, 1.0, A11Buff.data(), Nl, A11BuffTransposed.data(), Nl);
 
@@ -689,413 +680,94 @@ void LU_rep(T*& A, T*& C, T*& PP, GlobalVars<T>& gv, int rank, int size) {
                 // # all pjs receive the same data A11Buff[p, rows, colStart : colEnd]
                 for (int pj_rcv = 0; pj_rcv <  sqrtp1; ++pj_rcv) {
                     p_rcv = X2p(pi, pj_rcv, pk_rcv, p1, sqrtp1)
-                    A10BuffRcv[p_rcv, rows] = np.copy(A11Buff[p, rows, colStart : colEnd])
                     int offset = colStart * Nl;
                     int size = nlayr;
                     // ASSUMES: receiving ranks only receive from a single rank
                     MPI_Put(&A11BuffTransposed[offset]), size, MPI_DOUBLE,
                         p_rcv, 0, size, MPI_DOUBLE, A11TransposedWin);
                 }
+            }
         }
 
         MPI_Win_fence(0, A11TransposedWin);
 
-        if (pk != layrK) {
+        // ranks which are on the receiving side of step 4
+        if (pk != layrK && pj != k % sqrtp1) {
             // transpose back what is received
             mkl_domatcopy('C', 'T', Nl, Nl, 1.0,
                     A11BuffTransposed.data(), Nl, A10BuffRcv.data(), Nl);
         }
 
-        ////////////////////////////////
-        if (pi == k % sqrtp1 && pk == layrK) {
-            // # flush the buffer
-            std::fill(PivotA11ReductionBuff + (int)(k / sqrtp1) * v * v,
-                      PivotA11ReductionBuff + tA11 * v * v, 0);
-        }
-
         // # ---------------------------------------------- #
-        // # 6. compute A10 and broadcast it to A10BuffRecv #
+        // # 5. compute A01 and broadcast it to A01BuffRecv #
         // # ---------------------------------------------- #
-        MPI_Barrier(lu_comm);
-        ts = std::chrono::high_resolution_clock::now();
-        p2X(rank, p1, sqrtp1, pi, pj, pk);
+        // # here, only ranks which own data in A01Buff (step 3) participate
+        if (pk == layrK && pi == k % sqrtp1) {
+            // # this is a dense-dense A01 =  L^(-1) * A01
+            cblas_dtrsm(CblasRowMajor, // side
+                   CblasLeft,
+                   CblasLower,
+                   CblasNoTrans,
+                   CblasUnit,
+                   v, //  M
+                   Nl,  // N
+                   1.0, // alpha
+                   A00Buff.data(), // triangular A
+                   v, // leading dim triangular
+                   &A01Buff[loff], // A01
+                   Nl); // leading dim of A01
 
-        // Comp A10
-        #pragma omp parallel for
-        for (auto ltiA10 = 0; ltiA10 < tA10; ++ltiA10) {
-            int tid = omp_get_thread_num();
-            PE(copy);
-            std::copy(A10Buff + ltiA10 * v * v, A10Buff + (ltiA10 + 1) * v * v,
-                      tmpA11 + tid * v * v);
-            PL();
-        }
-
-        #pragma omp parallel for
-        for (auto ltiA10 = 0; ltiA10 < tA10; ++ltiA10) {
-            int tid = omp_get_thread_num();
-            PE(dtrsm);
-            cblas_dtrsm(CblasRowMajor, CblasRight, CblasUpper, CblasNoTrans, CblasNonUnit,
-                        v, v, 1.0, A00Buff, v, tmpA11 + tid * v * v, v);
-            PL();
-        }
-        #pragma omp parallel for
-        for (auto ltiA10 = 0; ltiA10 < tA10; ++ltiA10) {
-            int tid = omp_get_thread_num();
-            for (auto ii = 0; ii < v; ++ii) {
-                if (A10MaskBuff[ltiA10 * v + ii]) {
-                    std::copy_n(&tmpA11[tid * v * v + ii * v],
-                                v,
-                                &A10Buff[(ltiA10 * v + ii) * v]);
+            // # local reshuffle before broadcast
+            // pack all the data for each rank
+            // extract rows [rowStart, rowEnd) and cols [loff, Nl)
+#pragma omp parallel for
+            for(int pk_rcv = 0; pk_rcv < c; ++pk_rcv) {
+                // # for the receive layer pk_rcv, its A01BuffRcv is formed by the following rows of A01Buff[p]
+                rowStart = pk_rcv * nlayr
+                rowEnd = (pk_rcv + 1) * nlayr
+                // # all pjs receive the same data A11Buff[p, rows, colStart : colEnd]
+                for (int row = rowStart; row < rowEnd; ++row) {
+                    const int n_cols = Nl - loff;
+                    std::copy_n(&A01Buff[row * Nl + loff],
+                                n_cols,
+                                &A01BuffTemp[row * n_cols]);
                 }
             }
-        }
-        // # here we always go through all rows, and then filter it by the remainingMask array
-        for (auto ltiA10 = 0; ltiA10 < tA10; ++ltiA10) {
-            // # this is updating A10 based on A00
-            // # initial data for A10 is already waiting for us (from initial redundant decomposition or from
-            // # the previous reduction of A11)
-            // # A00 is waiting for us too. Good to go!
-
-            // # we will compute global tile:
-            long long gti = l2gA10(rank, ltiA10, P);
-            if (gti >= Nt) {
-                break;
-            }
-            // # which is local tile in A11:
-            long long tmp, lti_rcv;
-            g2l(gti, sqrtp1, tmp, lti_rcv);
 
             // # -- BROADCAST -- #
             // # after compute, send it to sqrt(p1) * c processors
-            for (auto pk_rcv = 0; pk_rcv < c; ++pk_rcv) {
-                for (auto pj_rcv = 0; pj_rcv < sqrtp1; ++pj_rcv) {
-                    auto p_rcv = X2p(pi, pj_rcv, pk_rcv, p1, sqrtp1);
-                    // # A10buffRcv[p_rcv, lti_rcv, rows] = A10buff[p, ltiA10, rows, pk_rcv*nlayr : (pk_rcv+1)*nlayr]
-                    for (auto i = 0; i < v; ++i) {
-                        auto row = A10MaskBuff[ltiA10 * v + i];
-                        if (row) {
-                            if (rank != p_rcv) {
-                                MPI_Put(&A10Buff[(ltiA10 * v + i) * v + pk_rcv * nlayr],
-                                        nlayr, mtype, p_rcv,
-                                        nlayr*(i + v*lti_rcv), nlayr, mtype, A10RcvWin);
-                                comm_count[5] += nlayr;
-                            }
-                        }
-                    }
+            for(int pk_rcv = 0; pk_rcv < c; ++pk_rcv) {
+                // # for the receive layer pk_rcv, its A01BuffRcv is formed by the following rows of A01Buff[p]
+                rowStart = pk_rcv * nlayr
+                rowEnd = (pk_rcv + 1) * nlayr
+                // # all pjs receive the same data A11Buff[p, rows, colStart : colEnd]
+                for(int pi_rcv = 0; pi_rcv < sqrtp1; ++pi_rcv) {
+                    const int n_cols = Nl - loff;
+                    p_rcv = X2p(pi_rcv, pj, pk_rcv, p1, sqrtp1);
+                    MPI_Put(A01BuffTemp.data(), nlayr * n_cols, MPI_DOUBLE,
+                            p_rcv, 0, nlayr * n_cols, MPI_DOUBLE, A01TempWin);
                 }
             }
         }
-
-        // # here we always go through all rows, and then filter it by the remainingMask array
-#pragma omp parallel for
-        for (auto ltiA10 = 0; ltiA10 < tA10; ++ltiA10) {
-            // # this is updating A10 based on A00
-            // # initial data for A10 is already waiting for us (from initial redundant decomposition or from
-            // # the previous reduction of A11)
-            // # A00 is waiting for us too. Good to go!
-
-            // # we will compute global tile:
-            long long gti = l2gA10(rank, ltiA10, P);
-            if (gti < Nt) {
-                // # which is local tile in A11:
-                long long tmp, lti_rcv;
-                g2l(gti, sqrtp1, tmp, lti_rcv);
-
-                // # -- BROADCAST -- #
-                // # after compute, send it to sqrt(p1) * c processors
-                for (auto pk_rcv = 0; pk_rcv < c; ++pk_rcv) {
-                    for (auto pj_rcv = 0; pj_rcv < sqrtp1; ++pj_rcv) {
-                        auto p_rcv = X2p(pi, pj_rcv, pk_rcv, p1, sqrtp1);
-                        // # A10buffRcv[p_rcv, lti_rcv, rows] = A10buff[p, ltiA10, rows, pk_rcv*nlayr : (pk_rcv+1)*nlayr]
-                        for (auto i = 0; i < v; ++i) {
-                            auto row = A10MaskBuff[ltiA10 * v + i];
-                            if (row) {
-                                if (rank == p_rcv) {
-                                    std::copy(A10Buff + (ltiA10 * v + i) * v + pk_rcv * nlayr,
-                                              A10Buff + (ltiA10 * v + i) * v + (pk_rcv + 1) * nlayr,
-                                              A10BuffRcv + (lti_rcv * v + i) * nlayr);
-                                    local_comm[5] += nlayr;
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        // # ---------------------------------------------- #
-        // # 7. compute A01 and broadcast it to A01BuffRecv #
-        // # ---------------------------------------------- #
-
-        // Comp A01
-        #pragma omp parallel for
-        for (auto ltjA01 = k / P; ltjA01 < tA10; ++ltjA01) {
-            // cblas_dtrsm(CblasRowMajor, CblasLeft, CblasLower, CblasNoTrans, CblasUnit,
-            //             v, v, 1.0, A00Buff, v, &A01Buff[ltjA01], v);
-            for (auto ik = 0; ik < v - 1; ++ik) {
-                for (auto ii = ik + 1; ii < v; ++ii) {
-                    for (auto ij = 0; ij < v; ++ij) {
-                        A01Buff[(ltjA01 * v + ii) * v + ij] -=
-                            A00Buff[ii *v + ik] * A01Buff[(ltjA01 * v + ik) * v + ij];
-                    }
-                }
-            }
-        }
-
-        for (auto ltjA01 = k / P; ltjA01 < tA10; ++ltjA01) {
-            // # we are computing the global tile:
-            auto gtj = l2gA10(rank, ltjA01, P);
-            if (gtj <= k) {
-                continue;
-            }
-            if (gtj >= Nt) {
-                break;
-            }
-            // # which is local tile in A11:
-            long long pj_rcv, ltj_rcv;
-            g2l(gtj, sqrtp1, pj_rcv, ltj_rcv);
-
-            // # -- BROADCAST -- #
-            // # after compute, send it to sqrt(p1) * c processors
-            for (auto pk_rcv = 0; pk_rcv < c; ++pk_rcv) {
-                for (auto pi_rcv = 0; pi_rcv < sqrtp1; ++pi_rcv) {
-                    auto p_rcv = X2p(pi_rcv, pj_rcv, pk_rcv, p1, sqrtp1);
-                    if (p_rcv != rank) {
-                        MPI_Put(&A01Buff[(ltjA01 * v + pk_rcv * nlayr) * v],
-                                         nlayr * v, mtype, p_rcv,
-                                         ltj_rcv*nlayr*v, nlayr * v, mtype, A01RcvWin);
-                        comm_count[6] += nlayr * v;
-                    }
-                }
-            }
-        }
-
-#pragma omp parallel for
-        for (auto ltjA01 = k / P; ltjA01 < tA10; ++ltjA01) {
-            // # we are computing the global tile:
-            auto gtj = l2gA10(rank, ltjA01, P);
-            if (gtj <= k) {
-                continue;
-            }
-            if (gtj < Nt) {
-                // # which is local tile in A11:
-                long long pj_rcv, ltj_rcv;
-                g2l(gtj, sqrtp1, pj_rcv, ltj_rcv);
-
-                // # -- BROADCAST -- #
-                // # after compute, send it to sqrt(p1) * c processors
-                for (auto pk_rcv = 0; pk_rcv < c; ++pk_rcv) {
-                    for (auto pi_rcv = 0; pi_rcv < sqrtp1; ++pi_rcv) {
-                        auto p_rcv = X2p(pi_rcv, pj_rcv, pk_rcv, p1, sqrtp1);
-                        if (p_rcv == rank) {
-                            mcopy(A01Buff + ltjA01 * v * v,
-                                  A01BuffRcv + ltj_rcv * nlayr * v,
-                                  pk_rcv * nlayr, (pk_rcv + 1) * nlayr, 0, v, v,
-                                  0, nlayr, 0, v, v);
-                            local_comm[6] += nlayr * v;
-                        }
-                    }
-                }
-            }
-        }
-
-        MPI_Win_fence(0, A01RcvWin);
-        MPI_Win_fence(0, A10RcvWin);
-        MPI_Barrier(lu_comm);
-        te = std::chrono::high_resolution_clock::now();
-        timers[5] += std::chrono::duration_cast<std::chrono::microseconds>( te - ts ).count();
-
-        #ifdef DEBUG_PRINT
-        if (doprint && printrank) {
-            for (auto i = 0; i < tA10 * v * v; ++i) {
-                std::cout << A10Buff[i] << ", ";
-            }
-            std::cout << std::endl << std::flush;
-            for (auto i = 0; i < tA11 * v * nlayr; ++i) {
-                std::cout << A10BuffRcv[i] << ", ";
-            }
-            std::cout << std::endl << std::flush;
-            for (auto i = 0; i < tA10 * v * v; ++i) {
-                std::cout << A01Buff[i] << ", ";
-            }
-            std::cout << std::endl << std::flush;
-            for (auto i = 0; i < tA11 * v * nlayr; ++i) {
-                std::cout << A01BuffRcv[i] << ", ";
-            }
-            std::cout << std::endl << std::flush;
-        }
-        #endif
-
-        MPI_Barrier(lu_comm);
-        ts = std::chrono::high_resolution_clock::now();
-        #pragma omp parallel for collapse(2)
-        for (auto lti = 0; lti < tA11; ++lti) {
-            // # filter which rows of this tile should be processed:
-            // rows = A11MaskBuff[lti, :]
-            // A10 = A10BuffRcv[lti, rows]
-            for (auto ltj = k / P; ltj < tA11; ++ltj) {
-                int tid = omp_get_thread_num();
-                // # Every processor computes only v/c "layers" in k dimension
-                PE(dgemm);
-                cblas_dgemm(CblasRowMajor, CblasNoTrans, CblasNoTrans, v, v, nlayr,
-                            1.0, &A10BuffRcv[lti * v * nlayr], nlayr,
-                            &A01BuffRcv[ltj * nlayr * v], v,
-                            0.0,  tmpA11 + tid * v * v, v);
-                PL();
-            }
-        }
-        #pragma omp parallel for collapse(2)
-        for (auto lti = 0; lti < tA11; ++lti) {
-            // # filter which rows of this tile should be processed:
-            // rows = A11MaskBuff[lti, :]
-            // A10 = A10BuffRcv[lti, rows]
-
-            for (auto ltj = k / P; ltj < tA11; ++ltj) {
-                int tid = omp_get_thread_num();
-                PE(mask);
-                for (auto ii = 0; ii < v; ++ii) {
-                    auto row = A11MaskBuff[lti * v + ii];
-                    if (row) {
-                        for (auto ij = 0; ij < v; ++ij) {
-                            A11Buff[((lti * tA11 + ltj) * v + ii) * v + ij] -= tmpA11[tid * v * v + ii * v + ij];
-                        }
-                    }
-                }
-                PL();
-            }
-        }
-
-        MPI_Barrier(lu_comm);
-        te = std::chrono::high_resolution_clock::now();
-        timers[6] += std::chrono::duration_cast<std::chrono::microseconds>( te - ts ).count();
-
-        if (rank == 0) {
-            std::cout << "AFTER STEP " << k << std::endl;;
-            for (int i = 0; i < N; ++i) {
-                for (int j = 0; j < N; ++j) {
-                    std::cout << B[i * N + j] << ", ";
-                }
-                std::cout << std::endl;
-            }
-        }
-
-        MPI_Barrier(lu_comm);
-
-        #ifdef DEBUG_PRINT
-        if (doprint && printrank) {
-            for (auto i = 0; i < tA11 * tA11 * v * v; ++i) {
-                std::cout << A11Buff[i] << ", ";
-            }
-            std::cout << std::endl << std::flush;
-        }
-        #endif
-
-        // # ----------------------------------------------------------------- #
-        // # ------------------------- DEBUG ONLY ---------------------------- #
-        // # ----------- STORING BACK RESULTS FOR VERIFICATION --------------- #
-
-        #ifdef VALIDATE
-
-        // # -- A10 -- #
-        if (rank == 0) {
-            std::copy(pivotIndsBuff, pivotIndsBuff + N, bufpivots);
-        }
-        MPI_Bcast(bufpivots, N, MPI_INT, 0, lu_comm);
-        // remaining = np.setdiff1d(np.array(range(N)), bufpivots)
-        int rem_num = 0;
-        for (auto i = 0; i < N; ++i) {
-            bool found = false;
-            for (auto j = 0; j < N; ++j) {
-                if (i == bufpivots[j]) {
-                    found = true;
-                    break;
-                }
-            }
-            if (!found) {
-                remaining[rem_num] = i;
-                rem_num++;
-            }
-        }
-        // tmpA10 = np.zeros([1,v])
-        for (auto ltiA10 = 0; ltiA10 < tA10; ++ ltiA10) {
-            for (auto r = 0; r < P; ++r) {
-                if (rank == r) {
-                    std::copy(A10Buff + ltiA10 * v * v,
-                              A10Buff + (ltiA10 + 1) * v * v,
-                              buf);
-                    // buf[:] = A10Buff[ltiA10]
-                }
-                MPI_Bcast(buf, v * v, mtype, r, lu_comm);
-                std::copy(buf, buf + v * v, tmpA10 + (ltiA10 * P + r) * v * v);
-                // tmpA10 = np.concatenate((tmpA10, buf), axis = 0)
-            }
-        }
-        // tmpA10 = tmpA10[1:, :]
-        for (auto i = 0; i < rem_num; ++i) {
-            auto rem = remaining[i];
-            std::copy(tmpA10 + rem * v, tmpA10 + (rem + 1) * v, B + rem * N + off);
-        }
-        // B[remaining, off : off + v] = tmpA10[remaining]
-
-        // # -- A00 and A01 -- #
-        // tmpA01 = np.zeros([v,1])
-        for (auto ltjA10 = 0; ltjA10 < tA10; ++ ltjA10) {
-            for (auto r = 0; r < P; ++r) {
-                auto gtj = l2gA10(r, ltjA10, P);
-                if (gtj >= Nt) break;
-                if (rank == r) {
-                    std::copy(A01Buff + ltjA10 * v * v,
-                              A01Buff + (ltjA10 + 1) * v * v,
-                              buf);
-                }
-                MPI_Bcast(buf, v * v, mtype, r, lu_comm);
-                mcopy(buf, tmpA01, 0, v, 0, v, v, 0, v,
-                      (ltjA10 * P + r) * v, (ltjA10 * P + r + 1) * v, tA10 * P * v);
-                // tmpA01 = np.concatenate((tmpA01, buf), axis = 1)
-            }
-        }
-        // tmpA01 = tmpA01[:, (1+ (k+1)*v):]
-
-        if (rank == 0) {
-            std::copy(A00Buff, A00Buff + v * v, buf);
-        }
-        MPI_Bcast(buf, v * v, mtype, 0, lu_comm);
-        if (rank == layrK) {
-            std::copy(pivotIndsBuff, pivotIndsBuff + N, bufpivots);
-        }
-        MPI_Bcast(bufpivots, N, MPI_INT, layrK, lu_comm);
-        // curPivots = bufpivots[off : off + v]
-        for (auto i = 0; i < v; ++i) {
-            // # B[curPivots[i], off : off + v] = A00buff[0, i, :]
-            auto curpiv = bufpivots[off + i];
-            if (curpiv == -1) curpiv = N - 1;
-            // B[curPivots[i], off : off + v] = buf[i, :]
-            // assert(i * v + v <= v * v);
-            // assert(curpiv * N + off + v <= N * N);
-            // if (rank == 0) std::cout << "(" << k << ", " << curpiv << ", " << off << ", " << i << "):" << std::flush;
-            // if (rank == 0) std::cout << B[curpiv * N + off + i] << std::endl << std::flush;
-            std::copy(buf + i * v, buf + i * v + v, B + curpiv * N + off);
-            // B[curPivots[i], (off + v):] = tmpA01[i, :]
-            std::copy(tmpA01 + i * tA10 * P * v + (k+1)*v,
-                      tmpA01 + (i + 1) * tA10 * P * v,
-                      B + curpiv * N + off + v);
-        }
-
-        MPI_Barrier(lu_comm);
-
-        #endif
-
-        // # ----------------------------------------------------------------- #
-        // # ----------------------END OF DEBUG ONLY ------------------------- #
-        // # ----------------------------------------------------------------- #
     }
 
-    // std::cout << "Rank : " << rank << ", comm: " << comm_count << " elements" << std::endl;
+    MPI_Win_fence(0, A01TempWin);
 
-    // long long count[1];
-    // long long local[1];
-    // count[0] = comm_count;
-    // local[0] = local_comm;
+    // ranks which are on the receiving side of step 5
+    if (pk != layrK && pi != k % sqrtp1) {
+        // unpack the received data
+        // # for the receive layer pk_rcv, its A01BuffRcv is formed by the following rows of A01Buff[p]
+        // # all pjs receive the same data A11Buff[p, rows, colStart : colEnd]
+#pragma omp parallel for
+        for (int row = 0; row < nlayr; ++row) {
+            auto rowStart = pk * nlayr;
+            const int n_cols = Nl - loff;
+            std::copy_n(&A01BuffTemp[row * n_cols],
+                        n_cols,
+                        &A01BuffRcv[row * Nl + loff]);
+        }
+    }
+
     if (rank == 0) {
         auto t2 = std::chrono::high_resolution_clock::now();
         auto duration = std::chrono::duration_cast<std::chrono::microseconds>( t2 - t1 ).count();
@@ -1125,12 +797,6 @@ void LU_rep(T*& A, T*& C, T*& PP, GlobalVars<T>& gv, int rank, int size) {
             PP[i * N + idx] = 1;
         }
 
-        // for (auto i = 0; i < N; ++i) {
-        //     for (auto j = 0; j < N; ++j) {
-        //         std::cout << C[i * N + j] << " " << std::flush;
-        //     }
-        //     std::cout << std::endl << std::flush;
-        // }
     } else {
         MPI_Reduce(comm_count, NULL, 7, MPI_LONG_LONG, MPI_SUM, 0, lu_comm);
         MPI_Reduce(local_comm, NULL, 7, MPI_LONG_LONG, MPI_SUM, 0, lu_comm);
@@ -1141,8 +807,10 @@ void LU_rep(T*& A, T*& C, T*& PP, GlobalVars<T>& gv, int rank, int size) {
     MPI_Win_free(&A10Win);
     MPI_Win_free(&A10RcvWin);
     MPI_Win_free(&A01Win);
+    MPI_Win_free(&A01TempWin);
     MPI_Win_free(&A01RcvWin);
     MPI_Win_free(&A11Win);
+    MPI_Win_free(&A11TransposedWin);
     MPI_Win_free(&PivotWin);
     MPI_Win_free(&PivotA11Win);
     MPI_Win_free(&pivotsWin);
