@@ -730,7 +730,7 @@ void LU_rep(T*& A, T*& C, T*& PP, GlobalVars<T>& gv, int rank, int size) {
                     const int n_cols = Nl - loff;
                     std::copy_n(&A01Buff[row * Nl + loff],
                                 n_cols,
-                                &A01BuffTemp[row * n_cols]);
+                                &A01BuffTemp[(row-rowStart) * n_cols]);
                 }
             }
 
@@ -763,7 +763,7 @@ void LU_rep(T*& A, T*& C, T*& PP, GlobalVars<T>& gv, int rank, int size) {
                 const int n_cols = Nl - loff;
                 std::copy_n(&A01BuffTemp[row * n_cols],
                             n_cols,
-                            &A01BuffRcv[row * Nl + loff]);
+                            &A01BuffRcv[row * nlayr + loff]);
             }
         }
 
@@ -772,7 +772,11 @@ void LU_rep(T*& A, T*& C, T*& PP, GlobalVars<T>& gv, int rank, int size) {
         // # ---------------------------------------------- #
         // # filter which rows of this tile should be processed:
         // rows = A11MaskBuff[p]
-        A11Buff[p, rows,  loff:] -= A10BuffRcv[p, rows] @ A01BuffRcv[p, :, loff:]
+        cblas_dgemm(CblasRowMajor, CblasNoTrans, CblasNoTrans, 
+                    Nl, Nl - loff, nlayr,
+                    -1.0, &A10BuffRcv[0], nlayr,
+                    &A01BuffRcv[loff], Nl,
+                    1.0,  A11Buff[loff], Nl);
     }
 
     // # recreate the permutation matrix
