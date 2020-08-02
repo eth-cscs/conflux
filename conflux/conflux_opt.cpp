@@ -749,24 +749,38 @@ void LU_rep(T*& A, T*& C, T*& PP, GlobalVars<T>& gv, int rank, int size) {
                 }
             }
         }
-    }
 
-    MPI_Win_fence(0, A01TempWin);
+        MPI_Win_fence(0, A01TempWin);
 
-    // ranks which are on the receiving side of step 5
-    if (pk != layrK && pi != k % sqrtp1) {
-        // unpack the received data
-        // # for the receive layer pk_rcv, its A01BuffRcv is formed by the following rows of A01Buff[p]
-        // # all pjs receive the same data A11Buff[p, rows, colStart : colEnd]
+        // ranks which are on the receiving side of step 5
+        if (pk != layrK && pi != k % sqrtp1) {
+            // unpack the received data
+            // # for the receive layer pk_rcv, its A01BuffRcv is formed by the following rows of A01Buff[p]
+            // # all pjs receive the same data A11Buff[p, rows, colStart : colEnd]
 #pragma omp parallel for
-        for (int row = 0; row < nlayr; ++row) {
-            auto rowStart = pk * nlayr;
-            const int n_cols = Nl - loff;
-            std::copy_n(&A01BuffTemp[row * n_cols],
-                        n_cols,
-                        &A01BuffRcv[row * Nl + loff]);
+            for (int row = 0; row < nlayr; ++row) {
+                auto rowStart = pk * nlayr;
+                const int n_cols = Nl - loff;
+                std::copy_n(&A01BuffTemp[row * n_cols],
+                            n_cols,
+                            &A01BuffRcv[row * Nl + loff]);
+            }
         }
+
+        // # ---------------------------------------------- #
+        // # 6. compute A11  ------------------------------ #
+        // # ---------------------------------------------- #
+        // # filter which rows of this tile should be processed:
+        // rows = A11MaskBuff[p]
+        A11Buff[p, rows,  loff:] -= A10BuffRcv[p, rows] @ A01BuffRcv[p, :, loff:]
     }
+
+    // # recreate the permutation matrix
+    PP = np.zeros([N,N])
+    C = np.zeros([N,N])
+    for i in range(N):
+        C[i, :] = B[pivotIndsBuff[0,i], :]
+        PP[i, :] = Perm[pivotIndsBuff[0, i], :]
 
     if (rank == 0) {
         auto t2 = std::chrono::high_resolution_clock::now();
