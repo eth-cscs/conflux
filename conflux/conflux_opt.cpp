@@ -225,69 +225,6 @@ void LUP(std::vector<T>& PivotBuff, T* L, T* U, T* Perm, int v) {
     return [origA[:v,], res[:v,], Perm]
 }
 
-template <class T>
-void EmptyPivotMPI(int rank, int k, T* PivotBuff, MPI_Win& PivotWin,
-                   T* A00Buff, MPI_Win& A00Win, int* pivots, MPI_Win& pivotsWin,
-                   bool* A10Mask, bool* A11Mask, int layrK,
-                   GlobalVars<T>& gv) {
-    PE(tpivoting_other);
-    auto doprint = (k == -1);
-    auto printrank = (rank == -1);
-
-    long long N, P, v, p1, sqrtp1, c, tA10, tA11;
-    N = gv.N;
-    P = gv.P;
-    v = gv.v;
-    p1 = gv.p1;
-    sqrtp1 = gv.sqrtp1;
-    c = gv.c;
-    tA10 = gv.tA10;
-    tA11 = gv.tA11;
-    auto Nl = tA11 * v;
-
-    // # ---------------- FIRST STEP ----------------- #
-    // # in first step, we do pivot on the whole PivotBuff array (may be larger than [2v, v]
-    // # local computation step
-    long long pi, pj, pk;
-    p2X(rank, p1, sqrtp1, pi, pj, pk);
-    if (k % sqrtp1 != pi || k % sqrtp1 != pj || pk != 0)
-        return;
-
-    // data = densified A11Buff with respect to A11MaskBuff
-    auto& rows = A11MaskBuff;
-    std::vector<T> data;
-    // filter A11buff by masked pivot rows (local) and densify it
-    for (const auto& row : rows) {
-        auto col_start = (k / sqrtp1) * v;
-        auto col_end = (k / sqrtp1 + 1) * v;
-        data.insert(dense_A11Buff.end(),
-                             &A11Buff[row * Nl + col_start],
-                             &A11Buff[row * Nl + col_end]);
-    }
-
-    // flush the buffer
-    std::fill_n(PivotBuff.data(), PivotBuff.size(), 0);
-    std::copy_n(data.data(), data.size(), PivotBuff.data());
-
-    // In round robin fashion, only one rank chooses pivots among its local rows
-    if (k % sqrtp1 == pi) {
-        [PivotBuff[p, :v, :], A00Buff[p], Perm] = LUP(PivotBuff[p, :len(data)])
-
-        grows = l2gnoTile(np.nonzero(rows)[0], pi)
-        gpivots = (grows @ Perm)[:v]
-        [lpivots, loffsets] = g2lnoTile(gpivots)
-
-        // # locally set curPivots
-        curPivots[p, 0] = len(lpivots[pi])
-        curPivots[p, 1 : 1 + len(lpivots[pi])] = lpivots[pi]
-        curPivOrder[p, :len(loffsets[pi])] = loffsets[pi]
-        pivotIndsBuff[p, k*v:(k+1)*v] = gpivots
-
-        auto src_pi = std::min(flipbit(pi, 0ll), sqrtp1 - 1ll);
-        auto src_p = X2p(src_pi, pj, pk, p1, sqrtp1);
-        PL();
-}
-
 // taken from COSMA
 template <typename T>
 MPI_Win
@@ -394,7 +331,6 @@ void LU_rep(T*& A, T*& C, T*& PP, GlobalVars<T>& gv, int rank, int size) {
         Perm[i * N + i] = 1;
     }
 
-
     // Create buffers
     std::vector<T> A00Buff(v * v);
     std::vector<T> A10Buff(tA10 * v * v);
@@ -403,9 +339,11 @@ void LU_rep(T*& A, T*& C, T*& PP, GlobalVars<T>& gv, int rank, int size) {
     std::vector<T> A01BuffTemp(v * Nl);
     std::vector<T> A01BuffRcv(nlayr * Nl);
     std::vector<T> A11Buff(Nl * Nl);
-    std::vector<T> A11BuffTransposed(Nl * Nl);
+    std::vector<T> A10BuffTransposed(Nl * v);
 
     std::vector<bool> A11MaskBuff(Nl, true);
+    std::vector<int> local_to_global(Nl);
+    int n_local_active_rows = Nl;
 
     std::vector<T> PivotBuff(v * std::max(2ll, tA11) * v);
 
@@ -440,17 +378,13 @@ void LU_rep(T*& A, T*& C, T*& PP, GlobalVars<T>& gv, int rank, int size) {
                                       A01BuffRcv.data(),
                                       A01BuffRcv.size(),
                                       true);
-    MPI_Win A11Win = create_window(lu_comm,
-                                   A11Buff.data(),
-                                   A11Buff.size(),
+    MPI_Win A10TransposedWin = create_window(lu_comm,
+                                   A10BuffTransposed.data(),
+                                   A10BuffTransposed.size(),
                                    true);
-    MPI_Win A11TransposedWin = create_window(lu_comm,
-                                   A11BuffTransposed.data(),
-                                   A11BuffTransposed.size(),
-                                   true);
-    MPI_Win PivotWin = create_window(lu_comm,
-                                     PivotBuff.data(),
-                                     PivotBuff.size(),
+    MPI_Win curPivotsWin = create_window(lu_comm,
+                                     curPivots.data(),
+                                     curPivots.size(),
                                      true);
     MPI_Win pivotsWin = create_window(lu_comm,
                                       pivotIndsBuff.data(),
@@ -469,9 +403,7 @@ void LU_rep(T*& A, T*& C, T*& PP, GlobalVars<T>& gv, int rank, int size) {
     MPI_Win_fence(MPI_MODE_NOPRECEDE, A01RcvWin);
     MPI_Win_fence(MPI_MODE_NOPRECEDE, A11Win);
     MPI_Win_fence(MPI_MODE_NOPRECEDE, A11TransposedWin);
-    MPI_Win_fence(MPI_MODE_NOPRECEDE, PivotWin);
-    MPI_Win_fence(MPI_MODE_NOPRECEDE, PivotA11Win);
-    MPI_Win_fence(MPI_MODE_NOPRECEDE, pivotsWin);
+    MPI_Win_fence(MPI_MODE_NOPRECEDE, curPivotsWin);
 
     // RNG
     std::mt19937_64 eng(gv.seed);
@@ -556,23 +488,19 @@ void LU_rep(T*& A, T*& C, T*& PP, GlobalVars<T>& gv, int rank, int size) {
 
         // # reduce first tile column. In this part, only pj == k % sqrtp1 participate:
         if (pk != layrK && pj == k % sqrtp1) {
-            // rows = A11MaskBuff
             // here it's guaranteed that rank != p_rcv because pk != layrK
-            /*
-             * if we want to take the mask into account:
-            for (const auto& rows : A11MaskBuff) {
-                auto dspls = rows * Nl + loff;
-                auto origin_ptr = &A11Buff[dspls];
-                MPI_Accumulate(origin_ptr, v, MPI_DOUBLE,
-                               p_rcv, dspls, v, MPI_DOUBLE,
-                               MPI_SUM, A11Win);
-            }
-            */
-            auto dspls = 0;
-            auto origin_ptr = &A11Buff[dspls];
-            MPI_Accumulate(origin_ptr, A11Buff.size(), MPI_DOUBLE,
-                           p_rcv, dspls, A11Buff.size(), MPI_DOUBLE,
-                           MPI_SUM, A11Win);
+            // transpose matrix A11Buff for easier sending
+            mkl_domatcopy('R', 'T',
+                           n_local_active_rows, v,
+                           1.0,
+                           &A11Buff[loff], Nl,
+                           &A10BuffTransposed[0], n_local_active_rows);
+
+            MPI_Accumulate(A10BuffTransposed[0], n_local_active_rows * v, 
+                           MPI_DOUBLE,
+                           p_rcv, 0, n_local_active_rows * v, 
+                           MPI_DOUBLE,
+                           MPI_SUM, A10BuffTransposedWin);
         }
 
         MPI_Win_fence(0, A11Win);
@@ -581,25 +509,64 @@ void LU_rep(T*& A, T*& C, T*& PP, GlobalVars<T>& gv, int rank, int size) {
         auto te = std::chrono::high_resolution_clock::now();
         timers[0] += std::chrono::duration_cast<std::chrono::microseconds>( te - ts ).count();
 
-
         // # --------------------------------------------------------------------- #
         // # 1. coalesce PivotA11ReductionBuff to PivotBuff and scatter to A10buff #
         // # --------------------------------------------------------------------- #
         MPI_Barrier(lu_comm);
-        te = std::chrono::high_resolution_clock::now();
-        timers[1] += std::chrono::duration_cast<std::chrono::microseconds>( te - ts ).count();
+        ts = std::chrono::high_resolution_clock::now();
 
-        //# flush the buffer
-        if (pj == k % sqrtp1 && pk == layrK) {
-            std::fill(PivotA11ReductionBuff,
-                      PivotA11ReductionBuff + tA11 * v * v, 0);
+        if (k % sqrtp1 == pi && k % sqrtp1 == pj && pk == 0) {
+            // # filter A11buff by masked pivot rows (local) and densify it
+            mkl_domatcopy('C', 'T',
+                           n_local_active_rows, v,
+                           1.0,
+                           &A10BuffTransposed[0], n_local_active_rows,
+                           &A00Buff[0], v);
+
+            int info = 0;
+            std::vector<int> ipiv(v);
+            dgetrf(v, v, &A00Buff[0], v, &ipiv[0], info);
+
+            curPivots[0] = v;
+            std::copy(ipiv.begin(), ipiv.end(), &curPivots[1]);
+
+            // # In round robin fashion, only one rank chooses pivots among its local rows
+            // # -------------------------- #
+            // # !!!!! COMMUNICATION !!!!!! #
+            // # Sending pivots:
+            for (int pj_rcv = 0; pj_rcv < sqrtp1; ++pj_rcv) {
+                for (int pk_rcv = 0; pk_rcv < c; ++pk_rcv) {
+                    auto p_rcv = X2p(pi, pj_rcv, pk_rcv, p1, sqrtp1);
+                    MPI_Put(&curPivots[0], v+1, MPI_INT, p_rcv, 0, v+1, MPI_INT, curPivotsWin);
+                }
+            }
+
+            for (int pi_rcv = 0; pi_rcv < sqrtp1; ++pi_rcv) {
+                if (pi_rcv != pi) {
+                    for (int pj_rcv = 0; pj_rcv < sqrtp1; ++pj_rcv) {
+                        for (int pk_rcv = 0; pk_rcv < c; ++pk_rcv) {
+                            auto p_rcv = X2p(pi, pj_rcv, pk_rcv, p1, sqrtp1);
+                            int zero = 0;
+                            MPI_Put(&zero, 1, MPI_INT, p_rcv, 0, 1, MPI_INT, curPivotsWin);
+                        }
+                    }
+                }
+            }
+
+            // # Sending A00Buff:
+            for (int pi_rcv = 0; pi_rcv < sqrtp1; ++pi_rcv) {
+                for (int pj_rcv = 0; pj_rcv < sqrtp1; ++pj_rcv) {
+                    for (int pk_rcv = 0; pk_rcv < c; ++pk_rcv) {
+                        auto p_rcv = X2p(pi_rcv, pj_rcv, pk_rcv, p1, sqrtp1);
+                        MPI_Put(&A00Buff[0], v * v, MPI_DOUBLE, p_rcv, 0, v * v, MPI_DOUBLE, A00Win);
+                    }
+                }
+            }
         }
 
-        MPI_Barrier(lu_comm);
-        ts = std::chrono::high_resolution_clock::now();
-        EmptyPivotMPI(rank, k, PivotBuff, PivotWin, A00Buff, A00Win,
-                      pivotIndsBuff, pivotsWin, A10MaskBuff, A11MaskBuff,
-                      layrK, gv, luA, origA, Perm, ipiv, p);
+        MPI_Win_fence(0, curPivotsWin);
+        MPI_Win_fence(0, A00Win);
+
         MPI_Barrier(lu_comm);
         te = std::chrono::high_resolution_clock::now();
         timers[2] += std::chrono::duration_cast<std::chrono::microseconds>( te - ts ).count();
@@ -656,21 +623,18 @@ void LU_rep(T*& A, T*& C, T*& PP, GlobalVars<T>& gv, int rank, int size) {
         if (pk == layrK && pj == k % sqrtp1) {
             // # this could basically be a sparse-dense A10 = A10 * U^(-1)   (BLAS tiangular solve) with A10 sparse and U dense
             // however, since we are ignoring the mask, it's dense, potentially with more computation than necessary.
-            cblas_dtrsm(CblasRowMajor, // side
+            cblas_dtrsm(CblasColMajor, // side
                    CblasRight, // uplo
                    CblasUpper,
-                   CblasNoTrans,
+                   CblasTrans,
                    CblasNonUnit,
-                   Nl, //  M
+                   n_local_active_rows, //  M
                    v,  // N
                    1.0, // alpha
-                   A00Buff.data(), // triangular A
+                   &A00Buff[0], // triangular A
                    v, // leading dim triangular
-                   &A11Buff[loff], // A11
-                   v);
-
-            // transpose matrix A11Buff for easier sending
-            mkl_domatcopy('R', 'T', Nl, Nl, 1.0, A11Buff.data(), Nl, A11BuffTransposed.data(), Nl);
+                   &A10BuffTransposed[0], // A11
+                   n_local_active_rows);
 
             // # -- BROADCAST -- #
             // # after compute, send it to sqrt(p1) * c processors
@@ -682,23 +646,28 @@ void LU_rep(T*& A, T*& C, T*& PP, GlobalVars<T>& gv, int rank, int size) {
                 // # all pjs receive the same data A11Buff[p, rows, colStart : colEnd]
                 for (int pj_rcv = 0; pj_rcv <  sqrtp1; ++pj_rcv) {
                     p_rcv = X2p(pi, pj_rcv, pk_rcv, p1, sqrtp1)
-                    int offset = colStart * Nl;
-                    int size = nlayr;
+                    int offset = colStart * n_local_active_rows;
+                    // TODO: what if v doesn't divide nlayr?
+                    int size = nlayr * n_local_active_rows; // nlayr = v / c
                     // ASSUMES: receiving ranks only receive from a single rank
-                    MPI_Put(&A11BuffTransposed[offset]), size, MPI_DOUBLE,
-                        p_rcv, 0, size, MPI_DOUBLE, A11TransposedWin);
+                    // MPI_Put(&A11BuffTransposed[offset]), size, MPI_DOUBLE,
+                    //     p_rcv, 0, size, MPI_DOUBLE, A11TransposedWin);
+                    MPI_Put(&A10BuffTransposed[offset], size, MPI_DOUBLE,
+                        p_rcv, 0, size, MPI_DOUBLE, A10RcvWin);
                 }
             }
         }
 
-        MPI_Win_fence(0, A11TransposedWin);
+        MPI_Win_fence(0, A10RcvWin);
 
+        /*
         // ranks which are on the receiving side of step 4
         if (pk != layrK && pj != k % sqrtp1) {
             // transpose back what is received
-            mkl_domatcopy('C', 'T', Nl, Nl, 1.0,
+            mkl_domatcopy('C', 'T', Nl, v, 1.0,
                     A11BuffTransposed.data(), Nl, A10BuffRcv.data(), Nl);
         }
+        */
 
         // # ---------------------------------------------- #
         // # 5. compute A01 and broadcast it to A01BuffRecv #
@@ -712,10 +681,10 @@ void LU_rep(T*& A, T*& C, T*& PP, GlobalVars<T>& gv, int rank, int size) {
                    CblasNoTrans,
                    CblasUnit,
                    v, //  M
-                   Nl,  // N
+                   Nl - loff,  // N
                    1.0, // alpha
-                   A00Buff.data(), // triangular A
-                   v, // leading dim triangular
+                   &A00Buff[0], // triangular A
+                   Nl, // leading dim triangular
                    &A01Buff[loff], // A01
                    Nl); // leading dim of A01
 
@@ -730,9 +699,10 @@ void LU_rep(T*& A, T*& C, T*& PP, GlobalVars<T>& gv, int rank, int size) {
                 // # all pjs receive the same data A11Buff[p, rows, colStart : colEnd]
                 for (int row = rowStart; row < rowEnd; ++row) {
                     const int n_cols = Nl - loff;
-                    std::copy_n(&A01Buff[row * Nl + loff],
+                    std::copy_n(&A01Buff[row * Nl + loff], // A01Buff[row, loff]
                                 n_cols,
-                                &A01BuffTemp[(row-rowStart) * n_cols]);
+                                &A01BuffTemp[row * n_cols]);
+                    // A01BuffTemp has received leading dimension
                 }
             }
 
@@ -746,39 +716,37 @@ void LU_rep(T*& A, T*& C, T*& PP, GlobalVars<T>& gv, int rank, int size) {
                 for(int pi_rcv = 0; pi_rcv < sqrtp1; ++pi_rcv) {
                     const int n_cols = Nl - loff;
                     p_rcv = X2p(pi_rcv, pj, pk_rcv, p1, sqrtp1);
-                    MPI_Put(A01BuffTemp.data(), nlayr * n_cols, MPI_DOUBLE,
-                            p_rcv, 0, nlayr * n_cols, MPI_DOUBLE, A01TempWin);
+                    MPI_Put(A01BuffTemp[rowStart * n_cols],
+                            nlayr * n_cols, MPI_DOUBLE,
+                            p_rcv, 0, nlayr * n_cols, 
+                            MPI_DOUBLE, A01RcvWin);
                 }
             }
         }
 
         MPI_Win_fence(0, A01TempWin);
 
-        // ranks which are on the receiving side of step 5
-        if (pk != layrK && pi != k % sqrtp1) {
-            // unpack the received data
-            // # for the receive layer pk_rcv, its A01BuffRcv is formed by the following rows of A01Buff[p]
-            // # all pjs receive the same data A11Buff[p, rows, colStart : colEnd]
-#pragma omp parallel for
-            for (int row = 0; row < nlayr; ++row) {
-                auto rowStart = pk * nlayr;
-                const int n_cols = Nl - loff;
-                std::copy_n(&A01BuffTemp[row * n_cols],
-                            n_cols,
-                            &A01BuffRcv[row * nlayr + loff]);
-            }
-        }
-
         // # ---------------------------------------------- #
         // # 6. compute A11  ------------------------------ #
         // # ---------------------------------------------- #
         // # filter which rows of this tile should be processed:
         // rows = A11MaskBuff[p]
-        cblas_dgemm(CblasRowMajor, CblasNoTrans, CblasNoTrans, 
-                    Nl, Nl - loff, nlayr,
-                    -1.0, &A10BuffRcv[0], nlayr,
-                    &A01BuffRcv[loff], Nl,
+        // assumptions:
+        // 1. we don't do the filtering
+        // 2. A10Buff is column-major
+        // 3. A01BuffTemp is densified and leading dimensions = Nl-loff, row-major
+        cblas_dgemm(CblasRowMajor, CblasTrans, CblasNoTrans,
+                    n_local_active_rows, Nl - loff, nlayr,
+                    -1.0, &A10BuffRcv[0], n_local_active_rows,
+                    &A01BuffRcv[0], Nl-loff,
                     1.0,  A11Buff[loff], Nl);
+
+        // TODO: maybe immediately after pivoting
+        n_local_active_rows -= curPivots[0];
+
+        // TODO: 
+        // local densification curPivots[0] := how many local pivots in this round
+        // swap curPivots[1:curPivots[0]] rows in which matrix A11Buff -> row-major, Nl x Nl
     }
 
     // # recreate the permutation matrix
@@ -832,8 +800,8 @@ void LU_rep(T*& A, T*& C, T*& PP, GlobalVars<T>& gv, int rank, int size) {
     MPI_Win_free(&A01TempWin);
     MPI_Win_free(&A01RcvWin);
     MPI_Win_free(&A11Win);
-    MPI_Win_free(&A11TransposedWin);
-    MPI_Win_free(&PivotWin);
+    MPI_Win_free(&A10TransposedWin);
+    MPI_Win_free(&curPivotsWin);
     MPI_Win_free(&PivotA11Win);
     MPI_Win_free(&pivotsWin);
 
