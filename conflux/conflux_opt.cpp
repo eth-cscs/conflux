@@ -209,22 +209,6 @@ long long flipbit(long long n, long long k) {
     return n ^ (1ll << k);
 }
 
-template <class T>
-void LUP(std::vector<T>& PivotBuff, T* L, T* U, T* Perm, int v) {
-    // global global_vars
-    // v = global_vars['v']
-    int n = v;
-    int m = PivotBuff.size() / n;
-
-    [Perm, L, U] = la.lu(inpA)
-    origA = Perm.T @ inpA
-    [m, n] = inpA.shape
-    res = (L +
-           np.concatenate((U, np.zeros([m-n,n])), axis = 0) -
-           np.eye(m, n))[:v,:]
-    return [origA[:v,], res[:v,], Perm]
-}
-
 // taken from COSMA
 template <typename T>
 MPI_Win
@@ -358,9 +342,17 @@ void LU_rep(T*& A, T*& C, T*& PP, GlobalVars<T>& gv, int rank, int size) {
                                    A00Buff.data(),
                                    A00Buff.size(),
                                    true);
+    MPI_Win A11Win = create_window(lu_comm,
+                                   A11Buff.data(),
+                                   A11Buff.size(),
+                                   true);
     MPI_Win A10Win = create_window(lu_comm,
                                    A10Buff.data(),
                                    A10Buff.size(),
+                                   true);
+    MPI_Win A10TransposedWin = create_window(lu_comm,
+                                   A10BuffTransposed.data(),
+                                   A10BuffTransposed.size(),
                                    true);
     MPI_Win A10RcvWin = create_window(lu_comm,
                                       A10BuffRcv.data(),
@@ -370,39 +362,23 @@ void LU_rep(T*& A, T*& C, T*& PP, GlobalVars<T>& gv, int rank, int size) {
                                    A01Buff.data(),
                                    A01Buff.size(),
                                    true);
-    MPI_Win A01TempWin = create_window(lu_comm,
-                                   A01BuffTemp.data(),
-                                   A01BuffTemp.size(),
-                                   true);
     MPI_Win A01RcvWin = create_window(lu_comm,
                                       A01BuffRcv.data(),
                                       A01BuffRcv.size(),
                                       true);
-    MPI_Win A10TransposedWin = create_window(lu_comm,
-                                   A10BuffTransposed.data(),
-                                   A10BuffTransposed.size(),
-                                   true);
     MPI_Win curPivotsWin = create_window(lu_comm,
                                      curPivots.data(),
                                      curPivots.size(),
                                      true);
-    MPI_Win pivotsWin = create_window(lu_comm,
-                                      pivotIndsBuff.data(),
-                                      pivotIndsBuff.size(),
-                                      true);
-    MPI_Win PivotA11Win = create_window(lu_comm,
-                                        PivotA11ReductionBuff.data(),
-                                        PivotA11ReductionBuff.size(),
-                                        true);
 
     // Sync all windows
     MPI_Win_fence(MPI_MODE_NOPRECEDE, A00Win);
+    MPI_Win_fence(MPI_MODE_NOPRECEDE, A11Win);
     MPI_Win_fence(MPI_MODE_NOPRECEDE, A10Win);
+    MPI_Win_fence(MPI_MODE_NOPRECEDE, A10TransposedWin);
     MPI_Win_fence(MPI_MODE_NOPRECEDE, A10RcvWin);
     MPI_Win_fence(MPI_MODE_NOPRECEDE, A01Win);
     MPI_Win_fence(MPI_MODE_NOPRECEDE, A01RcvWin);
-    MPI_Win_fence(MPI_MODE_NOPRECEDE, A11Win);
-    MPI_Win_fence(MPI_MODE_NOPRECEDE, A11TransposedWin);
     MPI_Win_fence(MPI_MODE_NOPRECEDE, curPivotsWin);
 
     // RNG
@@ -425,11 +401,9 @@ void LU_rep(T*& A, T*& C, T*& PP, GlobalVars<T>& gv, int rank, int size) {
             auto gti = l2g(pi, lti, sqrtp1);
             for (auto ltj = 0; ltj < tA11; ++ltj) {
                 auto gtj = l2g(pj, ltj, sqrtp1);
-                // A11Buff[lti, ltj] = B[gti * v: (gti + 1) * v, gtj * v: (gtj + 1) * v]
-                mcopy(B, A11Buff + (lti * tA11 + ltj) * v * v,
+                mcopy(B.data(), &A11Buff[(lti * tA11 + ltj) * v * v],
                       gti * v, (gti + 1) * v, gtj * v, (gtj + 1) * v, N,
                       0, v, 0, v, v);
-                assert(B[gti * v * N + gtj * v] == A11Buff[(lti * tA11 + ltj) * v * v]);
             }
         }
     }
@@ -481,13 +455,13 @@ void LU_rep(T*& A, T*& C, T*& PP, GlobalVars<T>& gv, int rank, int size) {
         // # that is, each processor [pi, pj, pk] sends to [pi, pj, layK]
         // # note that processors in layer pk == 0 locally copy their data from A11buff to PivotA11ReductionBuff
         p2X(rank, p1, sqrtp1, pi, pj, pk);
-        auto p_rcv = X2p(pi, pj, layrK, p1, sqrtp1);
 
         // flush the buffer
         curPivots[0] = 0;
 
         // # reduce first tile column. In this part, only pj == k % sqrtp1 participate:
         if (pk != layrK && pj == k % sqrtp1) {
+            auto p_rcv = X2p(pi, pj, layrK, p1, sqrtp1);
             // here it's guaranteed that rank != p_rcv because pk != layrK
             // transpose matrix A11Buff for easier sending
             mkl_domatcopy('R', 'T',
@@ -496,11 +470,11 @@ void LU_rep(T*& A, T*& C, T*& PP, GlobalVars<T>& gv, int rank, int size) {
                            &A11Buff[loff], Nl,
                            &A10BuffTransposed[0], n_local_active_rows);
 
-            MPI_Accumulate(A10BuffTransposed[0], n_local_active_rows * v, 
+            MPI_Accumulate(&A10BuffTransposed[0], n_local_active_rows * v, 
                            MPI_DOUBLE,
                            p_rcv, 0, n_local_active_rows * v, 
                            MPI_DOUBLE,
-                           MPI_SUM, A10BuffTransposedWin);
+                           MPI_SUM, A10TransposedWin);
         }
 
         MPI_Win_fence(0, A11Win);
@@ -525,7 +499,8 @@ void LU_rep(T*& A, T*& C, T*& PP, GlobalVars<T>& gv, int rank, int size) {
 
             int info = 0;
             std::vector<int> ipiv(v);
-            dgetrf(v, v, &A00Buff[0], v, &ipiv[0], info);
+            int v_int = (int) v;
+            dgetrf(&v_int, &v_int, &A00Buff[0], &v_int, &ipiv[0], &info);
 
             curPivots[0] = v;
             std::copy(ipiv.begin(), ipiv.end(), &curPivots[1]);
@@ -582,11 +557,11 @@ void LU_rep(T*& A, T*& C, T*& PP, GlobalVars<T>& gv, int rank, int size) {
         // # and only this strip distributes reduced pivot rows
         // # so layer pk == 0 do a LOCAL copy from A11Buff to PivotBuff, other layers do the communication
         // # that is, each processor [pi, pj, pk] sends to [pi, pj, 0]
-        auto p_rcv = X2p(pi, pj, layrK, p1, sqrtp1);
         // update the row mask
         if (pk != layrK) {
             auto dspls = 0;
             auto origin_ptr = &A11Buff[dspls];
+            auto p_rcv = X2p(pi, pj, layrK, p1, sqrtp1);
             MPI_Accumulate(origin_ptr, A11Buff.size(), MPI_DOUBLE,
                            p_rcv, dspls, A11Buff.size(), MPI_DOUBLE,
                            MPI_SUM, A11Win);
@@ -599,14 +574,14 @@ void LU_rep(T*& A, T*& C, T*& PP, GlobalVars<T>& gv, int rank, int size) {
         if (pk == layrK) {
             auto p_rcv = X2p(k % sqrtp1, pj, layrK, p1, sqrtp1);
             for (int i = 0; i < curPivots[0]; ++i) {
-                pivot = curPivots[i+1]
-                offset = curPivOrder[i]
+                auto pivot = curPivots[i+1];
+                auto offset = curPivOrder[i];
                 auto origin_dspls = pivot * Nl + loff;
                 auto origin_ptr = &A11Buff[origin_dspls];
                 auto size = Nl - loff;
                 auto dest_dspls = offset * Nl + loff;
                 MPI_Put(origin_ptr, size, MPI_DOUBLE,
-                        p_rcv, dest_dspls, MPI_DOUBLE,
+                        p_rcv, dest_dspls, size, MPI_DOUBLE,
                         A01Win);
             }
         }
@@ -640,12 +615,12 @@ void LU_rep(T*& A, T*& C, T*& PP, GlobalVars<T>& gv, int rank, int size) {
             // # after compute, send it to sqrt(p1) * c processors
             for (int pk_rcv = 0; pk_rcv < c; ++pk_rcv) {
                 // # for the receive layer pk_rcv, its A10BuffRcv is formed by the following columns of A11Buff[p]
-                colStart = loff + pk_rcv*nlayr;
-                colEnd   = loff + (pk_rcv+1)*nlayr;
+                auto colStart = loff + pk_rcv*nlayr;
+                auto colEnd   = loff + (pk_rcv+1)*nlayr;
 
                 // # all pjs receive the same data A11Buff[p, rows, colStart : colEnd]
                 for (int pj_rcv = 0; pj_rcv <  sqrtp1; ++pj_rcv) {
-                    p_rcv = X2p(pi, pj_rcv, pk_rcv, p1, sqrtp1)
+                    auto p_rcv = X2p(pi, pj_rcv, pk_rcv, p1, sqrtp1);
                     int offset = colStart * n_local_active_rows;
                     // TODO: what if v doesn't divide nlayr?
                     int size = nlayr * n_local_active_rows; // nlayr = v / c
@@ -694,8 +669,8 @@ void LU_rep(T*& A, T*& C, T*& PP, GlobalVars<T>& gv, int rank, int size) {
 #pragma omp parallel for
             for(int pk_rcv = 0; pk_rcv < c; ++pk_rcv) {
                 // # for the receive layer pk_rcv, its A01BuffRcv is formed by the following rows of A01Buff[p]
-                rowStart = pk_rcv * nlayr
-                rowEnd = (pk_rcv + 1) * nlayr
+                auto rowStart = pk_rcv * nlayr;
+                auto rowEnd = (pk_rcv + 1) * nlayr;
                 // # all pjs receive the same data A11Buff[p, rows, colStart : colEnd]
                 for (int row = rowStart; row < rowEnd; ++row) {
                     const int n_cols = Nl - loff;
@@ -710,13 +685,13 @@ void LU_rep(T*& A, T*& C, T*& PP, GlobalVars<T>& gv, int rank, int size) {
             // # after compute, send it to sqrt(p1) * c processors
             for(int pk_rcv = 0; pk_rcv < c; ++pk_rcv) {
                 // # for the receive layer pk_rcv, its A01BuffRcv is formed by the following rows of A01Buff[p]
-                rowStart = pk_rcv * nlayr
-                rowEnd = (pk_rcv + 1) * nlayr
+                auto rowStart = pk_rcv * nlayr;
+                auto rowEnd = (pk_rcv + 1) * nlayr;
                 // # all pjs receive the same data A11Buff[p, rows, colStart : colEnd]
                 for(int pi_rcv = 0; pi_rcv < sqrtp1; ++pi_rcv) {
                     const int n_cols = Nl - loff;
-                    p_rcv = X2p(pi_rcv, pj, pk_rcv, p1, sqrtp1);
-                    MPI_Put(A01BuffTemp[rowStart * n_cols],
+                    auto p_rcv = X2p(pi_rcv, pj, pk_rcv, p1, sqrtp1);
+                    MPI_Put(&A01BuffTemp[rowStart * n_cols],
                             nlayr * n_cols, MPI_DOUBLE,
                             p_rcv, 0, nlayr * n_cols, 
                             MPI_DOUBLE, A01RcvWin);
@@ -724,7 +699,7 @@ void LU_rep(T*& A, T*& C, T*& PP, GlobalVars<T>& gv, int rank, int size) {
             }
         }
 
-        MPI_Win_fence(0, A01TempWin);
+        MPI_Win_fence(0, A01RcvWin);
 
         // # ---------------------------------------------- #
         // # 6. compute A11  ------------------------------ #
@@ -739,7 +714,7 @@ void LU_rep(T*& A, T*& C, T*& PP, GlobalVars<T>& gv, int rank, int size) {
                     n_local_active_rows, Nl - loff, nlayr,
                     -1.0, &A10BuffRcv[0], n_local_active_rows,
                     &A01BuffRcv[0], Nl-loff,
-                    1.0,  A11Buff[loff], Nl);
+                    1.0, &A11Buff[loff], Nl);
 
         // TODO: maybe immediately after pivoting
         n_local_active_rows -= curPivots[0];
@@ -750,12 +725,11 @@ void LU_rep(T*& A, T*& C, T*& PP, GlobalVars<T>& gv, int rank, int size) {
     }
 
     // # recreate the permutation matrix
-    std::vector<T> PP(N * N);
-    std::vector<T> C(N * N);
+    std::vector<T> Permutation(N * N);
     for (int i = 0; i < N; ++i) {
         auto row = pivotIndsBuff[i];
-        std::copy_n(B[row * N], N, &C[i * N]);
-        std::copy_n(Perm[row * N], N, &PP[i * N]);
+        std::copy_n(&B[row * N], N, &C[i * N]);
+        std::copy_n(&Perm[row * N], N, &Permutation[i * N]);
     }
 
     if (rank == 0) {
@@ -766,44 +740,17 @@ void LU_rep(T*& A, T*& C, T*& PP, GlobalVars<T>& gv, int rank, int size) {
         for (auto i = 0; i < 7; ++i) {
             std::cout << "Runtime " << i + 1 << ": " << double(timers[i]) / 1000000 << " seconds" << std::endl;
         }
-
-        MPI_Reduce(MPI_IN_PLACE, comm_count, 7, MPI_LONG_LONG, MPI_SUM, 0, lu_comm);
-        MPI_Reduce(MPI_IN_PLACE, local_comm, 7, MPI_LONG_LONG, MPI_SUM, 0, lu_comm);
-        long long total_count = 0;
-        long long total_local = 0;
-        for (auto i = 0; i < 7; ++i) {
-            std::cout << "Step " << i << ": " << comm_count[i]
-                      << " (" << comm_count[i] + local_comm[i]
-                      << " with local comm) elements" << std::endl << std::flush;
-            total_count += comm_count[i];
-            total_local += local_comm[i];
-        }
-        std::cout << "Total:  " << total_count << " (" << total_count + total_local
-                  << " with local comm) elements" << std::endl << std::flush;
-
-        for (auto i = 0; i < N; ++i) {
-            auto idx = pivotIndsBuff[i];
-            std::copy(B + idx * N, B + (idx + 1) * N, C + i * N);
-            PP[i * N + idx] = 1;
-        }
-
-    } else {
-        MPI_Reduce(comm_count, NULL, 7, MPI_LONG_LONG, MPI_SUM, 0, lu_comm);
-        MPI_Reduce(local_comm, NULL, 7, MPI_LONG_LONG, MPI_SUM, 0, lu_comm);
     }
 
     // Delete all windows
     MPI_Win_free(&A00Win);
+    MPI_Win_free(&A11Win);
     MPI_Win_free(&A10Win);
     MPI_Win_free(&A10RcvWin);
-    MPI_Win_free(&A01Win);
-    MPI_Win_free(&A01TempWin);
-    MPI_Win_free(&A01RcvWin);
-    MPI_Win_free(&A11Win);
     MPI_Win_free(&A10TransposedWin);
+    MPI_Win_free(&A01Win);
+    MPI_Win_free(&A01RcvWin);
     MPI_Win_free(&curPivotsWin);
-    MPI_Win_free(&PivotA11Win);
-    MPI_Win_free(&pivotsWin);
 
     // Delete communicator
     MPI_Group_free(&world_group);
@@ -847,56 +794,20 @@ int main(int argc, char **argv) {
     // }
 
     dtype* C = new dtype[gv.N * gv.N]{0};
-    dtype* PP = new dtype[gv.N * gv.N]{0};
+    dtype* Perm = new dtype[gv.N * gv.N]{0};
 
     for (int i = 0; i < 1; ++i) {
         PC();
-        LU_rep<dtype>(gv.matrix, C, PP, gv, rank, size);
+        LU_rep<dtype>(gv.matrix, C, Perm, gv, rank, size);
     }
 
     if (rank == 0) {
         PP();
     }
 
-    #ifdef VALIDATE
-
-    if (rank == 0) {
-        auto N = gv.N;
-        dtype* U = new dtype[N * N]{0};
-        dtype* L = new dtype[N * N] {0};
-        for (auto i = 0; i < N; ++i) {
-            for (auto j = 0; j < i; ++j) {
-                L[i * N + j] = C[i * N + j];
-            }
-            L[i * N + i] = 1;
-            for (auto j = i; j < N; ++j) {
-                U[i * N + j] = C[i * N + j];
-            }
-        }
-        // mm<dtype>(L, U, C, N, N, N);
-        // gemm<dtype>(PP, gv.matrix, C, -1.0, 1.0, N, N, N);
-        cblas_dgemm(CblasRowMajor, CblasNoTrans, CblasNoTrans, N, N, N,
-                    1.0, L, N, U, N, 0.0, C, N);
-        cblas_dgemm(CblasRowMajor, CblasNoTrans, CblasNoTrans, N, N, N,
-                    -1.0, PP, N, gv.matrix, N, 1.0, C, N);
-        dtype norm = 0;
-        for (auto i = 0; i < N; ++i) {
-            for (auto j = 0; j < i; ++j) {
-                norm += C[i * N + j] * C[i * N + j];
-            }
-        }
-        norm = std::sqrt(norm);
-        std::cout << "residual: " << norm << std::endl << std::flush;\
-        delete U;
-        delete L;
-    }
-
-    #endif
-
     MPI_Finalize();
 
     delete C;
-    delete PP;
 
     return 0;
 }
