@@ -291,6 +291,38 @@ void print_matrix(T* pointer,
     }
 }
 
+template <typename T>
+void remove_pivotal_rows(std::vector<T>& mat,
+                         int n_rows, int n_cols,
+                         std::vector<T>& mat_temp,
+                         std::vector<int>& pivots) {
+    // check which rows should be extracted
+    std::vector<int> kept_rows;
+    int prev_pivot = -1;
+    for (int i = 0; i < pivots[0]; ++i) {
+        int pivot = pivots[i + 1];
+        for (int j = prev_pivot + 1; j < pivot; ++j) {
+            kept_rows.push_back(j);
+        }
+        prev_pivot = pivot;
+    }
+
+    // iterate from the last pivot to the end of the rows
+    for (int i = prev_pivot + 1; i < n_rows; ++i) {
+        kept_rows.push_back(i);
+    }
+
+    // extract kept_rows to temp
+#pragma omp parallel for
+    for (int i = 0; i < kept_rows.size(); ++i) {
+        const auto& row = kept_rows[i];
+        std::copy_n(&mat[row * n_cols], n_cols, &mat_temp[i * n_cols]);
+    }
+
+    // swap temp with mat
+    mat.swap(mat_temp);
+}
+
 template <class T>
 void LU_rep(T*& A, T*& C, T*& PP, GlobalVars<T>& gv, int rank, int size) {
 
@@ -334,6 +366,7 @@ void LU_rep(T*& A, T*& C, T*& PP, GlobalVars<T>& gv, int rank, int size) {
     std::vector<T> A01BuffRcv(nlayr * Nl);
     std::vector<T> A11Buff(Nl * Nl);
     std::vector<T> A10BuffTemp(Nl * v);
+    std::vector<T> A11BuffTemp(Nl * Nl);
 
     int n_local_active_rows = Nl;
 
@@ -544,7 +577,8 @@ void LU_rep(T*& A, T*& C, T*& PP, GlobalVars<T>& gv, int rank, int size) {
                 std::swap(a, b);
             }
 
-            std::cout << "curPivots = " << std::endl;
+
+            std::sort(&curPivots[1], &curPivots[v + 1]);
             print_matrix(curPivots.data(), 0, 1,  0, v+1, v+1);
 
             mkl_domatcopy('R', 'N',
@@ -602,6 +636,7 @@ void LU_rep(T*& A, T*& C, T*& PP, GlobalVars<T>& gv, int rank, int size) {
         MPI_Win_fence(0, curPivotsWin);
         MPI_Win_fence(0, A00Win);
 
+        // std::sort(curPivots.begin() + 1, curPivots.end());
 
         if (rank == 1) {
             std::cout << "After sending A00Buff, rank 1 has:" << std::endl;;
@@ -680,7 +715,9 @@ void LU_rep(T*& A, T*& C, T*& PP, GlobalVars<T>& gv, int rank, int size) {
             std::cout << "A10Buff before row swapping" << std::endl;
             print_matrix(A10Buff.data(), 0, n_local_active_rows, 0, v, v);
         }
-        LAPACKE_dlaswp(LAPACK_ROW_MAJOR, v, A10Buff.data(), v, 1, v, &ipiv[0], 1);
+
+        remove_pivotal_rows(A10Buff, Nl, v, A10BuffTemp, curPivots);
+        remove_pivotal_rows(A11Buff, Nl, Nl, A11BuffTemp, curPivots);
 
         // we want to push at the end the following rows:
         // ipiv -> series of row swaps 5, 5
