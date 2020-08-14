@@ -716,21 +716,19 @@ void LU_rep(T*& A, T*& C, T*& PP, GlobalVars<T>& gv, int rank, int size) {
             print_matrix(A10Buff.data(), 0, n_local_active_rows, 0, v, v);
         }
 
-        remove_pivotal_rows(A10Buff, Nl, v, A10BuffTemp, curPivots);
-        remove_pivotal_rows(A11Buff, Nl, Nl, A11BuffTemp, curPivots);
-
         // we want to push at the end the following rows:
         // ipiv -> series of row swaps 5, 5
         // curPivots -> 4, 0 (4th row with second-last and 0th row with the one)
         // last = n_local_active_rows
         // last(A11) = n_local_active_rows
+        remove_pivotal_rows(A10Buff, n_local_active_rows, v, A10BuffTemp, curPivots);
+        remove_pivotal_rows(A11Buff, n_local_active_rows, Nl, A11BuffTemp, curPivots);
         n_local_active_rows -= curPivots[0];
 
         if (rank == 0) {
             std::cout << "A10Buff after row swapping" << std::endl;
             print_matrix(A10Buff.data(), 0, n_local_active_rows, 0, v, v);
         }
-
 
         // # ---------------------------------------------- #
         // # 4. compute A10 and broadcast it to A10BuffRecv #
