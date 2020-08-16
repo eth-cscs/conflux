@@ -754,7 +754,6 @@ void LU_rep(T*& A, T*& C, T*& PP, GlobalVars<T>& gv, int rank, int size) {
             if (rank == 0) {
                 std::cout << "A10Buff after trsm" << std::endl;
                 print_matrix(A10Buff.data(), 0, n_local_active_rows, 0, v, v);
-                std::exit(0);
             }
 
             // # -- BROADCAST -- #
@@ -865,15 +864,15 @@ void LU_rep(T*& A, T*& C, T*& PP, GlobalVars<T>& gv, int rank, int size) {
                     &A01BuffRcv[0], Nl-loff,
                     1.0, &A11Buff[loff], Nl);
         MPI_Barrier(lu_comm);
-        std::cout << "Step 6 finished." << std::endl;
-        MPI_Barrier(lu_comm);
-
-        // TODO: maybe immediately after pivoting
-        // n_local_active_rows -= curPivots[0];
-
-        // TODO: 
-        // local densification curPivots[0] := how many local pivots in this round
-        // swap curPivots[1:curPivots[0]] rows in which matrix A11Buff -> row-major, Nl x Nl
+        for (int i = 0; i < P; ++i) {
+            if (rank == i) {
+                std::cout << "rank " << rank << ", A11Buff after computeA11:" << std::endl;
+                print_matrix(A11Buff.data(), 0, n_local_active_rows,
+                                             0, Nl,
+                                             Nl);
+            }
+            MPI_Barrier(lu_comm);
+        }
     }
 
     // # recreate the permutation matrix
