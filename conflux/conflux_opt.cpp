@@ -789,6 +789,7 @@ void LU_rep(T*& A, T*& C, T*& PP, GlobalVars<T>& gv, int rank, int size) {
         std::cout << "Step 4 finished." << std::endl;
         MPI_Barrier(lu_comm);
 
+        auto lld_A01 = Nl;
         // # ---------------------------------------------- #
         // # 5. compute A01 and broadcast it to A01BuffRecv #
         // # ---------------------------------------------- #
@@ -806,7 +807,7 @@ void LU_rep(T*& A, T*& C, T*& PP, GlobalVars<T>& gv, int rank, int size) {
                    &A00Buff[0], // triangular A
                    v, // leading dim triangular
                    &A01Buff[loff], // A01
-                   Nl-loff); // leading dim of A01
+                   lld_A01); // leading dim of A01
 
             // # local reshuffle before broadcast
             // pack all the data for each rank
@@ -819,7 +820,7 @@ void LU_rep(T*& A, T*& C, T*& PP, GlobalVars<T>& gv, int rank, int size) {
                 // # all pjs receive the same data A11Buff[p, rows, colStart : colEnd]
                 for (int row = rowStart; row < rowEnd; ++row) {
                     const int n_cols = Nl - loff;
-                    std::copy_n(&A01Buff[row * Nl + loff], // A01Buff[row, loff]
+                    std::copy_n(&A01Buff[row * lld_A01 + loff], // A01Buff[row, loff]
                                 n_cols,
                                 &A01BuffTemp[row * n_cols]);
                     // A01BuffTemp has received leading dimension
@@ -873,6 +874,7 @@ void LU_rep(T*& A, T*& C, T*& PP, GlobalVars<T>& gv, int rank, int size) {
             }
             MPI_Barrier(lu_comm);
         }
+        std::exit(0);
     }
 
     // # recreate the permutation matrix
