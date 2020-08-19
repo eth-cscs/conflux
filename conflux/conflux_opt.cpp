@@ -498,7 +498,10 @@ void LU_rep(T*& A, T*& C, T*& PP, GlobalVars<T>& gv, int rank, int size) {
 
     // # now k is a step number
     for (auto k = 0; k < Nt; ++k) {
+#ifdef DEBUG
         std::cout << "Iteration = " << k << std::endl;
+        MPI_Barrier(lu_comm);
+#endif
         // if (k == 1) break;
 
         bool last_step = k == Nt-1;
@@ -535,7 +538,9 @@ void LU_rep(T*& A, T*& C, T*& PP, GlobalVars<T>& gv, int rank, int size) {
             auto p_rcv = X2p(pi, pj, layrK, p1, sqrtp1);
             // here it's guaranteed that rank != p_rcv because pk != layrK
             // transpose matrix A11Buff for easier sending
+#ifdef DEBUG
             std::cout << "Step 0, before." << std::endl;
+#endif
             if (pk == layrK) {
                 mkl_domatcopy('R', 'N',
                                n_local_active_rows, v,
@@ -552,15 +557,18 @@ void LU_rep(T*& A, T*& C, T*& PP, GlobalVars<T>& gv, int rank, int size) {
             if (rank == 0) {
                 print_matrix(A10Buff.data(), 0, n_local_active_rows, 0, v, v);
             }
-
+#ifdef DEBUG
             std::cout << "Step 0, after." << std::endl;
+#endif
         }
 
         MPI_Win_fence(0, A10Win);
 
-        MPI_Barrier(lu_comm);
 
+#ifdef DEBUG
         std::cout << "Step 0 finished." << std::endl;
+        MPI_Barrier(lu_comm);
+#endif
         MPI_Barrier(lu_comm);
         auto te = std::chrono::high_resolution_clock::now();
         timers[0] += std::chrono::duration_cast<std::chrono::microseconds>( te - ts ).count();
@@ -573,20 +581,28 @@ void LU_rep(T*& A, T*& C, T*& PP, GlobalVars<T>& gv, int rank, int size) {
 
         int zero = 0;
         if (k % sqrtp1 == pi && k % sqrtp1 == pj && pk == 0) {
-            std::cout << "before copy" << std::endl;
+#ifdef DEBUG
+            std::cout << "before pivotBuff copy" << std::endl;
+#endif
             // # filter A11buff by masked pivot rows (local) and densify it
             mkl_domatcopy('R', 'N',
                            n_local_active_rows, v,
                            1.0,
                            &A10Buff[0], v,
                            &pivotBuff[0], v);
+#ifdef DEBUG
             std::cout << "pivotBuff after copy" << std::endl;
             print_matrix(pivotBuff.data(), 0, n_local_active_rows, 0, v, v);
+#endif
 
+#ifdef DEBUG
             std::cout << "before LU" << std::endl;
+#endif
             LAPACKE_dgetrf(LAPACK_ROW_MAJOR, n_local_active_rows, v, pivotBuff.data(), v, ipiv.data());
+#ifdef DEBUG
             std::cout << "After LU decomposition, the result = " << std::endl;
             print_matrix(pivotBuff.data(), 0, n_local_active_rows, 0, v, v);
+#endif
 
             for (int i = 0; i < Nl; ++i) {
                 curPivots[i+1] = i;
@@ -607,17 +623,20 @@ void LU_rep(T*& A, T*& C, T*& PP, GlobalVars<T>& gv, int rank, int size) {
                            1.0,
                            &pivotBuff[0], v,
                            &A00Buff[0], v);
-
-            // std::cout << "A00Buff = " << std::endl;
-            // print_matrix(A00Buff.data(), 0, v, 0, v, v);
+#ifdef DEBUG
+            std::cout << "A00Buff = " << std::endl;
+            print_matrix(A00Buff.data(), 0, v, 0, v, v);
+#endif
 
             if (!last_step) {
 
                 // # In round robin fashion, only one rank chooses pivots among its local rows
                 // # -------------------------- #
                 // # !!!!! COMMUNICATION !!!!!! #
+#ifdef DEBUG
                 std::cout << "rank = " << rank << std::endl;
                 std::cout << "before sending pivots" << std::endl;
+#endif
                 // # Sending pivots:
                 for (int pj_rcv = 0; pj_rcv < sqrtp1; ++pj_rcv) {
                     for (int pk_rcv = 0; pk_rcv < c; ++pk_rcv) {
@@ -626,21 +645,26 @@ void LU_rep(T*& A, T*& C, T*& PP, GlobalVars<T>& gv, int rank, int size) {
                             MPI_Put(&curPivots[0], v+1, MPI_INT, p_rcv, 0, v+1, MPI_INT, curPivotsWin);
                     }
                 }
+#ifdef DEBUG
                 std::cout << "after sending pivots" << std::endl;
-
                 std::cout << "before sending zero" << std::endl;
+#endif
                 for (int pi_rcv = 0; pi_rcv < sqrtp1; ++pi_rcv) {
                     if (pi != pi_rcv) {
                         for (int pj_rcv = 0; pj_rcv < sqrtp1; ++pj_rcv) {
                             for (int pk_rcv = 0; pk_rcv < c; ++pk_rcv) {
                                 auto p_rcv = X2p(pi_rcv, pj_rcv, pk_rcv, p1, sqrtp1);
+#ifdef DEBUG
                                 std::cout << "rank = " << p_rcv << std::endl;
+#endif
                                 MPI_Put(&zero, 1, MPI_INT, p_rcv, 0, 1, MPI_INT, curPivotsWin);
                             }
                         }
                     }
                 }
+#ifdef DEBUG
                 std::cout << "after sending zero" << std::endl;
+#endif
 
                 // # Sending A00Buff:
                 for (int pi_rcv = 0; pi_rcv < sqrtp1; ++pi_rcv) {
@@ -663,6 +687,7 @@ void LU_rep(T*& A, T*& C, T*& PP, GlobalVars<T>& gv, int rank, int size) {
 
         // std::sort(curPivots.begin() + 1, curPivots.end());
 
+#ifdef DEBUG
         if (rank == 1) {
             std::cout << "After sending A00Buff, rank 1 has:" << std::endl;;
             print_matrix(A00Buff.data(), 0, v, 0, v, v);
@@ -670,6 +695,8 @@ void LU_rep(T*& A, T*& C, T*& PP, GlobalVars<T>& gv, int rank, int size) {
 
         MPI_Barrier(lu_comm);
         std::cout << "Step 1 finished." << std::endl;
+#endif
+
         MPI_Barrier(lu_comm);
         te = std::chrono::high_resolution_clock::now();
         timers[2] += std::chrono::duration_cast<std::chrono::microseconds>( te - ts ).count();
@@ -699,12 +726,13 @@ void LU_rep(T*& A, T*& C, T*& PP, GlobalVars<T>& gv, int rank, int size) {
         MPI_Win_fence(0, A11Win);
         MPI_Barrier(lu_comm);
 
+#ifdef DEBUG
         if (rank == 0) {
             std::cout << "Step 2 finished." << std::endl;
             print_matrix(A11Buff.data(), 0, n_local_active_rows, 0, Nl, Nl);
         }
         MPI_Barrier(lu_comm);
-
+#endif
 
         // # -------------------------------------------------- #
         // # 3. distribute v pivot rows from A11buff to A01Buff #
@@ -728,21 +756,25 @@ void LU_rep(T*& A, T*& C, T*& PP, GlobalVars<T>& gv, int rank, int size) {
         MPI_Win_fence(0, A01Win);
         MPI_Barrier(lu_comm);
 
+#ifdef DEBUG
         if (rank == 0) {
             std::cout << "Step 3 finished." << std::endl;
             print_matrix(A01Buff.data(), 0, v, 0, Nl, Nl);
         }
         MPI_Barrier(lu_comm);
+#endif
 
         te = std::chrono::high_resolution_clock::now();
         timers[3] += std::chrono::duration_cast<std::chrono::microseconds>( te - ts ).count();
 
         // remove pivotal rows from matrix A10Buff and A11Buff
         // A10Buff
+#ifdef DEBUG
         if (rank == 0) {
             std::cout << "A10Buff before row swapping" << std::endl;
             print_matrix(A10Buff.data(), 0, n_local_active_rows, 0, v, v);
         }
+#endif
 
         // we want to push at the end the following rows:
         // ipiv -> series of row swaps 5, 5
@@ -753,10 +785,12 @@ void LU_rep(T*& A, T*& C, T*& PP, GlobalVars<T>& gv, int rank, int size) {
         remove_pivotal_rows(A11Buff, n_local_active_rows, Nl, A11BuffTemp, curPivots);
         n_local_active_rows -= curPivots[0];
 
+#ifdef DEBUG
         if (rank == 0) {
             std::cout << "A10Buff after row swapping" << std::endl;
             print_matrix(A10Buff.data(), 0, n_local_active_rows, 0, v, v);
         }
+#endif
 
         // # ---------------------------------------------- #
         // # 4. compute A10 and broadcast it to A10BuffRecv #
@@ -764,7 +798,9 @@ void LU_rep(T*& A, T*& C, T*& PP, GlobalVars<T>& gv, int rank, int size) {
         if (pk == layrK && pj == k % sqrtp1) {
             // # this could basically be a sparse-dense A10 = A10 * U^(-1)   (BLAS tiangular solve) with A10 sparse and U dense
             // however, since we are ignoring the mask, it's dense, potentially with more computation than necessary.
+#ifdef DEBUG
             std::cout << "before trsm." << std::endl;
+#endif
             cblas_dtrsm(CblasRowMajor, // side
                    CblasRight, // uplo
                    CblasUpper,
@@ -777,12 +813,14 @@ void LU_rep(T*& A, T*& C, T*& PP, GlobalVars<T>& gv, int rank, int size) {
                    v, // leading dim triangular
                    &A10Buff[0], // A11
                    v);
+#ifdef DEBUG
             std::cout << "after trsm." << std::endl;
 
             if (rank == 0) {
                 std::cout << "A10Buff after trsm" << std::endl;
                 print_matrix(A10Buff.data(), 0, n_local_active_rows, 0, v, v);
             }
+#endif
 
             // # -- BROADCAST -- #
             // # after compute, send it to sqrt(p1) * c processors
@@ -804,18 +842,24 @@ void LU_rep(T*& A, T*& C, T*& PP, GlobalVars<T>& gv, int rank, int size) {
                     auto p_rcv = X2p(pi, pj_rcv, pk_rcv, p1, sqrtp1);
                     // MPI_Put(&A11Buff[offset]), size, MPI_DOUBLE,
                     //     p_rcv, 0, size, MPI_DOUBLE, A11Win);
+#ifdef DEBUG
                     std::cout << "before put in ." << p_rcv << std::endl;
+#endif
                     MPI_Put(&A10BuffTemp[0], size, MPI_DOUBLE,
                         p_rcv, 0, size, MPI_DOUBLE, A10RcvWin);
+#ifdef DEBUG
                     std::cout << "after put in ." << p_rcv << std::endl;
+#endif
                 }
             }
         }
 
         MPI_Win_fence(0, A10RcvWin);
         MPI_Barrier(lu_comm);
+#ifdef DEBUG
         std::cout << "Step 4 finished." << std::endl;
         MPI_Barrier(lu_comm);
+#endif
 
         auto lld_A01 = Nl;
         // # ---------------------------------------------- #
@@ -874,9 +918,10 @@ void LU_rep(T*& A, T*& C, T*& PP, GlobalVars<T>& gv, int rank, int size) {
         }
 
         MPI_Win_fence(0, A01RcvWin);
-        MPI_Barrier(lu_comm);
+#ifdef DEBUG
         std::cout << "Step 5 finished." << std::endl;
         MPI_Barrier(lu_comm);
+#endif
 
         // # ---------------------------------------------- #
         // # 6. compute A11  ------------------------------ #
@@ -892,6 +937,7 @@ void LU_rep(T*& A, T*& C, T*& PP, GlobalVars<T>& gv, int rank, int size) {
                     -1.0, &A10BuffRcv[0], nlayr,
                     &A01BuffRcv[0], Nl-loff,
                     1.0, &A11Buff[loff], Nl);
+#ifdef DEBUG
         for (int i = 0; i < P; ++i) {
             if (rank == i) {
                 std::cout << "rank " << rank << ", A11Buff after computeA11:" << std::endl;
@@ -901,11 +947,14 @@ void LU_rep(T*& A, T*& C, T*& PP, GlobalVars<T>& gv, int rank, int size) {
             }
             MPI_Barrier(lu_comm);
         }
+#endif
         // std::exit(0);
     }
 
+#ifdef DEBUG
     std::cout << "rank: " << rank <<", Finished everything" << std::endl;
     MPI_Barrier(lu_comm);
+#endif
 
     // # recreate the permutation matrix
     /*
