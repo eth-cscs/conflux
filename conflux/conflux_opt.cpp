@@ -291,6 +291,28 @@ void print_matrix(T* pointer,
     }
 }
 
+template <typename T> 
+void print_matrix_all(T* pointer, 
+                  int row_start, int row_end,
+                  int col_start, int col_end,
+                  int stride,
+                  int rank,
+                  int P,
+                  MPI_Comm comm) {
+    for (int r = 0; r < P; ++r) {
+        if (r == rank) {
+            std::cout << "Rank = " << rank << std::endl;
+            for (int i = row_start; i < row_end; ++i) {
+                for (int j = col_start; j < col_end; ++j) {
+                    std::cout << pointer[i * stride + j] << ", ";
+                }
+                std::cout << std::endl;
+            }
+        }
+        MPI_Barrier(comm);
+    }
+}
+
 template <typename T>
 void remove_pivotal_rows(std::vector<T>& mat,
                          int n_rows, int n_cols,
@@ -861,7 +883,7 @@ void LU_rep(T*& A, T*& C, T*& PP, GlobalVars<T>& gv, int rank, int size) {
         // 3. A01BuffTemp is densified and leading dimensions = Nl-loff, row-major
         cblas_dgemm(CblasRowMajor, CblasNoTrans, CblasNoTrans,
                     n_local_active_rows, Nl - loff, nlayr,
-                    -1.0, &A10BuffRcv[0], v,
+                    -1.0, &A10BuffRcv[0], nlayr,
                     &A01BuffRcv[0], Nl-loff,
                     1.0, &A11Buff[loff], Nl);
         MPI_Barrier(lu_comm);
