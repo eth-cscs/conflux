@@ -283,12 +283,8 @@ void print_matrix(T* pointer,
                   int row_start, int row_end,
                   int col_start, int col_end,
                   int stride) {
-    std::cout << "rows = [" << row_start << ", " << row_end << "]" << std::endl;
-    std::cout << "cols = [" << col_start << ", " << col_end << "]" << std::endl;
-
     for (int i = row_start; i < row_end; ++i) {
         for (int j = col_start; j < col_end; ++j) {
-            std::cout << "i = " << i << ", j = " << j << std::endl;
             std::cout << pointer[i * stride + j] << ", ";
         }
         std::cout << std::endl;
@@ -431,11 +427,13 @@ void LU_rep(T*& A, T*& C, T*& PP, GlobalVars<T>& gv, int rank, int size) {
             }
         }
     }
+#ifdef DEBUG
     if (rank == 0) {
         print_matrix(A11Buff.data(), 0, Nl, 0, Nl, Nl);
     }
     std::cout << "Allocated." << std::endl;
     MPI_Barrier(lu_comm);
+#endif
 
 
     // Create windows
@@ -554,10 +552,11 @@ void LU_rep(T*& A, T*& C, T*& PP, GlobalVars<T>& gv, int rank, int size) {
                                MPI_DOUBLE,
                                MPI_SUM, A10Win);
             }
+
+#ifdef DEBUG
             if (rank == 0) {
                 print_matrix(A10Buff.data(), 0, n_local_active_rows, 0, v, v);
             }
-#ifdef DEBUG
             std::cout << "Step 0, after." << std::endl;
 #endif
         }
@@ -616,7 +615,9 @@ void LU_rep(T*& A, T*& C, T*& PP, GlobalVars<T>& gv, int rank, int size) {
             }
 
             std::sort(&curPivots[1], &curPivots[v + 1]);
+#ifdef DEBUG
             print_matrix(curPivots.data(), 0, 1,  0, v+1, v+1);
+#endif
 
             mkl_domatcopy('R', 'N',
                            v, v,
@@ -699,13 +700,12 @@ void LU_rep(T*& A, T*& C, T*& PP, GlobalVars<T>& gv, int rank, int size) {
 
         MPI_Barrier(lu_comm);
         te = std::chrono::high_resolution_clock::now();
-        timers[2] += std::chrono::duration_cast<std::chrono::microseconds>( te - ts ).count();
+        timers[1] += std::chrono::duration_cast<std::chrono::microseconds>( te - ts ).count();
 
         // # ---------------------------------------------- #
         // # 2. reduce pivot rows from A11buff to PivotA01ReductionBuff #
         // # ---------------------------------------------- #
-        MPI_Barrier(lu_comm);
-        ts = std::chrono::high_resolution_clock::now();
+        ts = te;
         p2X(rank, p1, sqrtp1, pi, pj, pk);
         // curPivots = pivotIndsBuff[k * v: (k + 1) * v]
         // # Currently, we dump everything to processors in layer pk == 0, pi == k % sqrtp1
@@ -726,6 +726,10 @@ void LU_rep(T*& A, T*& C, T*& PP, GlobalVars<T>& gv, int rank, int size) {
         MPI_Win_fence(0, A11Win);
         MPI_Barrier(lu_comm);
 
+        te = std::chrono::high_resolution_clock::now();
+        timers[2] += std::chrono::duration_cast<std::chrono::microseconds>( te - ts ).count();
+
+        ts = te;
 #ifdef DEBUG
         if (rank == 0) {
             std::cout << "Step 2 finished." << std::endl;
@@ -754,7 +758,10 @@ void LU_rep(T*& A, T*& C, T*& PP, GlobalVars<T>& gv, int rank, int size) {
         }
 
         MPI_Win_fence(0, A01Win);
+
         MPI_Barrier(lu_comm);
+        te = std::chrono::high_resolution_clock::now();
+        timers[3] += std::chrono::duration_cast<std::chrono::microseconds>( te - ts ).count();
 
 #ifdef DEBUG
         if (rank == 0) {
@@ -764,8 +771,7 @@ void LU_rep(T*& A, T*& C, T*& PP, GlobalVars<T>& gv, int rank, int size) {
         MPI_Barrier(lu_comm);
 #endif
 
-        te = std::chrono::high_resolution_clock::now();
-        timers[3] += std::chrono::duration_cast<std::chrono::microseconds>( te - ts ).count();
+        ts = te;
 
         // remove pivotal rows from matrix A10Buff and A11Buff
         // A10Buff
@@ -785,6 +791,10 @@ void LU_rep(T*& A, T*& C, T*& PP, GlobalVars<T>& gv, int rank, int size) {
         remove_pivotal_rows(A11Buff, n_local_active_rows, Nl, A11BuffTemp, curPivots);
         n_local_active_rows -= curPivots[0];
 
+        MPI_Barrier(lu_comm);
+        te = std::chrono::high_resolution_clock::now();
+        timers[4] += std::chrono::duration_cast<std::chrono::microseconds>( te - ts ).count();
+
 #ifdef DEBUG
         if (rank == 0) {
             std::cout << "A10Buff after row swapping" << std::endl;
@@ -792,8 +802,9 @@ void LU_rep(T*& A, T*& C, T*& PP, GlobalVars<T>& gv, int rank, int size) {
         }
 #endif
 
+        ts = te;
         // # ---------------------------------------------- #
-        // # 4. compute A10 and broadcast it to A10BuffRecv #
+        // # 5. compute A10 and broadcast it to A10BuffRecv #
         // # ---------------------------------------------- #
         if (pk == layrK && pj == k % sqrtp1) {
             // # this could basically be a sparse-dense A10 = A10 * U^(-1)   (BLAS tiangular solve) with A10 sparse and U dense
@@ -856,14 +867,19 @@ void LU_rep(T*& A, T*& C, T*& PP, GlobalVars<T>& gv, int rank, int size) {
 
         MPI_Win_fence(0, A10RcvWin);
         MPI_Barrier(lu_comm);
+        te = std::chrono::high_resolution_clock::now();
+        timers[5] += std::chrono::duration_cast<std::chrono::microseconds>( te - ts ).count();
+
 #ifdef DEBUG
         std::cout << "Step 4 finished." << std::endl;
         MPI_Barrier(lu_comm);
 #endif
 
+        ts = te;
+
         auto lld_A01 = Nl;
         // # ---------------------------------------------- #
-        // # 5. compute A01 and broadcast it to A01BuffRecv #
+        // # 6. compute A01 and broadcast it to A01BuffRecv #
         // # ---------------------------------------------- #
         // # here, only ranks which own data in A01Buff (step 3) participate
         if (pk == layrK && pi == k % sqrtp1) {
@@ -918,13 +934,19 @@ void LU_rep(T*& A, T*& C, T*& PP, GlobalVars<T>& gv, int rank, int size) {
         }
 
         MPI_Win_fence(0, A01RcvWin);
+
+        MPI_Barrier(lu_comm);
+        te = std::chrono::high_resolution_clock::now();
+        timers[6] += std::chrono::duration_cast<std::chrono::microseconds>( te - ts ).count();
+
 #ifdef DEBUG
         std::cout << "Step 5 finished." << std::endl;
         MPI_Barrier(lu_comm);
 #endif
 
+        ts = te;
         // # ---------------------------------------------- #
-        // # 6. compute A11  ------------------------------ #
+        // # 7. compute A11  ------------------------------ #
         // # ---------------------------------------------- #
         // # filter which rows of this tile should be processed:
         // rows = A11MaskBuff[p]
@@ -949,6 +971,10 @@ void LU_rep(T*& A, T*& C, T*& PP, GlobalVars<T>& gv, int rank, int size) {
         }
 #endif
         // std::exit(0);
+
+        MPI_Barrier(lu_comm);
+        te = std::chrono::high_resolution_clock::now();
+        timers[7] += std::chrono::duration_cast<std::chrono::microseconds>( te - ts ).count();
     }
 
 #ifdef DEBUG
