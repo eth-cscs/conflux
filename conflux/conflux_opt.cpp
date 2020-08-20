@@ -109,17 +109,19 @@ private:
     void CalculateParameters(long long inpN, long long inpP) {
         CalculateDecomposition(inpP, sqrtp1, c);
         // v = std::lcm(sqrtp1, c);
-        // v = 64;
-        // long long nLocalTiles = (long long) (std::ceil((double) inpN / (v * sqrtp1)));
-        // N = v * sqrtp1 * nLocalTiles;
+        v = 256;
+        long long nLocalTiles = (long long) (std::ceil((double) inpN / (v * sqrtp1)));
+        N = v * sqrtp1 * nLocalTiles;
         // std::cout << sqrtp1 << " " << c << std::endl << std::flush;
         // std::cout << v << " " << nLocalTiles << std::endl << std::flush;
+        /*
         v = 2;
         N = 16;
         sqrtp1 = 2;
         P = 8;
         p1 = 4;
         c = 2;
+        */
     }
 
     void InitMatrix() {
@@ -787,6 +789,11 @@ void LU_rep(T*& A, T*& C, T*& PP, GlobalVars<T>& gv, int rank, int size) {
         // curPivots -> 4, 0 (4th row with second-last and 0th row with the one)
         // last = n_local_active_rows
         // last(A11) = n_local_active_rows
+
+        // # -------------------------------------------------- #
+        // # 4. remove pivot rows from A10 and A11              #
+        // # -------------------------------------------------- #
+
         remove_pivotal_rows(A10Buff, n_local_active_rows, v, A10BuffTemp, curPivots);
         remove_pivotal_rows(A11Buff, n_local_active_rows, Nl, A11BuffTemp, curPivots);
         n_local_active_rows -= curPivots[0];
@@ -992,6 +999,7 @@ void LU_rep(T*& A, T*& C, T*& PP, GlobalVars<T>& gv, int rank, int size) {
     }
     */
 
+    MPI_Barrier(lu_comm);
     if (rank == 0) {
         auto t2 = std::chrono::high_resolution_clock::now();
         auto duration = std::chrono::duration_cast<std::chrono::microseconds>( t2 - t1 ).count();
