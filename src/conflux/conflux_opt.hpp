@@ -108,6 +108,7 @@ private:
         CalculateDecomposition(inpP, sqrtp1, c);
         // v = std::lcm(sqrtp1, c);
         // v = 256;
+        this->v = v;
         long long nLocalTiles = (long long) (std::ceil((double) inpN / (v * sqrtp1)));
         N = v * sqrtp1 * nLocalTiles;
         // std::cout << sqrtp1 << " " << c << std::endl << std::flush;
