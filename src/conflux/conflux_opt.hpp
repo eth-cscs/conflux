@@ -1004,8 +1004,8 @@ void LU_rep(T* A, T* C, T* PP, GlobalVars<T>& gv, int rank, int size) {
         auto duration = std::chrono::duration_cast<std::chrono::microseconds>( t2 - t1 ).count();
         std::cout << "Runtime: " << double(duration) / 1000000 << " seconds" << std::endl;
 
-        for (auto i = 0; i < 7; ++i) {
-            std::cout << "Runtime " << i + 1 << ": " << double(timers[i]) / 1000000 << " seconds" << std::endl;
+        for (auto i = 0; i < 8; ++i) {
+            std::cout << "Runtime " << i << ": " << double(timers[i]) / 1000000 << " seconds" << std::endl;
         }
     }
 
