@@ -5,6 +5,7 @@ add_library(conflux ${conflux_src_files})
 target_include_directories(conflux PUBLIC $<BUILD_INTERFACE:${conflux_SOURCE_DIR}/src>)
 target_compile_features(conflux PUBLIC cxx_std_14)
 target_link_libraries(conflux PUBLIC  MPI::MPI_CXX
+                                      OpenMP::OpenMP_CXX
                               PRIVATE ${BLAS_TARGET}
                                       ${SCALAPACK_TARGET}
                      )
