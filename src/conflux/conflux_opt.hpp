@@ -104,10 +104,10 @@ class GlobalVars {
 
 private:
 
-    void CalculateParameters(long long inpN, long long inpP) {
+    void CalculateParameters(long long inpN, long long v, long long inpP) {
         CalculateDecomposition(inpP, sqrtp1, c);
         // v = std::lcm(sqrtp1, c);
-        v = 256;
+        // v = 256;
         long long nLocalTiles = (long long) (std::ceil((double) inpN / (v * sqrtp1)));
         N = v * sqrtp1 * nLocalTiles;
         // std::cout << sqrtp1 << " " << c << std::endl << std::flush;
@@ -189,9 +189,9 @@ public:
     long long seed;
     T* matrix;
 
-    GlobalVars(long long inpN=16, long long inpP=8, long long inpSeed=42) {
+    GlobalVars(long long inpN, long long v, long long inpP, long long inpSeed=42) {
 
-        CalculateParameters(inpN, inpP);
+        CalculateParameters(inpN, v, inpP);
         P = sqrtp1 * sqrtp1 * c;
         nlayr = (long long)((v + c-1) / c);
         p1 = sqrtp1 * sqrtp1;
