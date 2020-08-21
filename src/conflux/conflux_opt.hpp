@@ -23,6 +23,9 @@ void mcopy(T* src, T* dst,
            int ssrow, int serow, int sscol, int secol, int sstride,
            int dsrow, int derow, int dscol, int decol, int dstride) {
     PE(mcopy);
+    assert(serow-ssrow == derow-dsrow);
+    assert(secol-sscol == decol-dscol);
+
     auto srow = ssrow;
     auto drow = dsrow;
     for (auto i = 0; i < serow - ssrow; ++i) {
@@ -337,7 +340,7 @@ void remove_pivotal_rows(std::vector<T>& mat,
 
     // extract kept_rows to temp
 #pragma omp parallel for
-    for (int i = 0; i < kept_rows.size(); ++i) {
+    for (unsigned i = 0; i < kept_rows.size(); ++i) {
         const auto& row = kept_rows[i];
         std::copy_n(&mat[row * n_cols], n_cols, &mat_temp[i * n_cols]);
     }
@@ -347,9 +350,9 @@ void remove_pivotal_rows(std::vector<T>& mat,
 }
 
 template <class T>
-void LU_rep(T* A, T* C, T* PP, GlobalVars<T>& gv, int rank, int size) {
+void LU_rep(T* A, T* C, T* PP, GlobalVars<T>& gv, MPI_Comm lu_comm) {
 
-    long long N, P, p1, sqrtp1, c, v, nlayr, Nt, tA11, tA10;
+    long long N, P, p1, sqrtp1, c, v, nlayr, Nt, tA11;
     N = gv.N;
     P = gv.P;
     p1 = gv.p1;
@@ -359,24 +362,19 @@ void LU_rep(T* A, T* C, T* PP, GlobalVars<T>& gv, int rank, int size) {
     nlayr = gv.nlayr;
     Nt = gv.Nt;
     tA11 = gv.tA11;
-    tA10 = gv.tA10;
+    // tA10 = gv.tA10;
     // local n
     auto Nl = tA11 * v;
 
-    // Make new communicator for P ranks
-    std::vector<int> participating_ranks(P);
-    for (auto i = 0; i < P; ++i) {
-        participating_ranks[i] = i;
-    }
-
-    MPI_Comm lu_comm = MPI_COMM_WORLD;
+    int rank;
+    MPI_Comm_rank(lu_comm, &rank);
 
     std::vector<T> B(N * N);
     std::copy(A, A + N * N, B.data());
 
     // Perm = np.eye(N);
     std::vector<int> Perm(N * N);
-    for (int i = 0; i < N; ++i) {
+    for (unsigned i = 0; i < N; ++i) {
         Perm[i * N + i] = 1;
     }
 
@@ -504,11 +502,9 @@ void LU_rep(T* A, T* C, T* PP, GlobalVars<T>& gv, int rank, int size) {
         // if (k == 1) break;
 
         bool last_step = k == Nt-1;
-        auto doprint = (k == 0);
-        auto printrank = (rank == 0);
 
         // global current offset
-        auto off = k * v;
+        // auto off = k * v;
         // local current offset
         auto loff = (k / sqrtp1) * v; // sqrtp1 = 2, k = 157
 
@@ -609,7 +605,7 @@ void LU_rep(T* A, T* C, T* PP, GlobalVars<T>& gv, int rank, int size) {
             }
             curPivots[0] = v;
 
-            for (int i = 0; i < ipiv.size(); ++i) {
+            for (unsigned i = 0; i < ipiv.size(); ++i) {
                 auto& a = curPivots[i+1];
                 auto& b = curPivots[ipiv[i]];
                 std::swap(a, b);
@@ -846,7 +842,7 @@ void LU_rep(T* A, T* C, T* PP, GlobalVars<T>& gv, int rank, int size) {
                 auto colStart = pk_rcv*nlayr;
                 auto colEnd   = (pk_rcv+1)*nlayr;
 
-                int offset = colStart * n_local_active_rows;
+                // int offset = colStart * n_local_active_rows;
                 int size = nlayr * n_local_active_rows; // nlayr = v / c
 
                 // copy [colStart, colEnd) columns of A10Buff -> A10BuffTemp densely
@@ -926,7 +922,7 @@ void LU_rep(T* A, T* C, T* PP, GlobalVars<T>& gv, int rank, int size) {
             for(int pk_rcv = 0; pk_rcv < c; ++pk_rcv) {
                 // # for the receive layer pk_rcv, its A01BuffRcv is formed by the following rows of A01Buff[p]
                 auto rowStart = pk_rcv * nlayr;
-                auto rowEnd = (pk_rcv + 1) * nlayr;
+                // auto rowEnd = (pk_rcv + 1) * nlayr;
                 // # all pjs receive the same data A11Buff[p, rows, colStart : colEnd]
                 for(int pi_rcv = 0; pi_rcv < sqrtp1; ++pi_rcv) {
                     const int n_cols = Nl - loff;

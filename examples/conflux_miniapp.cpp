@@ -45,16 +45,12 @@ int main(int argc, char *argv[]) {
               << ", sqrtp1: " << gv.sqrtp1 <<  ", Nt: " << gv.Nt
               << ", tA10 " << gv.tA10 << ", tA11: " << gv.tA11 << std::endl;
 
-    long long p, pi, pj, pk;
-    p2X(rank, gv.p1, gv.sqrtp1, pi, pj, pk);
-    p = X2p(pi, pj, pk, gv.p1, gv.sqrtp1);
-
     std::vector<double> C(gv.N * gv.N);
     std::vector<double> Perm(gv.N * gv.N);
 
     for (int i = 0; i < n_rep; ++i) {
         PC();
-        LU_rep<dtype>(gv.matrix, C.data(), Perm.data(), gv, rank, size);
+        LU_rep<dtype>(gv.matrix, C.data(), Perm.data(), gv, MPI_COMM_WORLD);
     }
 
     if (rank == 0) {
