@@ -37,3 +37,7 @@ add_subdirectory(libs/cxxopts)
 
 # miniapps
 add_subdirectory(examples)
+
+# tests
+add_subdirectory(tests)
+
