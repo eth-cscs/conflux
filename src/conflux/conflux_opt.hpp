@@ -823,25 +823,33 @@ void LU_rep(T* A, T* C, T* PP, GlobalVars<T>& gv, MPI_Comm comm) {
 
             // # -- BROADCAST -- #
             // # after compute, send it to sqrt(p1) * c processors
+#pragma omp parallel for
             for (int pk_rcv = 0; pk_rcv < c; ++pk_rcv) {
                 // # for the receive layer pk_rcv, its A10BuffRcv is formed by the following columns of A11Buff[p]
                 auto colStart = pk_rcv*nlayr;
                 auto colEnd   = (pk_rcv+1)*nlayr;
 
-                // int offset = colStart * n_local_active_rows;
+                int offset = colStart * n_local_active_rows;
                 int size = nlayr * n_local_active_rows; // nlayr = v / c
 
                 // copy [colStart, colEnd) columns of A10Buff -> A10BuffTemp densely
-                mcopy(A10Buff.data(), A10BuffTemp.data(), 
+                mcopy(A10Buff.data(), &A10BuffTemp[offset], 
                       0, n_local_active_rows, colStart, colEnd, v,
                       0, n_local_active_rows, 0, nlayr, nlayr);
+            }
+
+            for (int pk_rcv = 0; pk_rcv < c; ++pk_rcv) {
+                // # for the receive layer pk_rcv, its A10BuffRcv is formed by the following columns of A11Buff[p]
+                auto colStart = pk_rcv*nlayr;
+                auto colEnd   = (pk_rcv+1)*nlayr;
+
+                int offset = colStart * n_local_active_rows;
+                int size = nlayr * n_local_active_rows; // nlayr = v / c
 
                 // # all pjs receive the same data A11Buff[p, rows, colStart : colEnd]
                 for (int pj_rcv = 0; pj_rcv <  sqrtp1; ++pj_rcv) {
                     auto p_rcv = X2p(lu_comm, pi, pj_rcv, pk_rcv);
-                    // MPI_Put(&A11Buff[offset]), size, MPI_DOUBLE,
-                    //     p_rcv, 0, size, MPI_DOUBLE, A11Win);
-                    MPI_Put(&A10BuffTemp[0], size, MPI_DOUBLE,
+                    MPI_Put(&A10BuffTemp[offset], size, MPI_DOUBLE,
                         p_rcv, 0, size, MPI_DOUBLE, A10RcvWin);
                 }
             }
@@ -896,15 +904,6 @@ void LU_rep(T* A, T* C, T* PP, GlobalVars<T>& gv, MPI_Comm comm) {
                 mcopy(A01Buff.data(), A01BuffTemp.data(),
                       rowStart, rowEnd, loff, Nl, lld_A01,
                       rowStart, rowEnd, 0, Nl-loff, Nl-loff);
-                /*
-                for (int row = rowStart; row < rowEnd; ++row) {
-                    const int n_cols = Nl - loff;
-                    std::copy_n(&A01Buff[row * lld_A01 + loff], // A01Buff[row, loff]
-                                n_cols,
-                                &A01BuffTemp[row * n_cols]);
-                    // A01BuffTemp has received leading dimension
-                }
-                */
             }
 
             // # -- BROADCAST -- #
