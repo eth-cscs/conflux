@@ -63,16 +63,23 @@ void gr2gt(int gri, int v, int& gti, int& lri) {
     lri = gri % v;
 }
 
-std::tuple<int, int, int> p2X(MPI_Comm lu_comm, int rank) {
+std::tuple<int, int, int> p2X(MPI_Comm comm3D, int rank) {
     int coords[] = {-1, -1, -1};
-    MPI_Cart_coords(lu_comm, rank, 3, coords);
+    MPI_Cart_coords(comm3D, rank, 3, coords);
     return {coords[0], coords[1], coords[2]};
 }
 
-int X2p(MPI_Comm lu_comm, int pi, int pj, int pk) {
+int X2p(MPI_Comm comm3D, int pi, int pj, int pk) {
     int coords[] = {pi, pj, pk};
     int rank;
-    MPI_Cart_rank(lu_comm, coords, &rank);
+    MPI_Cart_rank(comm3D, coords, &rank);
+    return rank;
+}
+
+int X2p(MPI_Comm comm2D, int pi, int pj) {
+    int coords[] = {pi, pj};
+    int rank;
+    MPI_Cart_rank(comm2D, coords, &rank);
     return rank;
 }
 
@@ -360,8 +367,12 @@ void LU_rep(T* A, T* C, T* PP, GlobalVars<T>& gv, MPI_Comm comm) {
     int print_rank = X2p(lu_comm, 0, 0, 0);
 
     MPI_Comm k_comm;
-    int keep_dims[] = {0, 0, 1};
-    MPI_Cart_sub(lu_comm, keep_dims, &k_comm);
+    int keep_dims_k[] = {0, 0, 1};
+    MPI_Cart_sub(lu_comm, keep_dims_k, &k_comm);
+
+    MPI_Comm jk_comm;
+    int keep_dims_jk[] = {0, 1, 1};
+    MPI_Cart_sub(lu_comm, keep_dims_jk, &jk_comm);
 
     std::vector<T> B(N * N);
     std::copy(A, A + N * N, B.data());
@@ -445,17 +456,12 @@ void LU_rep(T* A, T* C, T* PP, GlobalVars<T>& gv, MPI_Comm comm) {
                                       A01BuffRcv.data(),
                                       A01BuffRcv.size(),
                                       true);
-    MPI_Win curPivotsWin = create_window<int>(lu_comm,
-                                     curPivots.data(),
-                                     curPivots.size(),
-                                     true);
 
     // Sync all windows
     MPI_Win_fence(MPI_MODE_NOPRECEDE, A11Win);
     MPI_Win_fence(MPI_MODE_NOPRECEDE, A10RcvWin);
     MPI_Win_fence(MPI_MODE_NOPRECEDE, A01Win);
     MPI_Win_fence(MPI_MODE_NOPRECEDE, A01RcvWin);
-    MPI_Win_fence(MPI_MODE_NOPRECEDE, curPivotsWin);
 
     int timers[8] = {0};
 
@@ -534,17 +540,6 @@ void LU_rep(T* A, T* C, T* PP, GlobalVars<T>& gv, MPI_Comm comm) {
                 MPI_Reduce(&A10Buff[0], &A10Buff[0], n_local_active_rows * v,
                            MPI_DOUBLE, MPI_SUM, layrK, k_comm);
             }
-            // here it's guaranteed that rank != p_rcv because pk != layrK
-            // transpose matrix A11Buff for easier sending
-            /*
-            if (pk != layrK) {
-                MPI_Accumulate(&A10Buff[0], n_local_active_rows * v, 
-                               MPI_DOUBLE,
-                               p_rcv, 0, n_local_active_rows * v, 
-                               MPI_DOUBLE,
-                               MPI_SUM, A10Win);
-            }
-            */
         }
 
  #ifdef DEBUG
@@ -572,7 +567,7 @@ void LU_rep(T* A, T* C, T* PP, GlobalVars<T>& gv, MPI_Comm comm) {
         ts = std::chrono::high_resolution_clock::now();
 
         int zero = 0;
-        if (k % sqrtp1 == pi && k % sqrtp1 == pj && pk == 0) {
+        if (k % sqrtp1 == pi && k % sqrtp1 == pj && pk == layrK) {
 #ifdef DEBUG
             if (k == chosen_step) {
                 std::cout << "A10Buff before copy" << std::endl;
@@ -618,13 +613,11 @@ void LU_rep(T* A, T* C, T* PP, GlobalVars<T>& gv, MPI_Comm comm) {
                 std::swap(a, b);
             }
 
-            // std::sort(&curPivots[1], &curPivots[v + 1]);
 #ifdef DEBUG
             if (k == chosen_step) {
                 print_matrix(curPivots.data(), 0, 1,  0, v+1, v+1);
             }
 #endif
-
             mkl_domatcopy('R', 'N',
                            v, v,
                            1.0,
@@ -636,47 +629,8 @@ void LU_rep(T* A, T* C, T* PP, GlobalVars<T>& gv, MPI_Comm comm) {
                 print_matrix(A00Buff.data(), 0, v, 0, v, v);
             }
 #endif
-            if (!last_step) {
-                // # In round robin fashion, only one rank chooses pivots among its local rows
-                // # -------------------------- #
-                // # !!!!! COMMUNICATION !!!!!! #
-#ifdef DEBUG
-                std::cout << "rank = " << X2p(lu_comm, pi, pj, pk) << std::endl;
-                std::cout << "before sending pivots" << std::endl;
-#endif
-                // # Sending pivots:
-                for (int pj_rcv = 0; pj_rcv < sqrtp1; ++pj_rcv) {
-                    for (int pk_rcv = 0; pk_rcv < c; ++pk_rcv) {
-                        int p_rcv = X2p(lu_comm, pi, pj_rcv, pk_rcv);
-                        if (rank != p_rcv) 
-                            MPI_Put(&curPivots[0], v+1, MPI_INT, p_rcv, 0, v+1, MPI_INT, curPivotsWin);
-                    }
-                }
-#ifdef DEBUG
-                std::cout << "after sending pivots" << std::endl;
-                std::cout << "before sending zero" << std::endl;
-#endif
-                for (int pi_rcv = 0; pi_rcv < sqrtp1; ++pi_rcv) {
-                    if (pi != pi_rcv) {
-                        for (int pj_rcv = 0; pj_rcv < sqrtp1; ++pj_rcv) {
-                            for (int pk_rcv = 0; pk_rcv < c; ++pk_rcv) {
-                                auto p_rcv = X2p(lu_comm, pi_rcv, pj_rcv, pk_rcv);
-#ifdef DEBUG
-                                if (k == chosen_step) {
-                                    std::cout << "rank = " << p_rcv << std::endl;
-                                }
-#endif
-                                MPI_Put(&zero, 1, MPI_INT, p_rcv, 0, 1, MPI_INT, curPivotsWin);
-                            }
-                        }
-                    }
-                }
-#ifdef DEBUG
-                if (k == chosen_step) {
-                    std::cout << "after sending zero" << std::endl;
-                }
-#endif
-            }
+        } else if (pi != k % sqrtp1) {
+            curPivots[0] = 0;
         }
 
         // BCast is a collective, must be called from all the rank
@@ -684,9 +638,13 @@ void LU_rep(T* A, T* C, T* PP, GlobalVars<T>& gv, MPI_Comm comm) {
             auto root = X2p(lu_comm, k % sqrtp1, k % sqrtp1, 0);
             // # Sending A00Buff:
             MPI_Bcast(&A00Buff[0], v * v, MPI_DOUBLE, root, lu_comm);
-        }
 
-        MPI_Win_fence(0, curPivotsWin);
+            if (pi == k % sqrtp1) {
+                auto pivot_root = X2p(jk_comm, k % sqrtp1, layrK);
+                // # Sending pivots:
+                MPI_Bcast(&curPivots[0], v+1, MPI_INT, pivot_root, jk_comm);
+            }
+        }
 
         if (last_step) break;
 
@@ -1053,5 +1011,4 @@ void LU_rep(T* A, T* C, T* PP, GlobalVars<T>& gv, MPI_Comm comm) {
     MPI_Win_free(&A10RcvWin);
     MPI_Win_free(&A01Win);
     MPI_Win_free(&A01RcvWin);
-    MPI_Win_free(&curPivotsWin);
 }
