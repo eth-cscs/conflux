@@ -563,9 +563,7 @@ void LU_rep(T* A, T* C, T* PP, GlobalVars<T>& gv, MPI_Comm comm) {
         // # --------------------------------------------------------------------- #
         // # 1. coalesce PivotA11ReductionBuff to PivotBuff and scatter to A10buff #
         // # --------------------------------------------------------------------- #
-        MPI_Barrier(lu_comm);
-        ts = std::chrono::high_resolution_clock::now();
-
+        ts = te;
         int zero = 0;
         if (k % sqrtp1 == pi && k % sqrtp1 == pj && pk == layrK) {
 #ifdef DEBUG
@@ -978,6 +976,12 @@ void LU_rep(T* A, T* C, T* PP, GlobalVars<T>& gv, MPI_Comm comm) {
         te = std::chrono::high_resolution_clock::now();
         timers[7] += std::chrono::duration_cast<std::chrono::microseconds>( te - ts ).count();
     }
+
+    MPI_Win_fence(MPI_MODE_NOSUCCEED, A11Win);
+    MPI_Win_fence(MPI_MODE_NOSUCCEED, A10RcvWin);
+    MPI_Win_fence(MPI_MODE_NOSUCCEED, A01Win);
+    MPI_Win_fence(MPI_MODE_NOSUCCEED, A01RcvWin);
+
 
 #ifdef DEBUG
     std::cout << "rank: " << X2p(lu_comm, pi, pj, pk) <<", Finished everything" << std::endl;
