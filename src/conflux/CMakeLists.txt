@@ -12,7 +12,7 @@ target_link_libraries(conflux PUBLIC  MPI::MPI_CXX
 # target_compile_definitions(conflux_opt PRIVATE "VALIDATE")
 
 if(CONFLUX_WITH_PROFILING)
-    target_link_libraries(conflux PRIVATE semiprof)
-    target_compile_definitions(conflux PRIVATE CONFLUX_WITH_PROFILING)
+    target_link_libraries(conflux PUBLIC semiprof)
+    target_compile_definitions(conflux PUBLIC CONFLUX_WITH_PROFILING)
 endif()
 
