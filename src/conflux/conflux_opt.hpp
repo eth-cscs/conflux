@@ -373,10 +373,6 @@ void LU_rep(T* A, T* C, T* PP, GlobalVars<T>& gv, MPI_Comm comm) {
     int keep_dims_jk[] = {0, 1, 1};
     MPI_Cart_sub(lu_comm, keep_dims_jk, &jk_comm);
 
-    MPI_Comm ij_comm;
-    int keep_dims_ij[] = {1, 1, 0};
-    MPI_Cart_sub(lu_comm, keep_dims_ij, &ij_comm);
-
     std::vector<T> B(N * N);
     std::copy(A, A + N * N, B.data());
 
@@ -472,7 +468,7 @@ void LU_rep(T* A, T* C, T* PP, GlobalVars<T>& gv, MPI_Comm comm) {
     # ---------------------------------------------- #
     */
 
-    auto chosen_step = Nt;
+    auto chosen_step = 1;
 
     MPI_Barrier(lu_comm);
     auto t1 = std::chrono::high_resolution_clock::now();
@@ -492,7 +488,7 @@ void LU_rep(T* A, T* C, T* PP, GlobalVars<T>& gv, MPI_Comm comm) {
         auto loff = (k / sqrtp1) * v; // sqrtp1 = 2, k = 157
 
         // # in this step, layrK is the "lucky" one to receive all reduces
-        auto layrK = k % c; // dist(eng);
+        auto layrK = 0; // dist(eng);
 
         // layrK = 0;
         // if (k == 0) layrK = 0;
