@@ -447,24 +447,14 @@ void LU_rep(T* A, T* C, T* PP, GlobalVars<T>& gv, MPI_Comm comm) {
                                    A11Buff.data(),
                                    A11Buff.size(),
                                    true);
-    MPI_Win A10RcvWin = create_window(lu_comm,
-                                      A10BuffRcv.data(),
-                                      A10BuffRcv.size(),
-                                      true);
     MPI_Win A01Win = create_window(lu_comm,
                                    A01Buff.data(),
                                    A01Buff.size(),
                                    true);
-    MPI_Win A01RcvWin = create_window(lu_comm,
-                                      A01BuffRcv.data(),
-                                      A01BuffRcv.size(),
-                                      true);
 
     // Sync all windows
     MPI_Win_fence(MPI_MODE_NOPRECEDE, A11Win);
-    MPI_Win_fence(MPI_MODE_NOPRECEDE, A10RcvWin);
     MPI_Win_fence(MPI_MODE_NOPRECEDE, A01Win);
-    MPI_Win_fence(MPI_MODE_NOPRECEDE, A01RcvWin);
 
     int timers[8] = {0};
 
@@ -502,7 +492,7 @@ void LU_rep(T* A, T* C, T* PP, GlobalVars<T>& gv, MPI_Comm comm) {
         auto loff = (k / sqrtp1) * v; // sqrtp1 = 2, k = 157
 
         // # in this step, layrK is the "lucky" one to receive all reduces
-        auto layrK = 0; // dist(eng);
+        auto layrK = k % c; // dist(eng);
 
         // layrK = 0;
         // if (k == 0) layrK = 0;
@@ -804,6 +794,9 @@ void LU_rep(T* A, T* C, T* PP, GlobalVars<T>& gv, MPI_Comm comm) {
         }
 #endif
 
+        MPI_Request reqs[2 * c * sqrtp1 +  2];
+        int req_id = 0;
+
         ts = te;
         // # ---------------------------------------------- #
         // # 5. compute A10 and broadcast it to A10BuffRecv #
@@ -879,17 +872,20 @@ void LU_rep(T* A, T* C, T* PP, GlobalVars<T>& gv, MPI_Comm comm) {
                 // # all pjs receive the same data A11Buff[p, rows, colStart : colEnd]
                 for (int pj_rcv = 0; pj_rcv <  sqrtp1; ++pj_rcv) {
                     auto p_rcv = X2p(lu_comm, pi, pj_rcv, pk_rcv);
-                    MPI_Put(&A10BuffTemp[offset], size, MPI_DOUBLE,
-                        p_rcv, 0, size, MPI_DOUBLE, A10RcvWin);
+                    MPI_Isend(&A10BuffTemp[offset], size, MPI_DOUBLE, 
+                              p_rcv, 5, lu_comm, &reqs[req_id]);
+                    ++req_id;
                 }
             }
             PL();
         }
 
-        PE(step5_fence);
-        MPI_Win_fence(0, A10RcvWin);
-        PL();
-        MPI_Barrier(lu_comm);
+        auto p_send = X2p(lu_comm, pi, k % sqrtp1, layrK);
+        int size = nlayr * n_local_active_rows; // nlayr = v / c
+        MPI_Irecv(&A10BuffRcv[0], size, MPI_DOUBLE, 
+                  p_send, 5, lu_comm, &reqs[req_id]);
+        ++req_id;
+
         te = std::chrono::high_resolution_clock::now();
         timers[5] += std::chrono::duration_cast<std::chrono::microseconds>( te - ts ).count();
 
@@ -954,20 +950,25 @@ void LU_rep(T* A, T* C, T* PP, GlobalVars<T>& gv, MPI_Comm comm) {
                 for(int pi_rcv = 0; pi_rcv < sqrtp1; ++pi_rcv) {
                     const int n_cols = Nl - loff;
                     auto p_rcv = X2p(lu_comm, pi_rcv, pj, pk_rcv);
-                    MPI_Put(&A01BuffTemp[rowStart * n_cols],
-                            nlayr * n_cols, MPI_DOUBLE,
-                            p_rcv, 0, nlayr * n_cols, 
-                            MPI_DOUBLE, A01RcvWin);
+                    MPI_Isend(&A01BuffTemp[rowStart * n_cols],
+                              nlayr * n_cols, MPI_DOUBLE,
+                              p_rcv, 6, lu_comm, &reqs[req_id]);
+                    ++req_id;
                 }
             }
             PL();
         }
 
-        PE(step6_fence);
-        MPI_Win_fence(0, A01RcvWin);
+        p_send = X2p(lu_comm, k % sqrtp1, pj, layrK);
+        size = nlayr * (Nl-loff); // nlayr = v / c
+        MPI_Irecv(&A01BuffRcv[0], size, MPI_DOUBLE, 
+                  p_send, 6, lu_comm, &reqs[req_id]);
+        ++req_id;
+
+        PE(step56_recv);
+        MPI_Waitall(req_id, reqs, MPI_STATUSES_IGNORE);
         PL();
 
-        MPI_Barrier(lu_comm);
         te = std::chrono::high_resolution_clock::now();
         timers[6] += std::chrono::duration_cast<std::chrono::microseconds>( te - ts ).count();
 
@@ -1017,15 +1018,12 @@ void LU_rep(T* A, T* C, T* PP, GlobalVars<T>& gv, MPI_Comm comm) {
         }
 #endif
 
-        MPI_Barrier(lu_comm);
         te = std::chrono::high_resolution_clock::now();
         timers[7] += std::chrono::duration_cast<std::chrono::microseconds>( te - ts ).count();
     }
 
     MPI_Win_fence(MPI_MODE_NOSUCCEED, A11Win);
-    MPI_Win_fence(MPI_MODE_NOSUCCEED, A10RcvWin);
     MPI_Win_fence(MPI_MODE_NOSUCCEED, A01Win);
-    MPI_Win_fence(MPI_MODE_NOSUCCEED, A01RcvWin);
 
 
 #ifdef DEBUG
@@ -1056,9 +1054,7 @@ void LU_rep(T* A, T* C, T* PP, GlobalVars<T>& gv, MPI_Comm comm) {
 
     // Delete all windows
     MPI_Win_free(&A11Win);
-    MPI_Win_free(&A10RcvWin);
     MPI_Win_free(&A01Win);
-    MPI_Win_free(&A01RcvWin);
 
     for (int i = 0; i < P; ++i) {
         if (i == rank) {
