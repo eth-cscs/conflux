@@ -745,10 +745,10 @@ void LU_rep(T* A, T* C, T* PP, GlobalVars<T>& gv, MPI_Comm comm) {
                 auto offset = curPivOrder[i];
                 auto origin_dspls = pivot * Nl + loff;
                 auto origin_ptr = &A11Buff[origin_dspls];
-                auto size = Nl - loff;
-                auto dest_dspls = offset * Nl + loff;
-                MPI_Put(origin_ptr, size, MPI_DOUBLE,
-                        p_rcv, dest_dspls, size, MPI_DOUBLE,
+                auto n_col = Nl - loff;
+                auto dest_dspls = offset * (n_col);
+                MPI_Put(origin_ptr, n_col, MPI_DOUBLE,
+                        p_rcv, dest_dspls, n_col, MPI_DOUBLE,
                         A01Win);
             }
         }
@@ -918,7 +918,7 @@ void LU_rep(T* A, T* C, T* PP, GlobalVars<T>& gv, MPI_Comm comm) {
 
         ts = te;
 
-        auto lld_A01 = Nl;
+        auto lld_A01 = Nl-loff;
         // # ---------------------------------------------- #
         // # 6. compute A01 and broadcast it to A01BuffRecv #
         // # ---------------------------------------------- #
@@ -936,7 +936,7 @@ void LU_rep(T* A, T* C, T* PP, GlobalVars<T>& gv, MPI_Comm comm) {
                    1.0, // alpha
                    &A00Buff[0], // triangular A
                    v, // leading dim triangular
-                   &A01Buff[loff], // A01
+                   &A01Buff[0], // A01
                    lld_A01); // leading dim of A01
             PL();
 
@@ -944,6 +944,7 @@ void LU_rep(T* A, T* C, T* PP, GlobalVars<T>& gv, MPI_Comm comm) {
             // # local reshuffle before broadcast
             // pack all the data for each rank
             // extract rows [rowStart, rowEnd) and cols [loff, Nl)
+            /*
 #pragma omp parallel for
             for(int pk_rcv = 0; pk_rcv < c; ++pk_rcv) {
                 // # for the receive layer pk_rcv, its A01BuffRcv is formed by the following rows of A01Buff[p]
@@ -954,6 +955,7 @@ void LU_rep(T* A, T* C, T* PP, GlobalVars<T>& gv, MPI_Comm comm) {
                       rowStart, rowEnd, loff, Nl, lld_A01,
                       rowStart, rowEnd, 0, Nl-loff, Nl-loff);
             }
+            */
             PL();
 
             PE(step6_comm);
@@ -967,7 +969,7 @@ void LU_rep(T* A, T* C, T* PP, GlobalVars<T>& gv, MPI_Comm comm) {
                 for(int pi_rcv = 0; pi_rcv < sqrtp1; ++pi_rcv) {
                     const int n_cols = Nl - loff;
                     auto p_rcv = X2p(lu_comm, pi_rcv, pj, pk_rcv);
-                    MPI_Isend(&A01BuffTemp[rowStart * n_cols],
+                    MPI_Isend(&A01Buff[rowStart * n_cols],
                               nlayr * n_cols, MPI_DOUBLE,
                               p_rcv, 6, lu_comm, &reqs[req_id]);
                     ++req_id;
