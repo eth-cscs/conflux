@@ -28,6 +28,7 @@ void mcopy(T* src, T* dst,
 
     auto srow = ssrow;
     auto drow = dsrow;
+
     for (auto i = 0; i < serow - ssrow; ++i) {
         std::copy(&src[srow * sstride + sscol],
                   &src[srow * sstride + secol],
@@ -309,7 +310,7 @@ void remove_pivotal_rows(std::vector<T>& mat,
     auto n_pivots = pivots[0];
     std::sort(&pivots[1], &pivots[n_pivots+1]);
 
-    // check which rows should be extracted
+    /*
     std::vector<int> kept_rows;
     int prev_pivot = -1;
     for (int i = 0; i < pivots[0]; ++i) {
@@ -324,12 +325,32 @@ void remove_pivotal_rows(std::vector<T>& mat,
     for (int i = prev_pivot + 1; i < n_rows; ++i) {
         kept_rows.push_back(i);
     }
+    */
+
+    // check which rows should be extracted
+    // mask[i] = 1 means i-th row should be kept
+    std::vector<int> mask(n_rows);
+    int pivot_idx = 0;
+    for (int i = 0; i < n_rows; ++i) {
+        while (pivots[pivot_idx] < i) pivot_idx++;
+        if (pivots[pivot_idx] != i) {
+            mask[i] = 1;
+        }
+    }
+
+    // perform the prefix-sum (exclusive-scan)
+    std::vector<int> prefix_sum(n_rows);
+    for (int i = 1; i < n_rows; ++i) {
+        prefix_sum[i] = prefix_sum[i-1] + mask[i-1];
+    }
 
     // extract kept_rows to temp
 #pragma omp parallel for
-    for (unsigned i = 0; i < kept_rows.size(); ++i) {
-        const auto& row = kept_rows[i];
-        std::copy_n(&mat[row * n_cols], n_cols, &mat_temp[i * n_cols]);
+    for (unsigned i = 0; i < n_rows; ++i) {
+        if (mask[i] == 1) {
+            std::copy_n(&mat[i * n_cols], n_cols, 
+                        &mat_temp[prefix_sum[i] * n_cols]);
+        }
     }
 
     // swap temp with mat
