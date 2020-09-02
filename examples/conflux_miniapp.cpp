@@ -45,8 +45,12 @@ int main(int argc, char *argv[]) {
               << ", sqrtp1: " << gv.sqrtp1 <<  ", Nt: " << gv.Nt
               << ", tA10 " << gv.tA10 << ", tA11: " << gv.tA11 << std::endl;
 
+    /*
     std::vector<double> C(gv.N * gv.N);
     std::vector<double> Perm(gv.N * gv.N);
+    */
+    std::vector<double> C;
+    std::vector<double> Perm;
 
     for (int i = 0; i < n_rep; ++i) {
         PC();

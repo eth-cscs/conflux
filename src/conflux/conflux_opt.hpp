@@ -116,6 +116,8 @@ private:
 
     void CalculateParameters(int inpN, int v, int inpP) {
         CalculateDecomposition(inpP, sqrtp1, c);
+        sqrtp1 = 4;
+        c = 2;
         // v = std::lcm(sqrtp1, c);
         // v = 256;
         this->v = v;
@@ -208,7 +210,7 @@ public:
         p1 = sqrtp1 * sqrtp1;
 
         seed = inpSeed;
-        InitMatrix();
+        // InitMatrix();
 
         Nt = (int) (std::ceil((double) N / v));
         t = (int) (std::ceil((double) Nt / sqrtp1)) + 1ll;
@@ -306,12 +308,14 @@ template <typename T>
 void remove_pivotal_rows(std::vector<T>& mat,
                          int n_rows, int n_cols,
                          std::vector<T>& mat_temp,
-                         std::vector<int> pivots) {
+                         std::vector<int> pivots,
+                         int new_n_cols) {
     auto n_pivots = pivots[0];
     std::sort(&pivots[1], &pivots[n_pivots+1]);
 
     /*
     std::vector<int> kept_rows;
+    kept_rows.reserve(n_rows);
     int prev_pivot = -1;
     for (int i = 0; i < pivots[0]; ++i) {
         int pivot = pivots[i + 1];
@@ -324,6 +328,12 @@ void remove_pivotal_rows(std::vector<T>& mat,
     // iterate from the last pivot to the end of the rows
     for (int i = prev_pivot + 1; i < n_rows; ++i) {
         kept_rows.push_back(i);
+    }
+
+#pragma omp parallel for
+    for (int i = 0; i < kept_rows.size(); ++i) {
+        std::copy_n(&mat[kept_rows[i] * n_cols], n_cols, 
+                    &mat_temp[i * n_cols]);
     }
     */
 
@@ -344,12 +354,14 @@ void remove_pivotal_rows(std::vector<T>& mat,
         prefix_sum[i] = prefix_sum[i-1] + mask[i-1];
     }
 
+    int row_offset = n_cols - new_n_cols;
+
     // extract kept_rows to temp
 #pragma omp parallel for
     for (unsigned i = 0; i < n_rows; ++i) {
         if (mask[i] == 1) {
-            std::copy_n(&mat[i * n_cols], n_cols, 
-                        &mat_temp[prefix_sum[i] * n_cols]);
+            std::copy_n(&mat[i * n_cols + row_offset], new_n_cols, 
+                        &mat_temp[prefix_sum[i] * new_n_cols]);
         }
     }
 
@@ -377,7 +389,7 @@ void LU_rep(T* A, T* C, T* PP, GlobalVars<T>& gv, MPI_Comm comm) {
 
     MPI_Comm lu_comm;
     int dim[] = {sqrtp1, sqrtp1, c}; // 3D processor grid
-    int period[] = {0, 0};
+    int period[] = {0, 0, 0};
     int reorder = 1;
     MPI_Cart_create(comm, 3, dim, period, reorder, &lu_comm);
 
@@ -394,14 +406,18 @@ void LU_rep(T* A, T* C, T* PP, GlobalVars<T>& gv, MPI_Comm comm) {
     int keep_dims_jk[] = {0, 1, 1};
     MPI_Cart_sub(lu_comm, keep_dims_jk, &jk_comm);
 
+    /*
     std::vector<T> B(N * N);
     std::copy(A, A + N * N, B.data());
+    */
 
     // Perm = np.eye(N);
+    /*
     std::vector<int> Perm(N * N);
     for (unsigned i = 0; i < N; ++i) {
         Perm[i * N + i] = 1;
     }
+    */
 
     // Create buffers
     std::vector<T> A00Buff(v * v);
@@ -415,6 +431,7 @@ void LU_rep(T* A, T* C, T* PP, GlobalVars<T>& gv, MPI_Comm comm) {
     std::vector<T> A11BuffTemp(Nl * Nl);
 
     int n_local_active_rows = Nl;
+    int n_local_active_cols = Nl;
 
     std::vector<int> curPivots(Nl + 1);
     std::vector<int> ipiv(v);
@@ -438,6 +455,7 @@ void LU_rep(T* A, T* C, T* PP, GlobalVars<T>& gv, MPI_Comm comm) {
 
     // # we distribute only A11, as anything else depends on the first pivots
 
+    /*
     // # ----- A11 ------ #
     // # only layer pk == 0 owns initial data
     if (pk == 0) {
@@ -451,6 +469,7 @@ void LU_rep(T* A, T* C, T* PP, GlobalVars<T>& gv, MPI_Comm comm) {
             }
         }
     }
+    */
 #ifdef DEBUG
     if (rank == print_rank) {
         print_matrix(A11Buff.data(), 0, Nl, 0, Nl, Nl);
@@ -541,7 +560,7 @@ void LU_rep(T* A, T* C, T* PP, GlobalVars<T>& gv, MPI_Comm comm) {
             mkl_domatcopy('R', 'N',
                            n_local_active_rows, v,
                            1.0,
-                           &A11Buff[loff], Nl,
+                           &A11Buff[0], n_local_active_cols,
                            &A10Buff[0], v); 
             PL();
 
@@ -708,7 +727,7 @@ void LU_rep(T* A, T* C, T* PP, GlobalVars<T>& gv, MPI_Comm comm) {
             auto p_rcv = X2p(lu_comm, pi, pj, layrK);
             for (int i = 0; i < curPivots[0]; ++i) {
                 int pivot_row = curPivots[i+1];
-                auto offset = loff + pivot_row * Nl;
+                auto offset = pivot_row * (Nl-loff);
                 MPI_Accumulate(&A11Buff[offset], v, MPI_DOUBLE,
                                p_rcv, offset, v, MPI_DOUBLE,
                                MPI_SUM, A11Win);
@@ -727,7 +746,7 @@ void LU_rep(T* A, T* C, T* PP, GlobalVars<T>& gv, MPI_Comm comm) {
         if (k == chosen_step) {
             if (rank == print_rank) {
                 std::cout << "Step 2 finished." << std::endl;
-                print_matrix(A11Buff.data(), 0, n_local_active_rows, 0, Nl, Nl);
+                print_matrix(A11Buff.data(), 0, n_local_active_rows, 0, n_local_active_cols, n_local_active_cols);
             }
             MPI_Barrier(lu_comm);
         }
@@ -743,10 +762,10 @@ void LU_rep(T* A, T* C, T* PP, GlobalVars<T>& gv, MPI_Comm comm) {
             for (int i = 0; i < curPivots[0]; ++i) {
                 auto pivot = curPivots[i+1];
                 auto offset = curPivOrder[i];
-                auto origin_dspls = pivot * Nl + loff;
+                auto origin_dspls = pivot * n_local_active_cols;
                 auto origin_ptr = &A11Buff[origin_dspls];
                 auto n_col = Nl - loff;
-                auto dest_dspls = offset * (n_col);
+                auto dest_dspls = offset * n_col;
                 MPI_Put(origin_ptr, n_col, MPI_DOUBLE,
                         p_rcv, dest_dspls, n_col, MPI_DOUBLE,
                         A01Win);
@@ -793,9 +812,10 @@ void LU_rep(T* A, T* C, T* PP, GlobalVars<T>& gv, MPI_Comm comm) {
         // # -------------------------------------------------- #
 
         PE(step4);
-        remove_pivotal_rows(A10Buff, n_local_active_rows, v, A10BuffTemp, curPivots);
-        remove_pivotal_rows(A11Buff, n_local_active_rows, Nl, A11BuffTemp, curPivots);
+        remove_pivotal_rows(A10Buff, n_local_active_rows, v, A10BuffTemp, curPivots, v);
+        remove_pivotal_rows(A11Buff, n_local_active_rows, n_local_active_cols, A11BuffTemp, curPivots, Nl-loff);
         n_local_active_rows -= curPivots[0];
+        n_local_active_cols = Nl-loff;
         PL();
 
         MPI_Barrier(lu_comm);
@@ -1020,7 +1040,7 @@ void LU_rep(T* A, T* C, T* PP, GlobalVars<T>& gv, MPI_Comm comm) {
                     n_local_active_rows, Nl - loff, nlayr,
                     -1.0, &A10BuffRcv[0], nlayr,
                     &A01BuffRcv[0], Nl-loff,
-                    1.0, &A11Buff[loff], Nl);
+                    1.0, &A11Buff[0], n_local_active_cols);
         PL();
 #ifdef DEBUG
         if (k == chosen_step) {
@@ -1075,6 +1095,7 @@ void LU_rep(T* A, T* C, T* PP, GlobalVars<T>& gv, MPI_Comm comm) {
     MPI_Win_free(&A11Win);
     MPI_Win_free(&A01Win);
 
+    /*
     for (int i = 0; i < P; ++i) {
         if (i == rank) {
             std::cout << "Rank = " << rank << std::endl;
@@ -1082,4 +1103,5 @@ void LU_rep(T* A, T* C, T* PP, GlobalVars<T>& gv, MPI_Comm comm) {
         }
         MPI_Barrier(lu_comm);
     }
+    */
 }
