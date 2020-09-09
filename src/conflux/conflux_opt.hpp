@@ -357,6 +357,97 @@ void remove_pivotal_rows(std::vector<T>& mat,
     mat.swap(mat_temp);
 }
 
+template <typename T>
+void LUP(int n_local_active_rows, int v, 
+         T* pivotBuff, T* candidatePivotBuff, 
+         int* ipiv, int* perm) {
+    // reset the values
+    for (int i = 0; i < v; ++i) {
+        perm[i] = i;
+    }
+
+    mkl_domatcopy('R', 'N',
+                   n_local_active_rows, v,
+                   1.0,
+                   &candidatePivotBuff[0], v,
+                   &pivotBuff[0], v);
+
+    LAPACKE_dgetrf(LAPACK_ROW_MAJOR, n_local_active_rows, v, 
+                   pivotBuff.data(), v, ipiv.data());
+
+    // ipiv -> permutation
+    for (int i = 0; i < std::min(v, n_local_active_rows); ++i) {
+        std::swap(&perm[i], &perm[ipiv[i]]);
+    }
+}
+
+
+template <typename T>
+void tournament_rounds(int n_local_active_rows, int v, 
+         T* pivotBuff, T* candidatePivotBuff,
+         int* perm,
+         int n_rounds) {
+
+    for (int r = 0; r < n_rounds; ++r) {
+        auto src_pi = std::min(flipbit(pi, r), sqrtp1 - 1);
+        auto p_send = X2p(pi, pj, pk);
+        auto p_rcv = X2p(src_pi, pj, pk);
+
+        if (src_pi < pi) {
+            // rank -> pi, pj, pk -> src_pi, pj, pk -> rank_recv
+            MPI_Sendrecv(&candidatePivotBuff[v*v], v*v, MPI_DOUBLE,
+                         p_rcv, 2,
+                         &candidatePivotBuff[0], v*v, MPI_DOUBLE,
+                         p_send, 2,
+                         lu_comm, MPI_STATUS_IGNORE);
+        } else {
+            MPI_Sendrecv(&candidatePivotBuff[0], v*v, MPI_DOUBLE,
+                         p_rcv, 2,
+                         &candidatePivotBuff[v*v], v*v, MPI_DOUBLE,
+                         p_send, 2,
+                         lu_comm, MPI_STATUS_IGNORE);
+        }
+
+        LUP(n_local_active_rows, v, pivotBuff, candidatePivotBuff, ipiv, perm);
+
+        // if final round
+        if (r == n_rounds - 1) {
+#pragma omp parallel for
+            for (int i = 0; i < v; ++i) {
+                std::copy_n(&candidatePivotBuff[perm[i]*v],
+                          v,
+                          &candidatePivotBuff[v*i]);
+            }
+
+            // just the top v rows
+            mkl_domatcopy('R', 'N',
+                           v, v,
+                           1.0,
+                           &pivotBuff[0], v,
+                           &A00Buff[0], v);
+        } else {
+            auto src_pi = std::min(flipbit(pi, r+1), sqrtp1 - 1);
+            auto p_send = X2p(pi, pj, pk);
+            auto p_rcv = X2p(src_pi, pj, pk);
+            if (src_pi < pi) {
+#pragma omp parallel for
+                for (int i = 0; i < v; ++i) {
+                    std::copy_n(&candidatePivotBuff[perm[i]*v],
+                              v,
+                              &candidatePivotBuff[v*(v+i)]);
+                }
+            } else {
+#pragma omp parallel for
+                for (int i = 0; i < v; ++i) {
+                    std::copy_n(&candidatePivotBuff[perm[i]*v],
+                              v,
+                              &candidatePivotBuff[v*i]);
+                }
+            }
+        }
+    }
+}
+
 template <class T>
 void LU_rep(T* A, T* C, T* PP, GlobalVars<T>& gv, MPI_Comm comm) {
     PC();
@@ -424,6 +515,8 @@ void LU_rep(T* A, T* C, T* PP, GlobalVars<T>& gv, MPI_Comm comm) {
     }
 
     std::vector<T> pivotBuff(Nl * v);
+    std::vector<T> candidatePivotBuff(Nl * v);
+    std::vector<int> perm(v);
 
     // RNG
     std::mt19937_64 eng(gv.seed);
@@ -581,6 +674,7 @@ void LU_rep(T* A, T* C, T* PP, GlobalVars<T>& gv, MPI_Comm comm) {
         // # --------------------------------------------------------------------- #
         ts = te;
         int zero = 0;
+        /*
         if (k % sqrtp1 == pi && k % sqrtp1 == pj && pk == layrK) {
 #ifdef DEBUG
             if (k == chosen_step) {
@@ -693,6 +787,48 @@ void LU_rep(T* A, T* C, T* PP, GlobalVars<T>& gv, MPI_Comm comm) {
         te = std::chrono::high_resolution_clock::now();
         timers[1] += std::chrono::duration_cast<std::chrono::microseconds>( te - ts ).count();
 
+        */
+        // # ---------------- FIRST STEP ----------------- #
+        // # in first step, we do pivot on the whole PivotBuff array (may be larger than [2v, v]
+        // # local computation step
+        if (pj == k % sqrtp1 && pk == layrK) {
+        // # tricky part! to preserve the order of the rows between swapping pairs (e.g., if ranks 0 and 1 exchange their
+        // # candidate rows), we want to preserve that candidates of rank 0 are always above rank 1 candidates. Otherwise,
+        // # we can get inconsistent results. That's why,in each communication pair, higher rank puts his candidates below:
+
+        // # find with which rank we will communicate
+        // # ANOTHER tricky part ! If sqrtp1 is not 2^n, then we will not have a nice butterfly communication graph.
+        // # that's why with the flipBit strategy, src_pi can actually be larger than sqrtp1
+        auto src_pi = std::min(flipbit(pi, 0), sqrtp1 - 1);
+        // pi, pj, pk
+        auto src_p = X2p(lu_comm, src_pi, pj, pk);
+
+
+        LUP(n_local_active_rows, v, pivotBuff, candidatePivotBuff, ipiv, perm);
+        if (src_pi < pi) {
+#pragma omp parallel for
+            for (int i = 0; i < v; ++i) {
+                std::copy_n(&candidatePivotBuff[perm[i]*v],
+                          v,
+                          &candidatePivotBuff[v*(v+i)]);
+            }
+        } else {
+#pragma omp parallel for
+            for (int i = 0; i < v; ++i) {
+                std::copy_n(&candidatePivotBuff[perm[i]*v],
+                          v,
+                          &candidatePivotBuff[v*i]);
+            }
+        }
+
+        // # ------------- REMAINING STEPS -------------- #
+        // # now we do numRounds parallel steps which synchronization after each step
+        auto numRounds = int(std::ceil(std::log2(sqrtp1)));
+
+        tournament_rounds(n_local_active_rows, v, 
+                          &pivotBuff[0], &candidatePivotBuff[0],
+                          &perm[0], numRounds);
+
         // # ---------------------------------------------- #
         // # 2. reduce pivot rows from A11buff to PivotA01ReductionBuff #
         // # ---------------------------------------------- #
@@ -784,13 +920,16 @@ void LU_rep(T* A, T* C, T* PP, GlobalVars<T>& gv, MPI_Comm comm) {
 
         // we want to push at the end the following rows:
         // ipiv -> series of row swaps 5, 5
-        // curPivots -> 4, 0 (4th row with second-last and 0th row with the one)
+        // curPivots -> 4, 0 (4th row with second-last and 0th row with the last one)
         // last = n_local_active_rows
         // last(A11) = n_local_active_rows
 
         // # -------------------------------------------------- #
         // # 4. remove pivot rows from A10 and A11              #
         // # -------------------------------------------------- #
+        //
+        // prefix-sum[i]:= index in the compacted vector
+        // stream - compactions algorithm
 
         PE(step4);
         remove_pivotal_rows(A10Buff, n_local_active_rows, v, A10BuffTemp, curPivots);
