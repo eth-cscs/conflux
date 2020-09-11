@@ -46,7 +46,7 @@ def LUPv2(inpA):
     return [origA, A[:v, 1:]]
 
 
-def LUP(inpA):
+def LUPnoTile(inpA):
     # global global_vars
     # v = global_vars['v']
     [Perm, L, U] = la.lu(inpA)
@@ -56,6 +56,19 @@ def LUP(inpA):
            np.concatenate((U, np.zeros([m-n,n])), axis = 0) -
            np.eye(m, n))[:v,:]
     return [origA[:v,], res[:v,], Perm]
+
+
+def LUP(inpA):
+    global global_vars
+    v = global_vars['v']
+    [Perm, L, U] = la.lu(inpA[:, 1:])
+    origA = Perm.T @ inpA
+    [m, n] = inpA.shape
+    res = (L +
+           np.concatenate((U, np.zeros([m-n+1,n-1])), axis = 0) -
+           np.eye(m, n-1))[:v,:]
+    return [origA[:v,], res[:v,]]
+
 
 
 def LU(inpA):

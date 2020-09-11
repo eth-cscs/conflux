@@ -10,7 +10,7 @@ import math
 # dace_dtype = dace.float64
 np_dtype = np.float64
 
-inpN = 32
+inpN = 16
 inpP = 8
 
 
