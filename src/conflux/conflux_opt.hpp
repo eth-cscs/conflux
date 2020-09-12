@@ -9,6 +9,7 @@
 #include <numeric>  // has std::lcm
 #include <random>
 #include <tuple>
+#include <unordered_map>
 
 #include <omp.h>
 #include <mpi.h>
@@ -346,7 +347,7 @@ void remove_pivotal_rows(std::vector<T>& mat,
 
     // extract kept_rows to temp
 #pragma omp parallel for
-    for (unsigned i = 0; i < n_rows; ++i) {
+    for (int i = 0; i < n_rows; ++i) {
         if (mask[i] == 1) {
             std::copy_n(&mat[i * n_cols], n_cols, 
                     &mat_temp[prefix_sum[i] * n_cols]);
@@ -359,8 +360,8 @@ void remove_pivotal_rows(std::vector<T>& mat,
 
 template <typename T>
 void LUP(int n_local_active_rows, int v, int stride,
-        T* pivotBuff, T* candidatePivotBuff, 
-        int* ipiv, int* perm) {
+        T* pivotBuff, T* candidatePivotBuff,
+        std::vector<int>& ipiv, std::vector<int>& perm) {
     // reset the values
     for (int i = 0; i < v; ++i) {
         perm[i] = i;
@@ -373,25 +374,51 @@ void LUP(int n_local_active_rows, int v, int stride,
             &pivotBuff[0], v);
 
     LAPACKE_dgetrf(LAPACK_ROW_MAJOR, n_local_active_rows, v, 
-            pivotBuff.data(), v, ipiv.data());
+            &pivotBuff[0], v, &ipiv[0]);
 
     // ipiv -> permutation
     for (int i = 0; i < std::min(v, n_local_active_rows); ++i) {
-        std::swap(&perm[i], &perm[ipiv[i]]);
+        std::swap(perm[i], perm[ipiv[i]]);
     }
 }
 
 // place i-th row from the input to the permutation[i]-th row in the output
-// final permutation
-void permute_rows(T* in, T* out, int n_rows, n_cols, 
+// perm is the final permutation
+template <typename T>
+void permute_rows(T* in, T* out, int n_rows, int n_cols, 
                   std::vector<int>& perm) {
+    // extract kept_rows to temp
+#pragma omp parallel for
+    for (int i = 0; i < n_rows; ++i) {
+        auto src_offset = i * n_cols;
+        auto dst_offset = perm[i] * n_cols;
+        std::copy_n(&in[src_offset], n_cols, 
+                    &out[dst_offset]);
+    }
 }
 
 template <typename T>
-void tournament_rounds(int n_local_active_rows, int v, 
-        std::vector<T>& pivotBuff, std::vector<T>& candidatePivotBuff,
-        int* perm,
-        int n_rounds) {
+std::vector<int> column(T* matrix, int n_rows, int stride, int col_id) {
+    std::vector<int> col(n_rows);
+    for (int i = 0; i < n_rows; ++i) {
+        col[i] = (int) std::round(matrix[i * stride + col_id]);
+    }
+    return col;
+}
+
+template <typename T>
+void tournament_rounds(int v, 
+        std::vector<T>& A00Buff,
+        std::vector<T>& pivotBuff, 
+        std::vector<T>& candidatePivotBuff,
+        std::vector<T>& candidatePivotBuffPerm,
+        std::vector<int>& perm, std::vector<int>& ipiv,
+        int n_rounds, int sqrtp1,
+        MPI_Comm lu_comm) {
+    int rank;
+    MPI_Comm_rank(lu_comm, &rank);
+    int pi, pj, pk;
+    std::tie(pi, pj, pk) = p2X(lu_comm, rank);
 
     for (int r = 0; r < n_rounds; ++r) {
         auto src_pi = std::min(flipbit(pi, r), sqrtp1 - 1);
@@ -415,11 +442,11 @@ void tournament_rounds(int n_local_active_rows, int v,
 
         // pivotBuff := output
         // candidatePivotBuff := input
-        LUP(2*v, v, v+1, pivotBuff, candidatePivotBuff[1], ipiv, perm);
+        LUP(2*v, v, v+1, &pivotBuff[0], &candidatePivotBuff[1], ipiv, perm);
 
         // if final round
         if (r == n_rounds - 1) {
-            permute_rows(candidatePivotBuff[0], candidatePivotBuffPerm[0],
+            permute_rows(&candidatePivotBuff[0], &candidatePivotBuffPerm[0],
                          2*v, v+1, perm);
 
             candidatePivotBuff.swap(candidatePivotBuffPerm);
@@ -431,16 +458,12 @@ void tournament_rounds(int n_local_active_rows, int v,
                     &pivotBuff[0], v,
                     &A00Buff[0], v);
         } else {
-            auto src_pi = std::min(flipbit(pi, r+1), sqrtp1 - 1);
-            auto p_send = X2p(pi, pj, pk);
-            auto p_rcv = X2p(src_pi, pj, pk);
-            // 0123 | 4567 // perm[i] < 2*v
             if (src_pi < pi) {
-                permute_rows(candidatePivotBuff[0], candidatePivotBuffPerm[v*(v+1)],
+                permute_rows(&candidatePivotBuff[0], &candidatePivotBuffPerm[v*(v+1)],
                              2*v, v+1, perm);
                 candidatePivotBuff.swap(candidatePivotBuffPerm);
             } else {
-                permute_rows(candidatePivotBuff[0], candidatePivotBuffPerm[0],
+                permute_rows(&candidatePivotBuff[0], &candidatePivotBuffPerm[0],
                              2*v, v+1, perm);
                 candidatePivotBuff.swap(candidatePivotBuffPerm);
             }
@@ -456,7 +479,7 @@ std::unordered_map<int, std::vector<int>>,
         std::unordered_map<int, std::vector<int>> lrows;
         std::unordered_map<int, std::vector<int>> loffsets;
 
-        for (int i = 0; i < grows.size(); ++i) {
+        for (unsigned i = 0u; i < grows.size(); ++i) {
             // # we are in the global tile:
             auto gT = grows[i] / v;
             // # which is owned by:
@@ -511,12 +534,16 @@ void LU_rep(T* A, T* C, T* PP, GlobalVars<T>& gv, MPI_Comm comm) {
     int keep_dims_jk[] = {0, 1, 1};
     MPI_Cart_sub(lu_comm, keep_dims_jk, &jk_comm);
 
+    // # get 3d processor decomposition coordinates
+    int pi, pj, pk;
+    std::tie(pi, pj, pk) = p2X(lu_comm, rank);
+
     std::vector<T> B(N * N);
     std::copy(A, A + N * N, B.data());
 
     // Perm = np.eye(N);
     std::vector<int> Perm(N * N);
-    for (unsigned i = 0; i < N; ++i) {
+    for (int i = 0; i < N; ++i) {
         Perm[i * N + i] = 1;
     }
 
@@ -535,19 +562,23 @@ void LU_rep(T* A, T* C, T* PP, GlobalVars<T>& gv, MPI_Comm comm) {
     std::vector<int> gri(Nl);
     std::vector<int> griTemp(Nl);
     for (int i = 0 ; i < Nl; ++i) {
+        auto lrow = i;
         // # we are in the local tile:
         auto lT = lrow / v;
         // # and inside this tile it is a row number:
         auto lR = lrow % v;
         // # which is a global tile:
         auto gT = lT * sqrtp1 + pi;
-        gri[i] = lR + gt * v;
+        gri[i] = lR + gT * v;
     }
 
     int n_local_active_rows = Nl;
 
     std::vector<T> pivotBuff(Nl * (v+1));
+    // TODO: Nl or N in pivotIndsBuff
+    std::vector<T> pivotIndsBuff(N);
     std::vector<T> candidatePivotBuff(Nl * (v+1));
+    std::vector<T> candidatePivotBuffPerm(Nl * (v+1));
     std::vector<int> perm(v);
     std::vector<int> ipiv(v);
 
@@ -564,9 +595,6 @@ void LU_rep(T* A, T* C, T* PP, GlobalVars<T>& gv, MPI_Comm comm) {
     // # ------------------------------------------------------------------- #
     // # ------------------ INITIAL DATA DISTRIBUTION ---------------------- #
     // # ------------------------------------------------------------------- #
-    // # get 3d processor decomposition coordinates
-    int pi, pj, pk;
-    std::tie(pi, pj, pk) = p2X(lu_comm, rank);
 
     // # we distribute only A11, as anything else depends on the first pivots
 
@@ -712,7 +740,6 @@ void LU_rep(T* A, T* C, T* PP, GlobalVars<T>& gv, MPI_Comm comm) {
         // # 1. coalesce PivotA11ReductionBuff to PivotBuff and scatter to A10buff #
         // # --------------------------------------------------------------------- #
         ts = te;
-        int zero = 0;
         // # ---------------- FIRST STEP ----------------- #
         // # in first step, we do pivot on the whole PivotBuff array (may be larger than [2v, v]
         // # local computation step
@@ -736,16 +763,14 @@ void LU_rep(T* A, T* C, T* PP, GlobalVars<T>& gv, MPI_Comm comm) {
             // # ANOTHER tricky part ! If sqrtp1 is not 2^n, then we will not have a nice butterfly communication graph.
             // # that's why with the flipBit strategy, src_pi can actually be larger than sqrtp1
             auto src_pi = std::min(flipbit(pi, 0), sqrtp1 - 1);
-            // pi, pj, pk
-            auto src_p = X2p(lu_comm, src_pi, pj, pk);
 
             LUP(n_local_active_rows, v, v+1, &pivotBuff[0], &candidatePivotBuff[1], ipiv, perm);
             if (src_pi < pi) {
-                permute_rows(candidatePivotBuff[0], candidatePivotBuffPerm[v*(v+1)],
+                permute_rows(&candidatePivotBuff[0], &candidatePivotBuffPerm[v*(v+1)],
                              2*v, v+1, perm);
                 candidatePivotBuff.swap(candidatePivotBuffPerm);
             } else {
-                permute_rows(candidatePivotBuff[0], candidatePivotBuffPerm[0],
+                permute_rows(&candidatePivotBuff[0], &candidatePivotBuffPerm[0],
                              2*v, v+1, perm);
                 candidatePivotBuff.swap(candidatePivotBuffPerm);
             }
@@ -754,16 +779,22 @@ void LU_rep(T* A, T* C, T* PP, GlobalVars<T>& gv, MPI_Comm comm) {
             // # now we do numRounds parallel steps which synchronization after each step
             auto numRounds = int(std::ceil(std::log2(sqrtp1)));
 
-            tournament_rounds(n_local_active_rows, v, 
-                    &pivotBuff[0], &candidatePivotBuff[0],
-                    &perm[0], numRounds);
+            tournament_rounds(v, 
+                    A00Buff,
+                    pivotBuff, 
+                    candidatePivotBuff,
+                    candidatePivotBuffPerm,
+                    perm, ipiv, 
+                    numRounds, sqrtp1, lu_comm);
 
             // extract the first col of candidatePivotBuff
             // first v elements of the first column of candidatePivotBuff
             // first v rows
             // v+1 is the number of cols
-            auto gpivots = column(candidatePivotBuff[0], v, v+1, 0);
+            auto gpivots = column(&candidatePivotBuff[0], v, v+1, 0);
 
+            std::unordered_map<int, std::vector<int>> lpivots;
+            std::unordered_map<int, std::vector<int>> loffsets;
             std::tie(lpivots, loffsets) = g2lnoTile(gpivots, sqrtp1, v);
 
             // locally set curPivots
@@ -774,25 +805,25 @@ void LU_rep(T* A, T* C, T* PP, GlobalVars<T>& gv, MPI_Comm comm) {
         }
 
         // COMMUNICATION
-        MPI_Request reqs[2];
+        MPI_Request reqs_pivots[4];
         // the one who entered this is the root
         auto root = X2p(jk_comm, k % sqrtp1, layrK);
 
         // for each pi:
         //     rank (pi, k % sqrtp1, layrK) -> (pi, *, *)
         // # Sending A00Buff:
-        MPI_Ibcast(&A00Buff[0], v * v, MPI_DOUBLE, root, jk_comm, &reqs[0]);
+        MPI_Ibcast(&A00Buff[0], v * v, MPI_DOUBLE, root, jk_comm, &reqs_pivots[0]);
         // sending pivotIndsBuff
-        MPI_Ibcast(&pivotIndsBuff[k*v], v, MPI_DOUBLE, root, jk_comm, &reqs[1]);
+        MPI_Ibcast(&pivotIndsBuff[k*v], v, MPI_DOUBLE, root, jk_comm, &reqs_pivots[1]);
 
         // # Sending pivots:
         MPI_Bcast(&curPivots[0], 1, MPI_INT, root, jk_comm);
 
-        MPI_Ibcast(&curPivots[1], curPivots[0], MPI_INT, root, jk_comm, &reqs[2]);
-        MPI_Ibcast(&curPivOrder[0], curPivots[0], MPI_INT, root, jk_comm, &reqs[3]);
+        MPI_Ibcast(&curPivots[1], curPivots[0], MPI_INT, root, jk_comm, &reqs_pivots[2]);
+        MPI_Ibcast(&curPivOrder[0], curPivots[0], MPI_INT, root, jk_comm, &reqs_pivots[3]);
 
         // wait for both broadcasts
-        MPI_Waitall(4, reqs, MPI_STATUSES_IGNORE);
+        MPI_Waitall(4, reqs_pivots, MPI_STATUSES_IGNORE);
 
         // # ---------------------------------------------- #
         // # 2. reduce pivot rows from A11buff to PivotA01ReductionBuff #
@@ -882,7 +913,6 @@ void LU_rep(T* A, T* C, T* PP, GlobalVars<T>& gv, MPI_Comm comm) {
             }
         }
 #endif
-
         // we want to push at the end the following rows:
         // ipiv -> series of row swaps 5, 5
         // curPivots -> 4, 0 (4th row with second-last and 0th row with the last one)
@@ -973,7 +1003,7 @@ void LU_rep(T* A, T* C, T* PP, GlobalVars<T>& gv, MPI_Comm comm) {
                 auto colEnd   = (pk_rcv+1)*nlayr;
 
                 int offset = colStart * n_local_active_rows;
-                int size = nlayr * n_local_active_rows; // nlayr = v / c
+                // int size = nlayr * n_local_active_rows; // nlayr = v / c
 
                 // copy [colStart, colEnd) columns of A10Buff -> A10BuffTemp densely
                 mcopy(A10Buff.data(), &A10BuffTemp[offset], 
@@ -986,7 +1016,7 @@ void LU_rep(T* A, T* C, T* PP, GlobalVars<T>& gv, MPI_Comm comm) {
             for (int pk_rcv = 0; pk_rcv < c; ++pk_rcv) {
                 // # for the receive layer pk_rcv, its A10BuffRcv is formed by the following columns of A11Buff[p]
                 auto colStart = pk_rcv*nlayr;
-                auto colEnd   = (pk_rcv+1)*nlayr;
+                // auto colEnd   = (pk_rcv+1)*nlayr;
 
                 int offset = colStart * n_local_active_rows;
                 int size = nlayr * n_local_active_rows; // nlayr = v / c
