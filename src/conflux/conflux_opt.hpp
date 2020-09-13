@@ -423,7 +423,6 @@ void tournament_rounds(int v,
 
     for (int r = 0; r < n_rounds; ++r) {
         auto src_pi = std::min(flipbit(pi, r), sqrtp1 - 1);
-        auto p_send = X2p(lu_comm, pi, pj, pk);
         auto p_rcv = X2p(lu_comm, src_pi, pj, pk);
 
         int req_id = 0;
@@ -528,6 +527,33 @@ void LU_rep(T* A, T* C, T* PP, GlobalVars<T>& gv, MPI_Comm comm) {
     int rank;
     MPI_Comm_rank(lu_comm, &rank);
 
+    /*
+    if (rank == 0) {
+        for (int i = 0; i < 16; ++i) {
+            std::unordered_map<int, std::vector<int>> lpivots;
+            std::unordered_map<int, std::vector<int>> loffsets;
+
+            std::cout << "gri = " << i << std::endl;
+            std::vector<int> gri = {i};
+
+            std::tie(lpivots, loffsets) = g2lnoTile(gri, sqrtp1, v);
+
+            std::cout << "lpivots = ";
+            for (auto const& pair : lpivots) {
+                std::cout << "(" << pair.first << ", " << pair.second[0] << "), ";
+            }
+            std::cout << std::endl;
+
+            std::cout << "loffsets = ";
+            for (auto const& pair : loffsets) {
+                std::cout << "(" << pair.first << ", " << pair.second[0] << "), ";
+            }
+            std::cout << std::endl;
+            std::cout << "---------------" << std::endl;
+        }
+    }
+    */
+
     int print_rank = X2p(lu_comm, 0, 0, 0);
 
     MPI_Comm k_comm;
@@ -603,6 +629,7 @@ void LU_rep(T* A, T* C, T* PP, GlobalVars<T>& gv, MPI_Comm comm) {
 
     // # ----- A11 ------ #
     // # only layer pk == 0 owns initial data
+    /*
     if (pk == 0) {
         for (auto lti = 0;  lti < tA11; ++lti) {
             auto gti = l2g(pi, lti, sqrtp1);
@@ -621,6 +648,7 @@ void LU_rep(T* A, T* C, T* PP, GlobalVars<T>& gv, MPI_Comm comm) {
     std::cout << "Allocated." << std::endl;
     MPI_Barrier(lu_comm);
 #endif
+    */
 
     // Create windows
     MPI_Win A11Win = create_window(lu_comm,
@@ -664,6 +692,7 @@ void LU_rep(T* A, T* C, T* PP, GlobalVars<T>& gv, MPI_Comm comm) {
         std::cout << "Iteration = " << k << std::endl;
         MPI_Barrier(lu_comm);
 #endif
+        std::cout << "Iteration = " << k << ", last =  " << Nt-1 << std::endl;
         // if (k == 1) break;
 
         // global current offset
@@ -799,6 +828,11 @@ void LU_rep(T* A, T* C, T* PP, GlobalVars<T>& gv, MPI_Comm comm) {
             // first v rows
             // v+1 is the number of cols
             auto gpivots = column(&candidatePivotBuff[0], v, v+1, 0);
+            std::cout << "gpivots = ";
+            for (auto& piv : gpivots) {
+                std::cout << piv << ", ";
+            }
+            std::cout << std::endl;
 
             std::unordered_map<int, std::vector<int>> lpivots;
             std::unordered_map<int, std::vector<int>> loffsets;
@@ -806,7 +840,7 @@ void LU_rep(T* A, T* C, T* PP, GlobalVars<T>& gv, MPI_Comm comm) {
 
             // locally set curPivots
             curPivots[0] = lpivots[pi].size();
-            std::copy_n(&lpivots[pi][1], curPivots[0], &curPivots[1]);
+            std::copy_n(&lpivots[pi][0], curPivots[0], &curPivots[1]);
             curPivOrder = loffsets[pi];
             std::copy_n(&gpivots[0], v, &pivotIndsBuff[k*v]);
         }
@@ -825,6 +859,11 @@ void LU_rep(T* A, T* C, T* PP, GlobalVars<T>& gv, MPI_Comm comm) {
         // # Sending pivots:
         MPI_Bcast(&curPivots[0], 1, MPI_INT, root, jk_comm);
         std::cout << "curPivots bcast" << std::endl;
+
+        if (curPivots[0] > v || curPivots[0] < 0) {
+            std::cout << "weird curPivots = " << curPivots[0] << std::endl;
+            std::exit(0);
+        }
 
         // # Sending A00Buff:
         MPI_Bcast(&A00Buff[0], v * v, MPI_DOUBLE, root, jk_comm);
@@ -859,6 +898,11 @@ void LU_rep(T* A, T* C, T* PP, GlobalVars<T>& gv, MPI_Comm comm) {
             for (int i = 0; i < curPivots[0]; ++i) {
                 int pivot_row = curPivots[i+1];
                 auto offset = loff + pivot_row * Nl;
+                if (offset < 0 ) {
+                    std::cout << "offset = " << offset << std::endl;
+                    std::cout << "loff = " << loff << std::endl;
+                    std::cout << "pivot_row = " << pivot_row << std::endl;
+                }
                 MPI_Accumulate(&A11Buff[offset], v, MPI_DOUBLE,
                         p_rcv, offset, v, MPI_DOUBLE,
                         MPI_SUM, A11Win);
@@ -949,6 +993,13 @@ void LU_rep(T* A, T* C, T* PP, GlobalVars<T>& gv, MPI_Comm comm) {
         remove_pivotal_rows(A11Buff, n_local_active_rows, Nl, A11BuffTemp, curPivots);
         remove_pivotal_rows(gri, n_local_active_rows, 1, griTemp, curPivots);
         n_local_active_rows -= curPivots[0];
+
+        for (int i = 0 ; i < P; ++i) {
+            if (rank == i) {
+                std::cout << "rank = " << pi << ", " << pj << ", " << pk << ", n_local_active_rows " << n_local_active_rows << std::endl;
+            }
+            MPI_Barrier(lu_comm);
+        }
         PL();
 
         MPI_Barrier(lu_comm);
@@ -1052,6 +1103,9 @@ void LU_rep(T* A, T* C, T* PP, GlobalVars<T>& gv, MPI_Comm comm) {
 
         auto p_send = X2p(lu_comm, pi, k % sqrtp1, layrK);
         int size = nlayr * n_local_active_rows; // nlayr = v / c
+        if (size < 0) {
+            std::cout << "weird size = " << size << ", nlayr = " << nlayr << ", active rowws = " << n_local_active_rows << std::endl;
+        }
         MPI_Irecv(&A10BuffRcv[0], size, MPI_DOUBLE, 
                 p_send, 5, lu_comm, &reqs[req_id]);
         ++req_id;
