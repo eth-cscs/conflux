@@ -763,23 +763,23 @@ void LU_rep(T* A, T* C, T* PP, GlobalVars<T>& gv, MPI_Comm comm) {
             curPivOrder[i] = i;
         }
 
-        // if (n_local_active_rows < v) {
+        if (n_local_active_rows < v) {
+            /*
             std::fill(candidatePivotBuff.begin(), 
                       candidatePivotBuff.end(), 0);
             std::fill(candidatePivotBuffPerm.begin(), 
                       candidatePivotBuffPerm.end(), 0);
             std::fill(pivotBuff.begin(), 
                       pivotBuff.end(), 0);
+            */
 
-            /*
             std::fill(&candidatePivotBuff[n_local_active_rows * (v+1)], 
                       &candidatePivotBuff[v*(v+1)], 0);
             std::fill(&candidatePivotBuffPerm[n_local_active_rows * (v+1)], 
                       &candidatePivotBuffPerm[v*(v+1)], 0);
-            std::fill(&pivotBuff[n_local_active_rows * (v+1)], 
-                      &pivotBuff[v*(v+1)], 0);
-                      */
-        // }
+            // std::fill(&pivotBuff[n_local_active_rows * (v+1)], 
+            //          &pivotBuff[v*(v+1)], 0);
+        }
 
         // # reduce first tile column. In this part, only pj == k % sqrtp1 participate:
 #ifdef DEBUG
