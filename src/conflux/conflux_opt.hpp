@@ -648,6 +648,7 @@ void LU_rep(T* A, T* C, T* PP, GlobalVars<T>& gv, MPI_Comm comm) {
     }
 
     std::vector<int> l2c(Nl);
+    std::vector<bool> removed(Nl, false);
     for (int i = 0; i < Nl; ++i) {
         l2c[i] = i;
     }
@@ -925,8 +926,8 @@ void LU_rep(T* A, T* C, T* PP, GlobalVars<T>& gv, MPI_Comm comm) {
                     sqrtp1, layrK, 
                     lu_comm);
 
-            // TODO: final value (all superstep 0)
-            if (pi == 0) {
+                // TODO: final value (all superstep 0)
+            if (pi == 1) {
                 std::cout << "candidatePivotBuff FINAL VALUE" << std::endl;
                 print_matrix(candidatePivotBuff.data(), 
                              0, n_local_active_rows, 0, v+1, v+1);
@@ -975,7 +976,7 @@ void LU_rep(T* A, T* C, T* PP, GlobalVars<T>& gv, MPI_Comm comm) {
 
         MPI_Bcast(&curPivOrder[0], curPivots[0], MPI_INT, root, jk_comm); //  &reqs_pivots[3]);
 
-        if (pi == 1 && pk == layrK && pj == k % sqrtp1) {
+        if (pi == 0 && pk == layrK && pj == k % sqrtp1) {
             std::cout << "pi = " << pi << ", n_local_active_rows = " << n_local_active_rows;;
             std::cout << ", pivots(Nl) = ";
             for (int i = 0; i < curPivots[0]; ++i) {
@@ -984,6 +985,7 @@ void LU_rep(T* A, T* C, T* PP, GlobalVars<T>& gv, MPI_Comm comm) {
             std::cout << ", dp = ";
             for (int i = 0; i < Nl; ++i) {
                 std::cout << l2c[i] << ", ";
+                assert(l2c[i] == -1 || l2c[i] >= 0);
             }
             std::cout << std::endl;
         }
@@ -1131,21 +1133,24 @@ void LU_rep(T* A, T* C, T* PP, GlobalVars<T>& gv, MPI_Comm comm) {
         remove_pivotal_rows(A10Buff, n_local_active_rows, v, A10BuffTemp, curPivots, l2c);
         /*
         if (rank == 0) {
-            std::cout << "AFTER REMOVING PIVOTS" << std::endl;
+            std::cout << "AFTER REMOVINGuPIVOTS" << std::endl;
             print_matrix(A10Buff.data(), 0, n_local_active_rows, 0, v, v);
         }
         */
         // remove_pivotal_rows(A11Buff, n_local_active_rows, Nl, A11BuffTemp, curPivots);
         remove_pivotal_rows(gri, n_local_active_rows, 1, griTemp, curPivots, l2c);
         for (int i = 0; i < curPivots[0]; ++i) {
-            assert(l2c[curPivots[i+1]] > 0);
-            l2c[curPivots[i+1]] = -1;
+            auto pivot_row = curPivots[i+1];
+            assert(!removed[pivot_row]);
+            l2c[pivot_row] = -1;
         }
         int shift = 0;
         for (int i = 0; i < Nl; ++i) {
-            if (l2c[i] < 0) {
+            if (!removed[i] && l2c[i] < 0) {
+                assert(l2c[i] == -1);
                 --shift;
-            } else {
+                removed[i] = true;
+            } else if (!removed[i]) {
                 l2c[i] += shift;
             }
         }
