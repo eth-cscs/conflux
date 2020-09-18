@@ -72,7 +72,6 @@ def g2lnoTile(grows):
         i += 1
     return [lrows, loffsets]
 
-
 # input: local ROW indices lrows of processor pi
 # return dictionary of owning ranks and their LOCAL ROW indices
 def l2gnoTile(lrows, pi):
