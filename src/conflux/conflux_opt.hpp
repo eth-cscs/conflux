@@ -16,10 +16,12 @@
 #include <mkl.h>
 
 #include "profiler.hpp"
+#include "utils.hpp"
 
 #define dtype double
 #define mtype MPI_DOUBLE
 
+namespace conflux {
 template <class T>
 void mcopy(T* src, T* dst,
         int ssrow, int serow, int sscol, int secol, int sstride,
@@ -367,38 +369,6 @@ void LUP(int n_local_active_rows, int v, int stride,
     }
 }
 
-// place perm[i]-th row from the input to the i-th row in the output
-// perm is the final permutation
-template <typename T>
-void inverse_permute_rows(T* in, T* out, 
-                          int n_rows, int n_cols, int new_n_cols,
-                          std::vector<int>& perm) {
-    int row_offset = n_cols - new_n_cols;
-#pragma omp parallel for
-    for (int i = 0; i < n_rows; ++i) {
-        auto src_offset = perm[i] * n_cols + row_offset;
-        auto dst_offset = i * new_n_cols;
-        std::copy_n(&in[src_offset], new_n_cols, 
-                    &out[dst_offset]);
-    }
-}
-
-// place i-th row from the input to the perm[i]-th row in the output
-// perm is the final permutation
-template <typename T>
-void permute_rows(T* in, T* out, 
-                  int n_rows, int n_cols, int new_n_cols,
-                  std::vector<int>& perm) {
-    int row_offset = n_cols - new_n_cols;
-#pragma omp parallel for
-    for (int i = 0; i < n_rows; ++i) {
-        auto src_offset = i * n_cols + row_offset;
-        auto dst_offset = perm[i] * new_n_cols;
-        std::copy_n(&in[src_offset], new_n_cols, 
-                    &out[dst_offset]);
-    }
-}
-
 template <typename T>
 void push_pivot_rows_below(std::vector<T>& in, std::vector<T>& temp,
                                int n_rows, int n_cols, int new_n_cols,
@@ -441,20 +411,6 @@ void push_pivot_rows_below(std::vector<T>& in, std::vector<T>& temp,
 
     // swap the non-permuted and permuted matrices
     in.swap(temp);
-}
-
-template <typename T>
-std::vector<int> column(T* matrix, int n_rows, int stride, int col_id) {
-    std::vector<int> col;
-    col.reserve(n_rows);
-    for (int i = 0; i < n_rows; ++i) {
-        const auto& el = matrix[i * stride + col_id];
-        auto int_el = (int) std::round(el);
-        assert(std::abs(int_el - el) < 1e-12);
-        if (int_el == -1) break;
-        col.push_back(int_el);
-    }
-    return col;
 }
 
 template <typename T>
@@ -714,6 +670,8 @@ void LU_rep(T* A, T* C, T* PP, GlobalVars<T>& gv, MPI_Comm comm) {
 
     int timers[8] = {0};
 
+    auto layout = order::row_major;
+
     /*
 # ---------------------------------------------- #
 # ----------------- MAIN LOOP ------------------ #
@@ -765,15 +723,20 @@ void LU_rep(T* A, T* C, T* PP, GlobalVars<T>& gv, MPI_Comm comm) {
 
         // flush the buffer
         curPivots[0] = 0;
+        /*
         for (int i = 0; i < v; ++i) {
             curPivOrder[i] = i;
         }
+        */
 
         if (n_local_active_rows < v) {
-            std::fill(&candidatePivotBuff[n_local_active_rows * (v+1)], 
-                      &candidatePivotBuff[v*(v+1)], 0);
-            std::fill(&candidatePivotBuffPerm[n_local_active_rows * (v+1)], 
-                      &candidatePivotBuffPerm[v*(v+1)], 0);
+            int padding_start = n_local_active_rows * (v+1);
+            int padding_end = v * (v+1);
+            std::fill(candidatePivotBuff.begin() + padding_start ,
+                      candidatePivotBuff.begin() + padding_end, 0);
+            std::fill(candidatePivotBuffPerm.begin() + padding_start,
+                      candidatePivotBuffPerm.begin() + padding_end, 0);
+            std::fill(gri.begin() + n_local_active_rows, gri.begin() + v, -1);
         }
 
         // # reduce first tile column. In this part, only pj == k % sqrtp1 participate:
@@ -841,14 +804,10 @@ void LU_rep(T* A, T* C, T* PP, GlobalVars<T>& gv, MPI_Comm comm) {
                            &A10Buff[0], v,
                            &candidatePivotBuff[1], v+1);
             // glue the gri elements to the first column of candidatePivotBuff
-            for (int i = 0; i < n_local_active_rows; ++i) {
-                candidatePivotBuff[i * (v+1)] = gri[i];
-            }
-            // pad with zeros (global row index = -1)
-            for (int i = n_local_active_rows; i < v; ++i) {
-                candidatePivotBuff[i * (v+1)] = -1;
-            }
-
+            prepend_column(matrix_view<T>(&candidatePivotBuff[0],
+                                       n_local_active_rows, v+1, v+1,
+                                       layout),
+                           gri);
 #ifdef DEBUG
             // TODO: before anything
             if (pi == 0) {
@@ -870,8 +829,7 @@ void LU_rep(T* A, T* C, T* PP, GlobalVars<T>& gv, MPI_Comm comm) {
 
             LUP(n_local_active_rows, v, v+1, &pivotBuff[0], &candidatePivotBuff[1], ipiv, perm);
 
-            // auto perm_size = std::min(n_local_active_rows, v);
-            auto perm_size = v;
+            auto perm_size = std::min(n_local_active_rows, v);
 
             // TODO: after first LUP and swap
 #ifdef DEBUG
@@ -884,11 +842,11 @@ void LU_rep(T* A, T* C, T* PP, GlobalVars<T>& gv, MPI_Comm comm) {
 
             if (src_pi < pi) {
                 inverse_permute_rows(&candidatePivotBuff[0], &candidatePivotBuffPerm[v*(v+1)],
-                             perm_size, v+1, v+1, perm);
+                             v, v+1, v+1, perm);
                 candidatePivotBuff.swap(candidatePivotBuffPerm);
             } else {
                 inverse_permute_rows(&candidatePivotBuff[0], &candidatePivotBuffPerm[0],
-                             perm_size, v+1, v+1, perm);
+                             v, v+1, v+1, perm);
                 candidatePivotBuff.swap(candidatePivotBuffPerm);
             }
 
@@ -934,7 +892,10 @@ void LU_rep(T* A, T* C, T* PP, GlobalVars<T>& gv, MPI_Comm comm) {
             // v+1 is the number of cols
             // std::cout << "candidatePivotBuff:" << std::endl;;
             // print_matrix(candidatePivotBuff.data(), 0, v, 0, v+1, v+1);
-            auto gpivots = column(&candidatePivotBuff[0], perm_size, v+1, 0);
+            auto gpivots = column<T, int>(matrix_view<T>(&candidatePivotBuff[0],
+                                                 perm_size, v+1, v+1,
+                                                 order::row_major),
+                                  0);
 
             std::unordered_map<int, std::vector<int>> lpivots;
             std::unordered_map<int, std::vector<int>> loffsets;
@@ -1429,4 +1390,5 @@ void LU_rep(T* A, T* C, T* PP, GlobalVars<T>& gv, MPI_Comm comm) {
         }
         MPI_Barrier(lu_comm);
     }
+}
 }

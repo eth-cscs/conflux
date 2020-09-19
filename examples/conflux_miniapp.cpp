@@ -38,7 +38,7 @@ int main(int argc, char *argv[]) {
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
     MPI_Comm_size(MPI_COMM_WORLD, &size);
 
-    GlobalVars<dtype> gv = GlobalVars<dtype>(N, b, size);
+    auto gv = conflux::GlobalVars<dtype>(N, b, size);
 
     std::cout << "Rank: " << rank << " N: " << gv.N << ", P:" << gv.P
               << ", v:" << gv.v << ", c:" << gv.c
@@ -50,7 +50,7 @@ int main(int argc, char *argv[]) {
 
     for (int i = 0; i < n_rep; ++i) {
         PC();
-        LU_rep<dtype>(gv.matrix, C.data(), Perm.data(), gv, MPI_COMM_WORLD);
+        conflux::LU_rep<dtype>(gv.matrix, C.data(), Perm.data(), gv, MPI_COMM_WORLD);
     }
 
     if (rank == 0) {
