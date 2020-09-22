@@ -372,6 +372,7 @@ void LUP(int n_local_active_rows, int v, int stride,
 template <typename T>
 void push_pivot_rows_below(std::vector<T>& in, std::vector<T>& temp,
                                int n_rows, int n_cols, int new_n_cols,
+                               order layout,
                                std::vector<int>& curPivots,
                                std::vector<int>& l2c) {
     if (n_rows == 0 || n_cols == 0) return;
@@ -407,7 +408,7 @@ void push_pivot_rows_below(std::vector<T>& in, std::vector<T>& temp,
         }
     }
 
-    permute_rows(in.data(), temp.data(), n_rows, n_cols, new_n_cols, perm);
+    permute_rows(in.data(), temp.data(), n_rows, n_cols, n_rows, new_n_cols, layout, perm);
 
     // swap the non-permuted and permuted matrices
     in.swap(temp);
@@ -417,6 +418,7 @@ template <typename T>
 void tournament_rounds(
         int n_local_active_rows,
         int v,
+        order layout,
         std::vector<T>& A00Buff,
         std::vector<T>& pivotBuff, 
         std::vector<T>& candidatePivotBuff,
@@ -479,7 +481,7 @@ void tournament_rounds(
         if (r == n_rounds - 1) {
             inverse_permute_rows(&candidatePivotBuff[0], 
                          &candidatePivotBuffPerm[0],
-                         v, v+1, v+1, perm);
+                         v, v+1, 2*v, v+1, layout, perm);
 
             candidatePivotBuff.swap(candidatePivotBuffPerm);
 
@@ -493,12 +495,12 @@ void tournament_rounds(
             if (src_pi < pi) {
                 inverse_permute_rows(&candidatePivotBuff[0], 
                              &candidatePivotBuffPerm[v*(v+1)],
-                             v, v+1, v+1, perm);
+                             v, v+1, 2*v, v+1, layout, perm);
                 candidatePivotBuff.swap(candidatePivotBuffPerm);
             } else {
                 inverse_permute_rows(&candidatePivotBuff[0], 
                              &candidatePivotBuffPerm[0],
-                             v, v+1, v+1, perm);
+                             v, v+1, 2*v, v+1, layout, perm);
                 candidatePivotBuff.swap(candidatePivotBuffPerm);
             }
         }
@@ -842,11 +844,11 @@ void LU_rep(T* A, T* C, T* PP, GlobalVars<T>& gv, MPI_Comm comm) {
 
             if (src_pi < pi) {
                 inverse_permute_rows(&candidatePivotBuff[0], &candidatePivotBuffPerm[v*(v+1)],
-                             v, v+1, v+1, perm);
+                             v, v+1, v, v+1, layout, perm);
                 candidatePivotBuff.swap(candidatePivotBuffPerm);
             } else {
                 inverse_permute_rows(&candidatePivotBuff[0], &candidatePivotBuffPerm[0],
-                             v, v+1, v+1, perm);
+                             v, v+1, v, v+1, layout, perm);
                 candidatePivotBuff.swap(candidatePivotBuffPerm);
             }
 
@@ -867,6 +869,7 @@ void LU_rep(T* A, T* C, T* PP, GlobalVars<T>& gv, MPI_Comm comm) {
             tournament_rounds(
                     n_local_active_rows,
                     v, 
+                    layout,
                     A00Buff,
                     pivotBuff, 
                     candidatePivotBuff,
@@ -974,7 +977,7 @@ void LU_rep(T* A, T* C, T* PP, GlobalVars<T>& gv, MPI_Comm comm) {
 #endif
         push_pivot_rows_below(A11Buff, A11BuffTemp, 
                               n_local_active_rows, n_local_active_cols, 
-                              Nl-loff, curPivots, l2c);
+                              Nl-loff, layout, curPivots, l2c);
 
         n_local_active_cols = Nl-loff;
 #ifdef DEBUG
