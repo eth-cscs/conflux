@@ -479,9 +479,9 @@ void tournament_rounds(
 
         // if final round
         if (r == n_rounds - 1) {
-            inverse_permute_rows(&candidatePivotBuff[0], 
+            inverse_permute_rows(&candidatePivotBuff[0],
                          &candidatePivotBuffPerm[0],
-                         v, v+1, 2*v, v+1, layout, perm);
+                         2*v, v+1, v, v+1, layout, perm);
 
             candidatePivotBuff.swap(candidatePivotBuffPerm);
 
@@ -495,12 +495,12 @@ void tournament_rounds(
             if (src_pi < pi) {
                 inverse_permute_rows(&candidatePivotBuff[0], 
                              &candidatePivotBuffPerm[v*(v+1)],
-                             v, v+1, 2*v, v+1, layout, perm);
+                             2*v, v+1, v, v+1, layout, perm);
                 candidatePivotBuff.swap(candidatePivotBuffPerm);
             } else {
                 inverse_permute_rows(&candidatePivotBuff[0], 
                              &candidatePivotBuffPerm[0],
-                             v, v+1, 2*v, v+1, layout, perm);
+                             2*v, v+1, v, v+1, layout, perm);
                 candidatePivotBuff.swap(candidatePivotBuffPerm);
             }
         }
@@ -831,7 +831,8 @@ void LU_rep(T* A, T* C, T* PP, GlobalVars<T>& gv, MPI_Comm comm) {
 
             LUP(n_local_active_rows, v, v+1, &pivotBuff[0], &candidatePivotBuff[1], ipiv, perm);
 
-            auto perm_size = std::min(n_local_active_rows, v);
+            auto min_perm_size = std::min(n_local_active_rows, v);
+            auto max_perm_size = std::max(n_local_active_rows, v);
 
             // TODO: after first LUP and swap
 #ifdef DEBUG
@@ -844,11 +845,11 @@ void LU_rep(T* A, T* C, T* PP, GlobalVars<T>& gv, MPI_Comm comm) {
 
             if (src_pi < pi) {
                 inverse_permute_rows(&candidatePivotBuff[0], &candidatePivotBuffPerm[v*(v+1)],
-                             v, v+1, v, v+1, layout, perm);
+                             max_perm_size, v+1, v, v+1, layout, perm);
                 candidatePivotBuff.swap(candidatePivotBuffPerm);
             } else {
                 inverse_permute_rows(&candidatePivotBuff[0], &candidatePivotBuffPerm[0],
-                             v, v+1, v, v+1, layout, perm);
+                             max_perm_size, v+1, v, v+1, layout, perm);
                 candidatePivotBuff.swap(candidatePivotBuffPerm);
             }
 
@@ -896,7 +897,7 @@ void LU_rep(T* A, T* C, T* PP, GlobalVars<T>& gv, MPI_Comm comm) {
             // std::cout << "candidatePivotBuff:" << std::endl;;
             // print_matrix(candidatePivotBuff.data(), 0, v, 0, v+1, v+1);
             auto gpivots = column<T, int>(matrix_view<T>(&candidatePivotBuff[0],
-                                                 perm_size, v+1, v+1,
+                                                 min_perm_size, v+1, v+1,
                                                  order::row_major),
                                   0);
 

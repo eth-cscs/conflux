@@ -86,7 +86,7 @@ void inverse_permute_rows(matrix_view<T> in, matrix_view<T> out,
     if (in.layout() == order::row_major) {
         // let each thread copy i-th row to perm[i]-th row
 #pragma omp parallel for
-        for (int i = 0; i < in.n_rows; ++i) {
+        for (int i = 0; i < out.n_rows; ++i) {
             T* in_ptr = &in(in_perm[i], col);
             T* out_ptr = &out(i, 0);
             std::copy_n(in_ptr, out.n_cols, out_ptr);
@@ -114,7 +114,8 @@ void inverse_permute_rows(T* in, T* out,
     int in_stride = n_cols;
     int out_stride = new_n_cols;
     if (layout == order::col_major) {
-        in_stride = out_stride = n_rows;
+        in_stride = n_rows;
+        out_stride = new_n_rows;
     }
 
     matrix_view<T> in_mat(in, n_rows, n_cols, in_stride, layout);
@@ -133,7 +134,8 @@ void permute_rows(T* in, T* out,
     int in_stride = n_cols;
     int out_stride = new_n_cols;
     if (layout == order::col_major) {
-        in_stride = out_stride = n_rows;
+        in_stride = n_rows;
+        out_stride = new_n_rows;
     }
 
     matrix_view<T> in_mat(in, n_rows, n_cols, in_stride, layout);
