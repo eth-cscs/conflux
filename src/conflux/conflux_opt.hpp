@@ -1001,8 +1001,9 @@ void LU_rep(T* A,
 
         // # Receiving A00Buff:
         if (pi == k % sqrtp1 && pk == layrK) {
+            auto root_bcast = X2p(lu_comm, k % sqrtp1, pj, layrK);
             MPI_Recv(&A00Buff[0], v*v, MPI_DOUBLE,
-                    root, 11, lu_comm, MPI_STATUS_IGNORE);
+                    root_bcast, 11, lu_comm, MPI_STATUS_IGNORE);
         }
 
 #ifdef DEBUG
