@@ -419,14 +419,16 @@ void push_pivots_up(std::vector<T>& in, std::vector<T>& temp,
                     int n_rows, int n_cols,
                     order layout,
                     std::vector<int>& curPivots,
-                    std::vector<int>& l2c) {
+                    std::vector<int>& l2c,
+                    int first_non_pivot_row
+                    ) {
     if (n_rows == 0 || n_cols == 0) return;
 
     std::vector<bool> pivots(n_rows, false);
 
     // map pivots to bottom rows (after non_pivot_rows)
     for (int i = 0; i < curPivots[0]; ++i) {
-        int pivot_row = l2c[curPivots[i+1]];
+        int pivot_row = first_non_pivot_row + l2c[curPivots[i+1]];
         pivots[pivot_row] = true;
     }
 
@@ -437,7 +439,7 @@ void push_pivots_up(std::vector<T>& in, std::vector<T>& temp,
 
     // extract from first pivot-rows those which are non-pivots
     std::vector<int> early_non_pivots;
-    for (int i = 0; i < curPivots[0]; ++i) {
+    for (int i = first_non_pivot_row; i < first_non_pivot_row + curPivots[0]; ++i) {
         if (!pivots[i]) {
             early_non_pivots.push_back(i);
         }
@@ -445,7 +447,7 @@ void push_pivots_up(std::vector<T>& in, std::vector<T>& temp,
 
     // extract from the rest, those which are pivots
     std::vector<int> late_pivots;
-    for (int i = curPivots[0]; i < n_rows; ++i) {
+    for (int i = first_non_pivot_row + curPivots[0]; i < n_rows; ++i) {
         if (pivots[i]) {
             late_pivots.push_back(i);
         }
@@ -454,20 +456,28 @@ void push_pivots_up(std::vector<T>& in, std::vector<T>& temp,
     // copy first non_pivots from in to temp
     for (int i = 0; i < early_non_pivots.size(); ++i) {
         int row = early_non_pivots[i];
-        std::copy_n(&in[row * n_cols], n_cols, &temp[i * n_cols]);
+        std::copy_n(&in[row * n_cols],
+                    n_cols,
+                    &temp[i * n_cols]);
     }
 
     // overwrites first v rows with pivots
     for (int i = 0; i < curPivots[0]; ++i) {
-        int pivot_row = l2c[curPivots[i+1]];
-        std::copy_n(&in[pivot_row * n_cols], n_cols, &in[i * n_cols]);
+        int pivot_row = first_non_pivot_row + l2c[curPivots[i+1]];
+        std::copy_n(&in[pivot_row * n_cols],
+                    n_cols,
+                    &in[(first_non_pivot_row + i) * n_cols]);
     }
 
+    std::cout << "late pivots = " << late_pivots.size() << std::endl;
+    std::cout << "early non pivots = " << early_non_pivots.size() << std::endl;
     assert(late_pivots.size() == early_non_pivots.size());
 
     // copy non_pivots to late_pivots's positions from temp to in
     for (int i = 0; i < late_pivots.size(); ++i) {
-        std::copy_n(&temp[i * n_cols], n_cols, &in[late_pivots[i] * n_cols]);
+        std::copy_n(&temp[i * n_cols], 
+                    n_cols, 
+                    &in[late_pivots[i] * n_cols]);
     }
 }
 
@@ -1056,17 +1066,19 @@ void LU_rep(T* A,
 #endif
         push_pivots_up<T>(A11Buff, A11BuffTemp,
                        n_local_active_rows, Nl,
-                       layout, curPivots, l2c);
+                       layout, curPivots, l2c,
+                       first_non_pivot_row);
 
         push_pivots_up<T>(A10Buff, A10BuffTemp,
                        n_local_active_rows, v,
-                       layout, curPivots, l2c);
+                       layout, curPivots, l2c,
+                       first_non_pivot_row);
 
         first_non_pivot_row += curPivots[0];
 
         // maps [Nl] -> [n_local_active_rows]
         for (int i = 0; i < curPivots[0]; ++i) {
-            std::iter_swap(&l2c[curPivots[i+1]], &l2c[i+first_non_pivot_row]);
+            std::iter_swap(&l2c[curPivots[i+1]], &l2c[i]);
         }
 
         // n_local_active_cols = Nl-loff;
