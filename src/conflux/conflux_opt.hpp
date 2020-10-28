@@ -656,9 +656,6 @@ void LU_rep(T* A,
     std::vector<T> A10BuffTemp(Nl * v);
     std::vector<T> A11BuffTemp(Nl * Nl);
 
-    // final result
-    std::vector<T> result_buff(Nl * Nl);
-
     // global row indices
     std::vector<int> gri(Nl);
     std::vector<int> griTemp(Nl);
@@ -680,7 +677,6 @@ void LU_rep(T* A,
     }
 
     int n_local_active_rows = Nl;
-    int n_local_active_cols = Nl;
 
     std::vector<T> pivotBuff(Nl * v);
     std::vector<T> pivotIndsBuff(N);
@@ -821,8 +817,7 @@ void LU_rep(T* A,
             mkl_domatcopy('R', 'N',
                     n_local_active_rows, v,
                     1.0,
-                    &A11Buff[n_local_active_cols - Nl + loff], n_local_active_cols,
-                    // &A11Buff[loff], n_local_active_cols,
+                    &A11Buff[loff], Nl,
                     &A10Buff[0], v); 
             PL();
 
@@ -1046,8 +1041,8 @@ void LU_rep(T* A,
             std::cout << "before pushing pivots below" << std::endl;
             print_matrix(A11Buff.data(), 
                          0, n_local_active_rows, 
-                         0, n_local_active_cols, 
-                         n_local_active_cols);
+                         0, Nl, 
+                         Nl);
         }
         MPI_Barrier(lu_comm);
 #endif
@@ -1063,7 +1058,7 @@ void LU_rep(T* A,
 
         // maps [Nl] -> [n_local_active_rows]
         for (int i = 0; i < curPivots[0]; ++i) {
-            std::swap(l2c[curPivots[i+1]], l2c[i+first_non_pivot_row]);
+            std::iter_swap(&l2c[curPivots[i+1]], &l2c[i+first_non_pivot_row]);
         }
 
         // n_local_active_cols = Nl-loff;
@@ -1072,29 +1067,28 @@ void LU_rep(T* A,
             std::cout << "after pushing pivots below" << std::endl;
             print_matrix(A11Buff.data(), 
                          0, n_local_active_rows, 
-                         0, n_local_active_cols, 
-                         n_local_active_cols);
+                         0, Nl, 
+                         Nl);
         }
 #endif
 
         // A01Buff is at the top of A11Buff
         // and contains all the pivot rows
-        T* pivots_ptr = &A11Buff[first_non_pivot_row * Nl];
 
         // for A01Buff
         // TODO: NOW: reduce pivot rows: curPivots[0] x (Nl-loff)
         //
         for (int i = 0; i < curPivots[0]; ++i) {
-            int pivot_row = l2c[curPivots[i+1]];
-            std::copy_n(&pivots_ptr[pivot_row * Nl + loff], Nl-loff, &A01Buff[0]);
+            int pivot_row = curPivots[i+1];
+            std::copy_n(&A11Buff[pivot_row * Nl + loff], Nl-loff, &A01Buff[i*(Nl-loff)]);
         }
 
         if (pk == layrK) {
-            MPI_Reduce(MPI_IN_PLACE, pivots_ptr,
+            MPI_Reduce(MPI_IN_PLACE, &A01Buff[0],
                        curPivots[0] * (Nl-loff),
                        MPI_DOUBLE, MPI_SUM, layrK, k_comm);
         } else {
-            MPI_Reduce(pivots_ptr, pivots_ptr,
+            MPI_Reduce(&A01Buff[0], &A01Buff[0],
                        curPivots[0] * (Nl-loff),
                        MPI_DOUBLE, MPI_SUM, layrK, k_comm);
         }
@@ -1111,7 +1105,7 @@ void LU_rep(T* A,
             if (rank == print_rank) {
                 std::cout << "Step 2 finished." << std::endl;
                 print_matrix(A11Buff.data(), 0, n_local_active_rows, 
-                             0, n_local_active_cols, n_local_active_cols);
+                             0, Nl, Nl);
             }
             MPI_Barrier(lu_comm);
         }
@@ -1126,7 +1120,7 @@ void LU_rep(T* A,
             auto p_rcv = X2p(lu_comm, k % sqrtp1, pj, layrK);
             for (int i = 0; i < curPivots[0]; ++i) {
                 auto dest_dspls = curPivOrder[i] * (Nl-loff);
-                MPI_Put(pivots_ptr, Nl-loff, MPI_DOUBLE,
+                MPI_Put(&A01Buff[0], Nl-loff, MPI_DOUBLE,
                         p_rcv, dest_dspls, Nl-loff, MPI_DOUBLE,
                         A01Win);
             }
@@ -1323,7 +1317,7 @@ void LU_rep(T* A,
 
         ts = te;
 
-        auto lld_A01 = Nl;
+        auto lld_A01 = Nl - loff;
         // # ---------------------------------------------- #
         // # 6. compute A01 and broadcast it to A01BuffRecv #
         // # ---------------------------------------------- #
@@ -1405,7 +1399,7 @@ void LU_rep(T* A,
             MPI_Barrier(lu_comm);
             std::cout << "A11 (before) = " << std::endl;
             print_matrix_all(A11Buff.data(), 0, n_local_active_rows, 
-                             0, n_local_active_cols, n_local_active_cols,
+                             0, Nl, Nl,
                              rank, P, lu_comm);
             MPI_Barrier(lu_comm);
         }
@@ -1424,7 +1418,7 @@ void LU_rep(T* A,
             for (int i = 0; i < n_local_active_rows; ++i) {
                 // l2c  Nl -> n_local_active_rows
                 int grow = l2c[i];
-                std::copy_n(&A10Buff[i * v], v, &result_buff[grow*Nl+loff]);
+                std::copy_n(&A10Buff[i * v], v, &A11Buff[grow*Nl+loff]);
             }
         }
 
@@ -1435,9 +1429,9 @@ void LU_rep(T* A,
         if (pi == k % sqrtp1 && pk == layrK) {
             for (int i = 0; i < curPivots[0]; ++i) {
                 auto pivot_row = l2c[curPivots[i+1]];
-                std::copy_n(&A01Buff[i * n_local_active_cols],
-                            n_local_active_cols,
-                            &result_buff[pivot_row * Nl + loff + v]);
+                std::copy_n(&A01Buff[i * (Nl-loff)],
+                            Nl,
+                            &A11Buff[pivot_row * Nl + loff + v]);
             }
         }
 
@@ -1454,10 +1448,10 @@ void LU_rep(T* A,
         // 2. A10BuffRcv is column-major
         // 3. A01BuffTemp is densified and leading dimensions = Nl-loff, row-major
         cblas_dgemm(CblasRowMajor, CblasNoTrans, CblasNoTrans,
-                n_local_active_rows, n_local_active_cols, nlayr,
+                n_local_active_rows, Nl-loff, nlayr,
                 -1.0, &A10BuffRcv[0], nlayr,
-                &A01BuffRcv[0], n_local_active_cols,
-                1.0, &A11Buff[first_non_pivot_row * n_local_active_cols], n_local_active_cols);
+                &A01BuffRcv[0], Nl-loff,
+                1.0, &A11Buff[first_non_pivot_row * Nl + loff], Nl);
         PL();
 #ifdef DEBUG
         if (k == chosen_step) {
