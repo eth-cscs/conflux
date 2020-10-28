@@ -976,16 +976,21 @@ void LU_rep(T* A,
                 curPivots[0] = 0;
             }
 
+            /*
             // send A00 to pi = k % sqrtp1 && pk = layrK
             auto p_rcv = X2p(lu_comm, k % sqrtp1, pj, layrK);
             MPI_Send(&A00Buff[0], v*v, MPI_DOUBLE,
                     p_rcv, 11, lu_comm);
+            */
         }
 
         // COMMUNICATION
         // MPI_Request reqs_pivots[4];
         // the one who entered this is the root
         auto root = X2p(jk_comm, k % sqrtp1, layrK);
+
+        // # Sending A00Buff:
+        MPI_Bcast(&A00Buff[0], v * v, MPI_DOUBLE, root, jk_comm);
 
         // # Sending pivots:
         MPI_Bcast(&curPivots[0], 1, MPI_INT, root, jk_comm);
@@ -999,12 +1004,14 @@ void LU_rep(T* A,
 
         MPI_Bcast(&curPivOrder[0], curPivots[0], MPI_INT, root, jk_comm); //  &reqs_pivots[3]);
 
+        /*
         // # Receiving A00Buff:
         if (pi == k % sqrtp1 && pk == layrK) {
-            auto root_bcast = X2p(lu_comm, k % sqrtp1, pj, layrK);
+            auto root_bcast = X2p(lu_comm, pi, k % sqrtp1, layrK);
             MPI_Recv(&A00Buff[0], v*v, MPI_DOUBLE,
                     root_bcast, 11, lu_comm, MPI_STATUS_IGNORE);
         }
+        */
 
 #ifdef DEBUG
         if (pi == 0 && pk == layrK && pj == k % sqrtp1) {
