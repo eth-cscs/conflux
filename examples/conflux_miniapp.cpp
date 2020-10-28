@@ -50,7 +50,11 @@ int main(int argc, char *argv[]) {
 
     for (int i = 0; i < n_rep; ++i) {
         PC();
-        conflux::LU_rep<dtype>(gv.matrix, C.data(), Perm.data(), gv, MPI_COMM_WORLD);
+        conflux::LU_rep<dtype>(gv.matrix, 
+                               C.data(), 
+                               Perm.data(), 
+                               gv, 
+                               MPI_COMM_WORLD);
     }
 
     if (rank == 0) {
