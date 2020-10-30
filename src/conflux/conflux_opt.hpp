@@ -580,14 +580,17 @@ void LU_rep(T* A,
 
     // Create buffers
     std::vector<T> A00Buff(v * v);
+
     std::vector<T> A10Buff(Nl * v);
+    std::vector<T> A10BuffTemp(Nl * v);
     std::vector<T> A10BuffRcv(Nl * nlayr);
+
     std::vector<T> A01Buff(v * Nl);
     std::vector<T> A01BuffTemp(v * Nl);
     std::vector<T> A01BuffRcv(nlayr * Nl);
+
     std::vector<T> A11Buff(Nl * Nl);
     std::vector<T> A11BuffTemp(Nl * Nl);
-    std::vector<T> A10BuffTemp(Nl * v);
 
     // global row indices
     std::vector<int> gri(Nl);
@@ -603,14 +606,6 @@ void LU_rep(T* A,
         auto gT = lT * sqrtp1 + pi;
         gri[i] = lR + gT * v;
         igri[gri[i]] = i;
-    }
-
-    std::vector<int> l2c(Nl);
-    std::vector<int> l2cTemp(Nl);
-    std::vector<int> l2cCopy(Nl);
-    // std::vector<bool> removed(Nl, false);
-    for (int i = 0; i < Nl; ++i) {
-        l2c[i] = i;
     }
 
     int n_local_active_rows = Nl;
