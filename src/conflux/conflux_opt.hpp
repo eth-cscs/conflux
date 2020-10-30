@@ -307,45 +307,6 @@ void print_matrix_all(T* pointer,
 }
 
 template <typename T>
-void remove_pivotal_rows(std::vector<T>& mat,
-        int n_rows, int n_cols,
-        std::vector<T>& mat_temp,
-        std::vector<int>& pivots,
-        std::vector<int>& l2c) {
-    // check which rows should be extracted
-    // mask[i] = 1 means i-th row should be kept
-    std::vector<int> mask(n_rows, -1);
-    for (int i = 0; i < pivots[0]; ++i) {
-        auto pivot = l2c[pivots[i+1]];
-        assert(pivot < n_rows);
-        mask[pivot] = 0;
-    }
-    for (int i = 0; i < n_rows; ++i) {
-        if (mask[i] == -1) {
-            mask[i] = 1;
-        }
-    }
-
-    // perform the prefix-sum (exclusive-scan)
-    std::vector<int> prefix_sum(n_rows);
-    for (int i = 1; i < n_rows; ++i) {
-        prefix_sum[i] = prefix_sum[i-1] + mask[i-1];
-    }
-
-    // extract kept_rows to temp
-#pragma omp parallel for
-    for (int i = 0; i < n_rows; ++i) {
-        if (mask[i] == 1) {
-            std::copy_n(&mat[i * n_cols], n_cols, 
-                    &mat_temp[prefix_sum[i] * n_cols]);
-        }
-    }
-
-    // swap temp with mat
-    mat.swap(mat_temp);
-}
-
-template <typename T>
 void LUP(int n_local_active_rows, int v, int stride,
         T* pivotBuff, T* candidatePivotBuff,
         std::vector<int>& ipiv, std::vector<int>& perm) {
@@ -368,51 +329,6 @@ void LUP(int n_local_active_rows, int v, int stride,
     for (int i = 0; i < std::min(v, n_local_active_rows); ++i) {
         std::swap(perm[i], perm[ipiv[i]-1]);
     }
-}
-
-template <typename T>
-void push_pivots_below(std::vector<T>& in, std::vector<T>& temp,
-                    int n_rows, int n_cols, int new_n_cols,
-                    order layout,
-                    std::vector<int>& curPivots,
-                    std::vector<int>& l2c) {
-    if (n_rows == 0 || n_cols == 0) return;
-    if (curPivots[0] == 0 && new_n_cols == n_cols) return;
-
-    std::vector<int> perm(n_rows, -1);
-    int non_pivot_rows = n_rows - curPivots[0];
-    assert(n_rows >= curPivots[0]);
-
-#ifdef DEBUG
-    for (int i = 0; i < curPivots[0]; ++i) {
-        std::cout << "non_pivots = " << non_pivot_rows << ", n_rows = " << n_rows << ", curPivots[" << i+1 << "] = " << l2c[curPivots[i+1]] << std::endl;
-    }
-#endif
-
-    // map pivots to bottom rows (after non_pivot_rows)
-    for (int i = 0; i < curPivots[0]; ++i) {
-        int pivot_row = l2c[curPivots[i+1]];
-        assert(pivot_row < n_rows);
-        assert(pivot_row >= 0);
-        assert(non_pivot_rows + i < n_rows);
-        assert(non_pivot_rows + i >= 0);
-        perm[pivot_row] = non_pivot_rows + i;
-    }
-
-    // map non_pivots to upper rows
-    int index = 0;
-    for (int i = 0; i < n_rows; ++i) {
-        // if not a pivot row
-        if (perm[i] == -1) {
-            perm[i] = index;
-            ++index;
-        }
-    }
-
-    permute_rows(in.data(), temp.data(), n_rows, n_cols, n_rows, new_n_cols, layout, perm);
-
-    // swap the non-permuted and permuted matrices
-    in.swap(temp);
 }
 
 template <typename T>
@@ -893,9 +809,6 @@ void LU_rep(T* A,
 #endif
         MPI_Request A00_req;
         if (pj == k % sqrtp1 && pk == layrK) {
-            // std::cout << "rank = " << pi << ", " << pj << ", " << pk << std::endl;
-            // std::cout << "A10Buff = " << std::endl;
-            // print_matrix(A10Buff.data(), 0, n_local_active_rows, 0, v, v);
             mkl_domatcopy('R', 'N',
                            n_local_active_rows, v,
                            1.0,
@@ -912,8 +825,6 @@ void LU_rep(T* A,
             print_matrix(candidatePivotBuff.data(), 
                          0, n_local_active_rows, 0, v+1, v+1);
 #endif
-            // std::cout << "candidatePivotBuff after gluing:" << std::endl;
-            // print_matrix(candidatePivotBuff.data(), 0, n_local_active_rows, 0, v+1, v+1);
             // # tricky part! to preserve the order of the rows between swapping pairs (e.g., if ranks 0 and 1 exchange their
             // # candidate rows), we want to preserve that candidates of rank 0 are always above rank 1 candidates. Otherwise,
             // # we can get inconsistent results. That's why,in each communication pair, higher rank puts his candidates below:
@@ -947,11 +858,9 @@ void LU_rep(T* A,
 
             // TODO: after first LUP and swap
 #ifdef DEBUG
-            // if (pi == 0) {
             std::cout << "candidatePivotBuff AFTER FIRST LUP AND SWAP " << pi << std::endl;
             print_matrix(candidatePivotBuff.data(), 
                          0, n_local_active_rows, 0, v+1, v+1);
-            // }
 #endif
 
             // std::cout << "Matrices permuted" << std::endl;
@@ -1010,7 +919,6 @@ void LU_rep(T* A,
                 auto p_rcv = X2p(lu_comm, k % sqrtp1, pi, layrK);
                 MPI_Isend(&A00Buff[0], v*v, MPI_DOUBLE,
                         p_rcv, 50, lu_comm, &A00_req);
-                // std::cout << "Rank (" << pi << ", " << pj << ", " << pk << ") -> (" << k%sqrtp1 << ", " << pi << ", " << layrK << ")" << std::endl;
             }
         }
 
@@ -1020,7 +928,6 @@ void LU_rep(T* A,
             auto p_send = X2p(lu_comm, pj, k % sqrtp1, layrK);
             MPI_Irecv(&A00Buff[0], v*v, MPI_DOUBLE,
                     p_send, 50, lu_comm, &A00_req);
-            // std::cout << "Rank (" << pi << ", " << pj << ", " << pk << ") receives from (" << pj << ", " << k%sqrtp1 << ", " << layrK << ")" << std::endl;
         }
 
         if (pi != pj && pk == layrK) {
@@ -1118,31 +1025,7 @@ void LU_rep(T* A,
         MPI_Barrier(lu_comm);
 #endif
 
-        /*
-         * 1 
-         * 2 <-
-         * 3 
-         * 4
-         * 5 <-
-         * ------
-         * 2
-         * 5
-         * 3
-         * 4
-         * 1
-         */ 
-
-        /*
-        l2cCopy = l2c;
-        push_pivots_up<int>(l2c, l2cTemp,
-                          Nl, 1,
-                          layout, curPivots, l2cCopy,
-                          first_non_pivot_row);
-                          */
-
         first_non_pivot_row += curPivots[0];
-
-        // push_pivots_up -> first_non_pivot_row 
 
         // A01Buff is at the top of A11Buff
         // and contains all the pivot rows
@@ -1241,14 +1124,7 @@ void LU_rep(T* A,
         // stream - compactions algorithm
 
         PE(step4);
-        // remove_pivotal_rows(A10Buff, n_local_active_rows, v, A10BuffTemp, curPivots, l2c);
-        // remove_pivotal_rows(gri, n_local_active_rows, 1, griTemp, curPivots, l2c);
-        // 3
-        // gri: 0, 1, 2, 3, 4, 5
-        // gri: 0, 1, 2, 4, 5
 
-        // [1 2 3 7 4 5 6] l2c[4] = -1
-        // l2c [Nl] -> n_local_active_rows
         n_local_active_rows -= curPivots[0];
 
         PL();
@@ -1357,7 +1233,7 @@ void LU_rep(T* A,
         if (size < 0) {
             std::cout << "weird size = " << size << ", nlayr = " << nlayr << ", active rowws = " << n_local_active_rows << std::endl;
         }
-        
+
         MPI_Irecv(&A10BuffRcv[0], size, MPI_DOUBLE, 
                 p_send, 5, lu_comm, &reqs[req_id]);
         ++req_id;
@@ -1400,21 +1276,6 @@ void LU_rep(T* A,
             PL();
 
             PE(step6_reshuffling);
-            // # local reshuffle before broadcast
-            // pack all the data for each rank
-            // extract rows [rowStart, rowEnd) and cols [loff, Nl)
-            /*
-#pragma omp parallel for
-        for(int pk_rcv = 0; pk_rcv < c; ++pk_rcv) {
-            // # for the receive layer pk_rcv, its A01BuffRcv is formed by the following rows of A01Buff[p]
-            auto rowStart = pk_rcv * nlayr;
-            auto rowEnd = (pk_rcv + 1) * nlayr;
-            // # all pjs receive the same data A11Buff[p, rows, colStart : colEnd]
-            mcopy(A01Buff.data(), A01BuffTemp.data(),
-            rowStart, rowEnd, loff, Nl, lld_A01,
-            rowStart, rowEnd, 0, Nl-loff, Nl-loff);
-            }
-            */
             PL();
 
             PE(step6_comm);
@@ -1529,6 +1390,7 @@ void LU_rep(T* A,
         if (pj == k % sqrtp1 && pk == layrK) {
             // condensed A10 to non-condensed result buff
             // n_local_active_rows already reduced beforehand
+#pragma omp parallel for
             for (int i = first_non_pivot_row; i < Nl; ++i) {
                 std::copy_n(&A10Buff[i * v], v, &A11Buff[i*Nl+loff]);
             }
@@ -1577,7 +1439,8 @@ void LU_rep(T* A,
     }
 
     MPI_Win_fence(MPI_MODE_NOSUCCEED, A01Win);
-
+    // Delete all windows
+    MPI_Win_free(&A01Win);
 
 #ifdef DEBUG
     std::cout << "rank: " << X2p(lu_comm, pi, pj, pk) <<", Finished everything" << std::endl;
@@ -1593,17 +1456,6 @@ void LU_rep(T* A,
         for (auto i = 0; i < 8; ++i) {
             std::cout << "Runtime " << i << ": " << double(timers[i]) / 1000000 << " seconds" << std::endl;
         }
-    }
-
-    // Delete all windows
-    MPI_Win_free(&A01Win);
-
-    for (int i = 0; i < P; ++i) {
-        if (i == rank) {
-            std::cout << "Rank = " << rank << std::endl;
-            PP();
-        }
-        MPI_Barrier(lu_comm);
     }
 }
 }
