@@ -457,6 +457,7 @@ void push_pivots_up(std::vector<T>& in, std::vector<T>& temp,
     }
 
     // copy first non_pivots from in to temp
+#pragma omp parallel for
     for (int i = 0; i < early_non_pivots.size(); ++i) {
         int row = early_non_pivots[i];
         std::copy_n(&in[row * n_cols],
@@ -464,6 +465,7 @@ void push_pivots_up(std::vector<T>& in, std::vector<T>& temp,
                     &temp[i * n_cols]);
     }
 
+#pragma omp parallel for
     // overwrites first v rows with pivots
     for (int i = 0; i < curPivots[0]; ++i) {
         int pivot_row = curPivots[i+1];
@@ -476,6 +478,7 @@ void push_pivots_up(std::vector<T>& in, std::vector<T>& temp,
     // std::cout << "early non pivots = " << early_non_pivots.size() << std::endl;
     assert(late_pivots.size() == early_non_pivots.size());
 
+#pragma omp parallel for
     // copy non_pivots to late_pivots's positions from temp to in
     for (int i = 0; i < late_pivots.size(); ++i) {
         std::copy_n(&temp[i * n_cols], 
@@ -1562,15 +1565,15 @@ void LU_rep(T* A,
             std::exit(0);
         }
         */
+        if (pi == 1 && pj == 0 && pk == 0) {
+            std::cout << "Superstep: " << k << std::endl;
+            std::cout << "A00Buff after storing the results back:" << std::endl;
+            print_matrix(A00Buff.data(), 
+                    0, v,
+                    0, v,
+                    v);
+        }
 #endif
-    if (rank == 0) {
-        std::cout << "Superstep: " << k << std::endl;
-        std::cout << "A00Buff after storing the results back:" << std::endl;
-        print_matrix(A00Buff.data(), 
-                0, v,
-                0, v,
-                v);
-    }
     }
 
     MPI_Win_fence(MPI_MODE_NOSUCCEED, A01Win);
