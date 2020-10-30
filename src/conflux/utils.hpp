@@ -7,7 +7,7 @@ namespace conflux {
 // the previous values 
 template <typename T, typename S>
 void prepend_column(matrix_view<T> mat,
-                    std::vector<S>& indices) {
+                    S* indices) {
     // put the elements of indices[i] -> column 0 of mat
     for (int i = 0; i < mat.n_rows; ++i) {
         // cast from S -> T
