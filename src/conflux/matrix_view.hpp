@@ -62,6 +62,7 @@ public:
 
     // returns the element with (row, col)-coordinates
     T& operator() (int row, int col) { 
+        assert(n_rows > 0 && n_cols > 0);
         assert(data != nullptr);
         assert(row >= 0 && row < n_rows);
         assert(col >= 0 && col < n_cols);
@@ -69,6 +70,7 @@ public:
     }
 
     T operator() (int row, int col) const { 
+        assert(n_rows > 0 && n_cols > 0);
         assert(data != nullptr);
         assert(row >= 0 && row < n_rows);
         assert(col >= 0 && col < n_cols);

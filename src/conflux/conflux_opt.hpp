@@ -455,14 +455,6 @@ void tournament_rounds(
         if (n_local_active_rows == 0) continue;
 
         // TODO: after 0th round of communication
-#ifdef DEBUG
-        if (pi == 0) {
-            std::cout << "candidatePivotBuff AFTER 0TH ROUND OF COMM" << std::endl;
-            print_matrix(candidatePivotBuff.data(), 
-                         0, n_local_active_rows, 0, v+1, v+1);
-        }
-#endif
-        // pivotBuff := output
         // candidatePivotBuff := input
         LUP(2*v, v, v+1, &pivotBuff[0], &candidatePivotBuff[1], ipiv, perm);
 
@@ -569,15 +561,6 @@ void LU_rep(T* A,
     int pi, pj, pk;
     std::tie(pi, pj, pk) = p2X(lu_comm, rank);
 
-    std::vector<T> B(N * N);
-    std::copy(A, A + N * N, B.data());
-
-    // Perm = np.eye(N);
-    std::vector<int> Perm(N * N);
-    for (int i = 0; i < N; ++i) {
-        Perm[i * N + i] = 1;
-    }
-
     // Create buffers
     std::vector<T> A00Buff(v * v);
 
@@ -590,6 +573,11 @@ void LU_rep(T* A,
     std::vector<T> A01BuffRcv(nlayr * Nl);
 
     std::vector<T> A11Buff(Nl * Nl);
+    /*
+    for (int i = 0; i < A11Buff.size(); ++i) {
+        A11Buff[i] = 100 + i;
+    }
+    */
     std::vector<T> A11BuffTemp(Nl * Nl);
 
     // global row indices
@@ -609,6 +597,7 @@ void LU_rep(T* A,
     }
 
     int n_local_active_rows = Nl;
+    int first_non_pivot_row = 0;
 
     std::vector<T> pivotBuff(Nl * v);
     std::vector<T> pivotIndsBuff(N);
@@ -640,19 +629,12 @@ void LU_rep(T* A,
             auto gti = l2g(pi, lti, sqrtp1);
             for (auto ltj = 0; ltj < tA11; ++ltj) {
                 auto gtj = l2g(pj, ltj, sqrtp1);
-                mcopy(&B[0], &A11Buff[0],
+                mcopy(&A[0], &A11Buff[0],
                         gti * v, (gti + 1) * v, gtj * v, (gtj + 1) * v, N,
                         lti * v, (lti + 1) * v, ltj * v, (ltj + 1) * v, Nl);
             }
         }
     }
-#ifdef DEBUG
-    if (pi == 0 && pj == 1 && pk == 0) {
-        print_matrix(A11Buff.data(), 0, Nl, 0, Nl, Nl);
-        std::cout << "Allocated." << std::endl;
-    }
-    MPI_Barrier(lu_comm);
-#endif
 
     MPI_Win A01Win = create_window(lu_comm,
             A01Buff.data(),
@@ -680,12 +662,10 @@ void LU_rep(T* A,
 # ---------------------------------------------- #
 */
 
-    auto chosen_step = Nt-1;
+    auto chosen_step = Nt;
 
     MPI_Barrier(lu_comm);
     auto t1 = std::chrono::high_resolution_clock::now();
-
-    int first_non_pivot_row = 0;
 
     // # now k is a step number
     for (auto k = 0; k < Nt; ++k) {
@@ -794,21 +774,28 @@ void LU_rep(T* A,
         // sqrtp1 many roots
         // sqrtp1 x c  many receivers
 #ifdef DEBUG
-        if (pi == 0 && pj == 1 && pk == 0) {
-            std::cout << "GRI before tournament" << std::endl;
-            print_matrix(gri.data(), 
-                         0, 1,
-                         0, Nl,
-                         Nl);
+        if (chosen_step == k) {
+            if (pi == 0 && pj == 1 && pk == 0) {
+                std::cout << "GRI before tournament" << std::endl;
+                print_matrix(gri.data(), 
+                             0, 1,
+                             0, Nl,
+                             Nl);
+            }
         }
 #endif
-        MPI_Request A00_req;
+        MPI_Request A00_req[2];
+        int n_A00_reqs = 0;
         if (pj == k % sqrtp1 && pk == layrK) {
+            auto min_perm_size = std::min(n_local_active_rows, v);
+            auto max_perm_size = std::max(n_local_active_rows, v);
+
             mkl_domatcopy('R', 'N',
                            n_local_active_rows, v,
                            1.0,
                            &A10Buff[first_non_pivot_row * v], v,
                            &candidatePivotBuff[1], v+1);
+            assert(n_local_active_rows + first_non_pivot_row == Nl);
             // glue the gri elements to the first column of candidatePivotBuff
             prepend_column(matrix_view<T>(&candidatePivotBuff[0],
                                        n_local_active_rows, v+1, v+1,
@@ -816,9 +803,11 @@ void LU_rep(T* A,
                            &gri[first_non_pivot_row]);
 #ifdef DEBUG
             // TODO: before anything
-            std::cout << "candidatePivotBuff BEFORE ANYTHING " << pi << std::endl;
-            print_matrix(candidatePivotBuff.data(), 
-                         0, n_local_active_rows, 0, v+1, v+1);
+            if (chosen_step == k) {
+                std::cout << "candidatePivotBuff BEFORE ANYTHING " << pi << std::endl;
+                print_matrix(candidatePivotBuff.data(), 
+                             0, n_local_active_rows, 0, v+1, v+1);
+            }
 #endif
             // # tricky part! to preserve the order of the rows between swapping pairs (e.g., if ranks 0 and 1 exchange their
             // # candidate rows), we want to preserve that candidates of rank 0 are always above rank 1 candidates. Otherwise,
@@ -831,14 +820,13 @@ void LU_rep(T* A,
 
             LUP(n_local_active_rows, v, v+1, &pivotBuff[0], &candidatePivotBuff[1], ipiv, perm);
 
-            auto min_perm_size = std::min(n_local_active_rows, v);
-            auto max_perm_size = std::max(n_local_active_rows, v);
-
             // TODO: after first LUP and swap
 #ifdef DEBUG
-            std::cout << "candidatePivotBuff BEFORE FIRST LUP AND SWAP " << pi << std::endl;
-            print_matrix(candidatePivotBuff.data(), 
-                         0, n_local_active_rows, 0, v+1, v+1);
+            if (chosen_step == k) {
+                std::cout << "candidatePivotBuff BEFORE FIRST LUP AND SWAP " << pi << std::endl;
+                print_matrix(candidatePivotBuff.data(), 
+                             0, n_local_active_rows, 0, v+1, v+1);
+            }
 #endif
 
             if (src_pi < pi) {
@@ -853,9 +841,11 @@ void LU_rep(T* A,
 
             // TODO: after first LUP and swap
 #ifdef DEBUG
-            std::cout << "candidatePivotBuff AFTER FIRST LUP AND SWAP " << pi << std::endl;
-            print_matrix(candidatePivotBuff.data(), 
-                         0, n_local_active_rows, 0, v+1, v+1);
+            if (chosen_step == k) {
+                std::cout << "candidatePivotBuff AFTER FIRST LUP AND SWAP " << pi << std::endl;
+                print_matrix(candidatePivotBuff.data(), 
+                             0, n_local_active_rows, 0, v+1, v+1);
+            }
 #endif
 
             // std::cout << "Matrices permuted" << std::endl;
@@ -878,9 +868,11 @@ void LU_rep(T* A,
 
                 // TODO: final value (all superstep 0)
 #ifdef DEBUG
-            std::cout << "candidatePivotBuff FINAL VALUE " << pi << std::endl;
-            print_matrix(candidatePivotBuff.data(), 
-                         0, n_local_active_rows, 0, v+1, v+1);
+            if (chosen_step == k) {
+                std::cout << "candidatePivotBuff FINAL VALUE " << pi << std::endl;
+                print_matrix(candidatePivotBuff.data(), 
+                             0, n_local_active_rows, 0, v+1, v+1);
+            }
 #endif
             // std::cout << "tournament rounds finished" << std::endl;
 
@@ -892,7 +884,7 @@ void LU_rep(T* A,
             // print_matrix(candidatePivotBuff.data(), 0, v, 0, v+1, v+1);
             auto gpivots = column<T, int>(matrix_view<T>(&candidatePivotBuff[0],
                                                  min_perm_size, v+1, v+1,
-                                                 order::row_major),
+                                                 layout),
                                   0);
 
             std::unordered_map<int, std::vector<int>> lpivots;
@@ -913,7 +905,7 @@ void LU_rep(T* A,
             if (pi != pj) {
                 auto p_rcv = X2p(lu_comm, k % sqrtp1, pi, layrK);
                 MPI_Isend(&A00Buff[0], v*v, MPI_DOUBLE,
-                        p_rcv, 50, lu_comm, &A00_req);
+                        p_rcv, 50, lu_comm, &A00_req[n_A00_reqs++]);
             }
         }
 
@@ -922,11 +914,11 @@ void LU_rep(T* A,
         if (pi != pj && pi == k % sqrtp1 && pk == layrK) {
             auto p_send = X2p(lu_comm, pj, k % sqrtp1, layrK);
             MPI_Irecv(&A00Buff[0], v*v, MPI_DOUBLE,
-                    p_send, 50, lu_comm, &A00_req);
+                    p_send, 50, lu_comm, &A00_req[n_A00_reqs++]);
         }
 
-        if (pi != pj && pk == layrK) {
-            MPI_Wait(&A00_req, MPI_STATUS_IGNORE);
+        if (n_A00_reqs > 0) {
+            MPI_Waitall(n_A00_reqs, &A00_req[0], MPI_STATUSES_IGNORE);
         }
 
         // COMMUNICATION
@@ -969,17 +961,19 @@ void LU_rep(T* A,
         PE(step2);
 
 #ifdef DEBUG
-        if (pi == 0 && pj == 1 && pk == 0) {
-            std::cout << "A11 before pushing pivots up" << std::endl;
-            print_matrix(A11Buff.data(), 
-                         0, Nl, 
-                         0, Nl, 
-                         Nl);
-            std::cout << "GRI before pushing pivots up" << std::endl;
-            print_matrix(gri.data(), 
-                         0, 1,
-                         0, Nl,
-                         Nl);
+        if (chosen_step == k) {
+            if (pi == 0 && pj == 1 && pk == 0) {
+                std::cout << "A11 before pushing pivots up" << std::endl;
+                print_matrix(A11Buff.data(), 
+                             0, Nl, 
+                             0, Nl, 
+                             Nl);
+                std::cout << "GRI before pushing pivots up" << std::endl;
+                print_matrix(gri.data(), 
+                             0, 1,
+                             0, Nl,
+                             Nl);
+            }
         }
         MPI_Barrier(lu_comm);
 #endif
@@ -1005,22 +999,25 @@ void LU_rep(T* A,
         }
 
 #ifdef DEBUG
-        if (pi == 0 && pj == 1 && pk == 0) {
-            std::cout << "A11 after pushing pivots up" << std::endl;
-            print_matrix(A11Buff.data(), 
-                         0, Nl, 
-                         0, Nl, 
-                         Nl);
-            std::cout << "GRI after pushing pivots up" << std::endl;
-            print_matrix(gri.data(), 
-                         0, 1, 
-                         0, Nl, 
-                         Nl);
+        if (chosen_step == k) {
+            if (pi == 0 && pj == 1 && pk == 0) {
+                std::cout << "A11 after pushing pivots up" << std::endl;
+                print_matrix(A11Buff.data(), 
+                             0, Nl, 
+                             0, Nl, 
+                             Nl);
+                std::cout << "GRI after pushing pivots up" << std::endl;
+                print_matrix(gri.data(), 
+                             0, 1, 
+                             0, Nl, 
+                             Nl);
+            }
         }
         MPI_Barrier(lu_comm);
 #endif
 
         first_non_pivot_row += curPivots[0];
+        n_local_active_rows -= curPivots[0];
 
         // A01Buff is at the top of A11Buff
         // and contains all the pivot rows
@@ -1120,7 +1117,6 @@ void LU_rep(T* A,
 
         PE(step4);
 
-        n_local_active_rows -= curPivots[0];
 
         PL();
 
@@ -1344,7 +1340,7 @@ void LU_rep(T* A,
                 1.0, &A11Buff[first_non_pivot_row * Nl + loff], Nl);
         PL();
 #ifdef DEBUG
-        if (k <= chosen_step) {
+        if (k == chosen_step) {
             if (rank == 0) {
                 std::cout << "A11Buff after computeA11:" << std::endl;
             }
@@ -1358,7 +1354,7 @@ void LU_rep(T* A,
         timers[7] += std::chrono::duration_cast<std::chrono::microseconds>( te - ts ).count();
 
 #ifdef DEBUG
-        if (k <= chosen_step) {
+        if (k == chosen_step) {
             if (rank == 0) {
                 std::cout << "A10Buff after storing the results back:" << std::endl;
             }
@@ -1408,7 +1404,7 @@ void LU_rep(T* A,
         */
 
 #ifdef DEBUG
-        if (k <= chosen_step) {
+        if (k == chosen_step) {
             if (rank == 0) {
                 std::cout << "A11Buff after storing the results back:" << std::endl;
             }
@@ -1422,13 +1418,15 @@ void LU_rep(T* A,
             std::exit(0);
         }
         */
-        if (pi == 1 && pj == 0 && pk == 0) {
-            std::cout << "Superstep: " << k << std::endl;
-            std::cout << "A00Buff after storing the results back:" << std::endl;
-            print_matrix(A00Buff.data(), 
-                    0, v,
-                    0, v,
-                    v);
+        if (k == chosen_step) {
+            if (pi == 1 && pj == 0 && pk == 0) {
+                std::cout << "Superstep: " << k << std::endl;
+                std::cout << "A00Buff after storing the results back:" << std::endl;
+                print_matrix(A00Buff.data(), 
+                        0, v,
+                        0, v,
+                        v);
+            }
         }
 #endif
     }
