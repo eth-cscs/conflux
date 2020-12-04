@@ -9,8 +9,11 @@ int main(int argc, char *argv[]) {
     cxxopts::Options options("conflux miniapp", 
         "A miniapp computing: LU factorization of A, where dim(A)=N*N");
     options.add_options()
-        ("N,dim",
-            "number of rows and cols of matrix A.", 
+        ("M,rows",
+            "number of rows of matrix A.", 
+            cxxopts::value<int>()->default_value("1000"))
+        ("N,cols",
+            "number of cols of matrix A.", 
             cxxopts::value<int>()->default_value("1000"))
         ("b,block_size",
             "block size",
@@ -29,7 +32,8 @@ int main(int argc, char *argv[]) {
         return 0;
     }
 
-    auto N = result["dim"].as<int>();
+    auto M = result["M"].as<int>();
+    auto N = result["N"].as<int>();
     auto b = result["block_size"].as<int>();
     auto n_rep = result["n_rep"].as<int>();
 
@@ -38,7 +42,7 @@ int main(int argc, char *argv[]) {
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
     MPI_Comm_size(MPI_COMM_WORLD, &size);
 
-    auto gv = conflux::GlobalVars<dtype>(N, N, b, size);
+    auto gv = conflux::GlobalVars<dtype>(M, N, b, size);
 
     std::cout << "Rank: " << rank << ", M: " << gv.M << ", N: " << gv.N << ", P:" << gv.P
               << ", v:" << gv.v << ", Px:" << gv.Px << ", Py: " << gv.Py << ", Pz: " << gv.Pz

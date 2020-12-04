@@ -657,6 +657,13 @@ void LU_rep(T* A,
             }
         }
     }
+#ifdef DEBUG
+    if (rank == print_rank) {
+        print_matrix(A11Buff.data(), 0, Ml, 0, Nl, Nl);
+    }
+    std::cout << "Allocated." << std::endl;
+    MPI_Barrier(lu_comm);
+#endif
 
     MPI_Win A01Win = create_window(lu_comm,
             A01Buff.data(),
@@ -926,23 +933,30 @@ void LU_rep(T* A,
             // send A00 to pi = k % sqrtp1 && pk = layrK
             // pj = k % sqrtp1; pk = layrK
             if (pi < Py) {
+                std::cout << "Isend: (" << pi << ", " << pj << ", " << pk << ")->(" << k % Px << ", " << pi << ", " << layrK << ")" << std::endl;
                 auto p_rcv = X2p(lu_comm, k % Px, pi, layrK);
-                MPI_Isend(&A00Buff[0], v*v, MPI_DOUBLE,
-                        p_rcv, 50, lu_comm, &A00_req[n_A00_reqs++]);
+                if (p_rcv != rank) {
+                    MPI_Isend(&A00Buff[0], v*v, MPI_DOUBLE,
+                            p_rcv, 50, lu_comm, &A00_req[n_A00_reqs++]);
+                }
             }
         }
 
         // (pi, k % sqrtp1, layrK) -> (k % sqrtp1, pi, layrK)
         // # Receiving A00Buff:
         if (pj < Px && pi == k % Px && pi < Py && pk == layrK) {
+            std::cout << "Irecv: (" << pj << ", " << pi << ", " << layrK << ")->(" << pi << ", " << pj << ", " << pk << ")" << std::endl;
             auto p_send = X2p(lu_comm, pj, pi, layrK);
-            MPI_Irecv(&A00Buff[0], v*v, MPI_DOUBLE,
-                    p_send, 50, lu_comm, &A00_req[n_A00_reqs++]);
+            if (p_send != rank) {
+                MPI_Irecv(&A00Buff[0], v*v, MPI_DOUBLE,
+                        p_send, 50, lu_comm, &A00_req[n_A00_reqs++]);
+            }
         }
 
         if (n_A00_reqs > 0) {
             MPI_Waitall(n_A00_reqs, &A00_req[0], MPI_STATUSES_IGNORE);
         }
+        MPI_Barrier(lu_comm);
 
         // COMMUNICATION
         // MPI_Request reqs_pivots[4];
@@ -950,7 +964,7 @@ void LU_rep(T* A,
         auto root = X2p(jk_comm, k % Py, layrK);
 
         // # Sending A00Buff:
-        // MPI_Bcast(&A00Buff[0], v * v, MPI_DOUBLE, root, jk_comm);
+        MPI_Bcast(&A00Buff[0], v * v, MPI_DOUBLE, root, jk_comm);
 
         // # Sending pivots:
         MPI_Bcast(&curPivots[0], 1, MPI_INT, root, jk_comm);
