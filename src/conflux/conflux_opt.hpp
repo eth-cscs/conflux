@@ -94,33 +94,20 @@ void CalculateDecomposition(
         int& Px,
         int& Py,
         int& Pz) {
-    int ratio = M/N;
+    double ratio = 1.0*std::max(M, N)/std::min(M, N);
     int p1 = (int) std::cbrt(P/ratio);
     Px = p1;
     Py = ratio * p1;
     Pz = P/(Px*Py);
-    /*
-    int p13 = (int) (std::pow(P + 1, 1.0 / 3));
-    int c = 1ll;
-    best_ppp = ppp;
-    best_c = c;
-    double bestCost = ModelCommCost(ppp, c);
-    while (c <= p13) {
-        int P1 = (int )(P / c);
-        ppp = (int) (std::sqrt(P1));
-        double cost = ModelCommCost(ppp, c);
-        if (cost < bestCost) {
-            bestCost = cost;
-            best_ppp = ppp;
-            best_c = c;
-        }
-        c++;
-    }
-    assert(best_ppp * best_ppp * best_c <= P);
-    */
-    // M x N 
-}
 
+    // sort the values
+    std::vector<int> dims = {Px, Py, Pz};
+    std::sort(dims.rbegin(), dims.rend());
+
+    Px = dims[0];
+    Py = dims[1];
+    Pz = dims[2];
+}
 template <class T>
 class GlobalVars {
 
@@ -691,7 +678,7 @@ void LU_rep(T* A,
 # ---------------------------------------------- #
 */
 
-    auto chosen_step = 0;
+    auto chosen_step = Nt;
 
     MPI_Barrier(lu_comm);
     auto t1 = std::chrono::high_resolution_clock::now();
@@ -933,7 +920,7 @@ void LU_rep(T* A,
             // send A00 to pi = k % sqrtp1 && pk = layrK
             // pj = k % sqrtp1; pk = layrK
             if (pi < Py) {
-                std::cout << "Isend: (" << pi << ", " << pj << ", " << pk << ")->(" << k % Px << ", " << pi << ", " << layrK << ")" << std::endl;
+                // std::cout << "Isend: (" << pi << ", " << pj << ", " << pk << ")->(" << k % Px << ", " << pi << ", " << layrK << ")" << std::endl;
                 auto p_rcv = X2p(lu_comm, k % Px, pi, layrK);
                 if (p_rcv != rank) {
                     MPI_Isend(&A00Buff[0], v*v, MPI_DOUBLE,
@@ -945,7 +932,7 @@ void LU_rep(T* A,
         // (pi, k % sqrtp1, layrK) -> (k % sqrtp1, pi, layrK)
         // # Receiving A00Buff:
         if (pj < Px && pi == k % Px && pi < Py && pk == layrK) {
-            std::cout << "Irecv: (" << pj << ", " << pi << ", " << layrK << ")->(" << pi << ", " << pj << ", " << pk << ")" << std::endl;
+            // std::cout << "Irecv: (" << pj << ", " << pi << ", " << layrK << ")->(" << pi << ", " << pj << ", " << pk << ")" << std::endl;
             auto p_send = X2p(lu_comm, pj, pi, layrK);
             if (p_send != rank) {
                 MPI_Irecv(&A00Buff[0], v*v, MPI_DOUBLE,
