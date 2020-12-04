@@ -38,15 +38,15 @@ int main(int argc, char *argv[]) {
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
     MPI_Comm_size(MPI_COMM_WORLD, &size);
 
-    auto gv = conflux::GlobalVars<dtype>(N, b, size);
+    auto gv = conflux::GlobalVars<dtype>(N, N, b, size);
 
-    std::cout << "Rank: " << rank << " N: " << gv.N << ", P:" << gv.P
-              << ", v:" << gv.v << ", c:" << gv.c
-              << ", sqrtp1: " << gv.sqrtp1 <<  ", Nt: " << gv.Nt
-              << ", tA10 " << gv.tA10 << ", tA11: " << gv.tA11 << std::endl;
+    std::cout << "Rank: " << rank << ", M: " << gv.M << ", N: " << gv.N << ", P:" << gv.P
+              << ", v:" << gv.v << ", Px:" << gv.Px << ", Py: " << gv.Py << ", Pz: " << gv.Pz
+              << ", Nt: " << gv.Nt
+              << ", tA11x: " << gv.tA11x << ", tA11y: " << gv.tA11y << std::endl;
 
-    std::vector<double> C(gv.N * gv.N);
-    std::vector<double> Perm(gv.N * gv.N);
+    std::vector<double> C(gv.M * gv.N);
+    std::vector<double> Perm(gv.M * gv.M);
 
     for (int i = 0; i < n_rep; ++i) {
         PC();

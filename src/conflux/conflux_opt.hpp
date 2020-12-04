@@ -89,11 +89,18 @@ double ModelCommCost(int ppp, int c) {
     return 1.0 / (ppp * c);
 }
 
-void CalculateDecomposition(int P,
-        int& best_ppp,
-        int& best_c) {
+void CalculateDecomposition(
+        int M, int N, int P,
+        int& Px,
+        int& Py,
+        int& Pz) {
+    int ratio = M/N;
+    int p1 = (int) std::cbrt(P/ratio);
+    Px = p1;
+    Py = ratio * p1;
+    Pz = P/(Px*Py);
+    /*
     int p13 = (int) (std::pow(P + 1, 1.0 / 3));
-    int ppp = (int) (std::sqrt(P));
     int c = 1ll;
     best_ppp = ppp;
     best_c = c;
@@ -110,6 +117,8 @@ void CalculateDecomposition(int P,
         c++;
     }
     assert(best_ppp * best_ppp * best_c <= P);
+    */
+    // M x N 
 }
 
 template <class T>
@@ -117,13 +126,15 @@ class GlobalVars {
 
     private:
 
-        void CalculateParameters(int inpN, int v, int inpP) {
-            CalculateDecomposition(inpP, sqrtp1, c);
+        void CalculateParameters(int inpM, int inpN, int v, int inpP) {
+            CalculateDecomposition(inpM, inpN, inpP, Px, Py, Pz);
             // v = std::lcm(sqrtp1, c);
             // v = 256;
             this->v = v;
-            int nLocalTiles = (int) (std::ceil((double) inpN / (v * sqrtp1)));
-            N = v * sqrtp1 * nLocalTiles;
+            int nLocalTilesx = (int) (std::ceil((double) inpM / (v * Px)));
+            int nLocalTilesy = (int) (std::ceil((double) inpN / (v * Py)));
+            M = v * Px * nLocalTilesx;
+            M = v * Py * nLocalTilesy;
             // std::cout << sqrtp1 << " " << c << std::endl << std::flush;
             // std::cout << v << " " << nLocalTiles << std::endl << std::flush;
             /*
@@ -137,8 +148,8 @@ class GlobalVars {
         }
 
         void InitMatrix() {
-            if (N == 16) {
-                matrix = new T[N * N]{
+            if (N == 16 && M == 16) {
+                matrix = new T[M * N]{
                     1, 8, 2, 7, 3, 8, 2, 4, 8, 7, 5, 5, 1, 4, 4, 9,
                     8, 4, 9, 2, 8, 6, 9, 9, 3, 7, 7, 7, 8, 7, 2, 8,
                     3, 5, 4, 8, 9, 2, 7, 1, 2, 2, 7, 9, 8, 2, 1, 3,
@@ -155,7 +166,7 @@ class GlobalVars {
                     7, 6, 7, 8, 2, 2, 4, 6, 6, 8, 3, 6, 5, 2, 6, 5,
                     4, 5, 1, 5, 3, 7, 4, 4, 7, 5, 8, 2, 4, 7, 1, 7,
                     8, 3, 2, 4, 3, 8, 1, 6, 9, 6, 3, 6, 4, 8, 7, 8};
-            } else if (N == 32) {
+            } else if (N == 32 && M == 32) {
                 matrix = new T[N * N] {9.0, 4.0, 8.0, 8.0, 3.0, 8.0, 0.0, 5.0, 2.0, 1.0, 0.0, 6.0, 3.0, 7.0, 0.0, 3.0, 5.0, 7.0, 3.0, 6.0, 8.0, 6.0, 2.0, 0.0, 8.0, 0.0, 8.0, 5.0, 9.0, 7.0, 9.0, 3.0,
                     7.0, 4.0, 4.0, 6.0, 8.0, 9.0, 7.0, 4.0, 4.0, 7.0, 2.0, 1.0, 3.0, 2.0, 2.0, 2.0, 0.0, 0.0, 9.0, 4.0, 3.0, 6.0, 2.0, 9.0, 7.0, 0.0, 4.0, 8.0, 9.0, 4.0, 6.0, 1.0,
                     9.0, 2.0, 9.0, 6.0, 6.0, 5.0, 2.0, 1.0, 2.0, 1.0, 7.0, 3.0, 0.0, 9.0, 8.0, 9.0, 9.0, 1.0, 3.0, 7.0, 6.0, 1.0, 8.0, 2.0, 2.0, 5.0, 5.0, 5.0, 0.0, 8.0, 2.0, 1.0,
@@ -189,35 +200,40 @@ class GlobalVars {
                     1.0, 0.0, 7.0, 4.0, 4.0, 7.0, 7.0, 1.0, 6.0, 1.0, 7.0, 6.0, 9.0, 0.0, 0.0, 2.0, 2.0, 2.0, 9.0, 2.0, 2.0, 7.0, 4.0, 7.0, 0.0, 4.0, 0.0, 0.0, 9.0, 1.0, 5.0, 4.0,
                     3.0, 8.0, 0.0, 6.0, 9.0, 5.0, 9.0, 0.0, 4.0, 2.0, 7.0, 9.0, 2.0, 6.0, 1.0, 5.0, 4.0, 9.0, 6.0, 3.0, 1.0, 1.0, 2.0, 2.0, 8.0, 5.0, 5.0, 1.0, 8.0, 7.0, 0.0, 7.0};
             } else {
-                matrix = new T[N * N];
+                matrix = new T[M * N];
 
                 std::mt19937_64 eng(seed);
                 std::uniform_real_distribution<T> dist;
-                std::generate(matrix, matrix + N * N, std::bind(dist, eng));
+                std::generate(matrix, matrix + M * N, std::bind(dist, eng));
             }
         }
 
     public:
-        int N, P;
-        int p1, sqrtp1, c;
-        int v, nlayr, Nt, t, tA11, tA10;
+        int M, N, P;
+        // Px refers to rows
+        // Py refers to cols
+        // Pz refers to height
+        int Px, Py, Pz;
+        int v, nlayr, Mt, Nt, t, tA11x, tA11y;
         int seed;
         T* matrix;
 
-        GlobalVars(int inpN, int v, int inpP, int inpSeed=42) {
+        GlobalVars(int inpM, int inpN, int v, int inpP, int inpSeed=42) {
 
-            CalculateParameters(inpN, v, inpP);
-            P = sqrtp1 * sqrtp1 * c;
-            nlayr = (int)((v + c-1) / c);
-            p1 = sqrtp1 * sqrtp1;
+            CalculateParameters(inpM, inpN, v, inpP);
+            M = inpM;
+            N = inpN;
+            P = Px * Py * Pz;
+            nlayr = (int)((v + Pz-1) / Pz);
 
             seed = inpSeed;
             InitMatrix();
 
             Nt = (int) (std::ceil((double) N / v));
-            t = (int) (std::ceil((double) Nt / sqrtp1)) + 1ll;
-            tA11 = (int) (std::ceil((double) Nt / sqrtp1));
-            tA10 = (int) (std::ceil((double) Nt / P));
+            Mt = (int) (std::ceil((double) M / v));
+            t = (int) (std::ceil((double) Nt / Py)) + 1ll;
+            tA11x = (int) (std::ceil((double) Mt / Px));
+            tA11y = (int) (std::ceil((double) Nt / Py));
         }
 
         ~GlobalVars() {
@@ -414,7 +430,7 @@ void tournament_rounds(
         std::vector<T>& candidatePivotBuffPerm,
         std::vector<int>& ipiv, std::vector<int>& perm,
         int n_rounds, 
-        int sqrtp1, int layrK,
+        int Px, int layrK,
         MPI_Comm lu_comm) {
     int rank;
     MPI_Comm_rank(lu_comm, &rank);
@@ -422,7 +438,7 @@ void tournament_rounds(
     std::tie(pi, pj, pk) = p2X(lu_comm, rank);
 
     for (int r = 0; r < n_rounds; ++r) {
-        auto src_pi = std::min(flipbit(pi, r), sqrtp1 - 1);
+        auto src_pi = std::min(flipbit(pi, r), Px - 1);
         auto p_rcv = X2p(lu_comm, src_pi, pj, pk);
 
         // int req_id = 0;
@@ -492,7 +508,7 @@ std::pair<
 std::unordered_map<int, std::vector<int>>,
     std::unordered_map<int, std::vector<int>>
     >
-    g2lnoTile(std::vector<int>& grows, int sqrtp1, int v) {
+    g2lnoTile(std::vector<int>& grows, int Px, int v) {
         std::unordered_map<int, std::vector<int>> lrows;
         std::unordered_map<int, std::vector<int>> loffsets;
 
@@ -501,9 +517,9 @@ std::unordered_map<int, std::vector<int>>,
             // # we are in the global tile:
             auto gT = growi / v;
             // # which is owned by:
-            auto pOwn = int(gT % sqrtp1);
+            auto pOwn = int(gT % Px);
             // # and this is a local tile:
-            auto lT = gT / sqrtp1;
+            auto lT = gT / Px;
             // # and inside this tile it is a row number:
             auto lR = growi % v;
             // # which is a No-Tile row number:
@@ -524,22 +540,25 @@ void LU_rep(T* A,
             MPI_Comm comm) {
     PC();
 
-    int N, P, p1, sqrtp1, c, v, nlayr, Nt, tA11;
+    int M, N, P, Px, Py, Pz, v, nlayr, Mt, Nt, tA11x, tA11y;
     N = gv.N;
+    M = gv.M;
     P = gv.P;
-    p1 = gv.p1;
-    sqrtp1 = gv.sqrtp1;
-    c = gv.c;
+    Px = gv.Px;
+    Py = gv.Py;
+    Pz = gv.Pz;
     v = gv.v;
     nlayr = gv.nlayr;
     Nt = gv.Nt;
-    tA11 = gv.tA11;
+    tA11x = gv.tA11x;
+    tA11y = gv.tA11y;
     // tA10 = gv.tA10;
     // local n
-    auto Nl = tA11 * v;
+    auto Ml = tA11x * v;
+    auto Nl = tA11y * v;
 
     MPI_Comm lu_comm;
-    int dim[] = {sqrtp1, sqrtp1, c}; // 3D processor grid
+    int dim[] = {Px, Py, Pz}; // 3D processor grid
     int period[] = {0, 0, 0};
     int reorder = 1;
     MPI_Cart_create(comm, 3, dim, period, reorder, &lu_comm);
@@ -564,47 +583,50 @@ void LU_rep(T* A,
     // Create buffers
     std::vector<T> A00Buff(v * v);
 
-    std::vector<T> A10Buff(Nl * v);
-    std::vector<T> A10BuffTemp(Nl * v);
-    std::vector<T> A10BuffRcv(Nl * nlayr);
+    // A10 => M
+    // A01 => N
+    // A11 => M x N
+    std::vector<T> A10Buff(Ml * v);
+    std::vector<T> A10BuffTemp(Ml * v);
+    std::vector<T> A10BuffRcv(Ml * nlayr);
 
     std::vector<T> A01Buff(v * Nl);
     std::vector<T> A01BuffTemp(v * Nl);
     std::vector<T> A01BuffRcv(nlayr * Nl);
 
-    std::vector<T> A11Buff(Nl * Nl);
+    std::vector<T> A11Buff(Ml * Nl);
     /*
     for (int i = 0; i < A11Buff.size(); ++i) {
         A11Buff[i] = 100 + i;
     }
     */
-    std::vector<T> A11BuffTemp(Nl * Nl);
+    std::vector<T> A11BuffTemp(Ml * Nl);
 
     // global row indices
-    std::vector<int> gri(Nl);
+    std::vector<int> gri(Ml);
     std::unordered_map<int, int> igri;
-    std::vector<int> griTemp(Nl);
-    for (int i = 0 ; i < Nl; ++i) {
+    std::vector<int> griTemp(Ml);
+    for (int i = 0 ; i < Ml; ++i) {
         auto lrow = i;
         // # we are in the local tile:
         auto lT = lrow / v;
         // # and inside this tile it is a row number:
         auto lR = lrow % v;
         // # which is a global tile:
-        auto gT = lT * sqrtp1 + pi;
+        auto gT = lT * Px + pi;
         gri[i] = lR + gT * v;
         igri[gri[i]] = i;
     }
 
-    int n_local_active_rows = Nl;
+    int n_local_active_rows = Ml;
     int first_non_pivot_row = 0;
 
-    std::vector<T> pivotBuff(Nl * v);
-    std::vector<T> pivotIndsBuff(N);
-    std::vector<T> candidatePivotBuff(Nl * (v+1));
-    std::vector<T> candidatePivotBuffPerm(Nl * (v+1));
-    std::vector<int> perm(std::max(2*v, Nl));
-    std::vector<int> ipiv(std::max(2*v, Nl));
+    std::vector<T> pivotBuff(Ml * v);
+    std::vector<T> pivotIndsBuff(M);
+    std::vector<T> candidatePivotBuff(Ml * (v+1));
+    std::vector<T> candidatePivotBuffPerm(Ml * (v+1));
+    std::vector<int> perm(std::max(2*v, Ml)); // rows 
+    std::vector<int> ipiv(std::max(2*v, Ml));
 
     std::vector<int> curPivots(Nl + 1);
     std::vector<int> curPivOrder(v);
@@ -614,7 +636,7 @@ void LU_rep(T* A,
 
     // RNG
     std::mt19937_64 eng(gv.seed);
-    std::uniform_int_distribution<int> dist(0, c-1);
+    std::uniform_int_distribution<int> dist(0, Pz-1);
 
     // # ------------------------------------------------------------------- #
     // # ------------------ INITIAL DATA DISTRIBUTION ---------------------- #
@@ -625,10 +647,10 @@ void LU_rep(T* A,
     // # ----- A11 ------ #
     // # only layer pk == 0 owns initial data
     if (pk == 0) {
-        for (auto lti = 0;  lti < tA11; ++lti) {
-            auto gti = l2g(pi, lti, sqrtp1);
-            for (auto ltj = 0; ltj < tA11; ++ltj) {
-                auto gtj = l2g(pj, ltj, sqrtp1);
+        for (auto lti = 0;  lti < tA11x; ++lti) {
+            auto gti = l2g(pi, lti, Px);
+            for (auto ltj = 0; ltj < tA11y; ++ltj) {
+                auto gtj = l2g(pj, ltj, Py);
                 mcopy(&A[0], &A11Buff[0],
                         gti * v, (gti + 1) * v, gtj * v, (gtj + 1) * v, N,
                         lti * v, (lti + 1) * v, ltj * v, (ltj + 1) * v, Nl);
@@ -662,7 +684,7 @@ void LU_rep(T* A,
 # ---------------------------------------------- #
 */
 
-    auto chosen_step = Nt;
+    auto chosen_step = 0;
 
     MPI_Barrier(lu_comm);
     auto t1 = std::chrono::high_resolution_clock::now();
@@ -679,7 +701,7 @@ void LU_rep(T* A,
         // global current offset
         // auto off = k * v;
         // local current offset
-        auto loff = (k / sqrtp1) * v; // sqrtp1 = 2, k = 157
+        auto loff = (k / Py) * v; // sqrtp1 = 2, k = 157
 
         // # in this step, layrK is the "lucky" one to receive all reduces
         auto layrK = 0; // dist(eng);
@@ -719,11 +741,11 @@ void LU_rep(T* A,
 #ifdef DEBUG
         if (k == chosen_step) {
             std::cout << "Step 0, A10Buff before reduction." << std::endl;
-            print_matrix_all(A10Buff.data(), 0, Nl, 0, v, v, rank, P, lu_comm);
+            print_matrix_all(A10Buff.data(), 0, Ml, 0, v, v, rank, P, lu_comm);
         }
 #endif
 
-        if (pj == k % sqrtp1) {
+        if (pj == k % Py) {
             PE(step0_copy);
             // int p_rcv = X2p(lu_comm, pi, pj, layrK);
             mkl_domatcopy('R', 'N',
@@ -751,7 +773,7 @@ void LU_rep(T* A,
         MPI_Barrier(lu_comm);
         if (k == chosen_step) {
             std::cout << "Step 0, A10Buff after reduction." << std::endl;
-            print_matrix_all(A10Buff.data(), 0, Nl, 0, v, v, rank, P, lu_comm);
+            print_matrix_all(A10Buff.data(), 0, Ml, 0, v, v, rank, P, lu_comm);
             // std::exit(0);
         }
 #endif
@@ -779,14 +801,14 @@ void LU_rep(T* A,
                 std::cout << "GRI before tournament" << std::endl;
                 print_matrix(gri.data(), 
                              0, 1,
-                             0, Nl,
-                             Nl);
+                             0, Ml,
+                             Ml);
             }
         }
 #endif
         MPI_Request A00_req[2];
         int n_A00_reqs = 0;
-        if (pj == k % sqrtp1 && pk == layrK) {
+        if (pj == k % Py && pk == layrK) {
             auto min_perm_size = std::min(n_local_active_rows, v);
             auto max_perm_size = std::max(n_local_active_rows, v);
 
@@ -795,7 +817,7 @@ void LU_rep(T* A,
                            1.0,
                            &A10Buff[first_non_pivot_row * v], v,
                            &candidatePivotBuff[1], v+1);
-            assert(n_local_active_rows + first_non_pivot_row == Nl);
+            assert(n_local_active_rows + first_non_pivot_row == Ml);
             // glue the gri elements to the first column of candidatePivotBuff
             prepend_column(matrix_view<T>(&candidatePivotBuff[0],
                                        n_local_active_rows, v+1, v+1,
@@ -816,7 +838,7 @@ void LU_rep(T* A,
             // # find with which rank we will communicate
             // # ANOTHER tricky part ! If sqrtp1 is not 2^n, then we will not have a nice butterfly communication graph.
             // # that's why with the flipBit strategy, src_pi can actually be larger than sqrtp1
-            auto src_pi = std::min(flipbit(pi, 0), sqrtp1 - 1);
+            auto src_pi = std::min(flipbit(pi, 0), Px - 1);
 
             LUP(n_local_active_rows, v, v+1, &pivotBuff[0], &candidatePivotBuff[1], ipiv, perm);
 
@@ -852,7 +874,8 @@ void LU_rep(T* A,
 
             // # ------------- REMAINING STEPS -------------- #
             // # now we do numRounds parallel steps which synchronization after each step
-            auto numRounds = int(std::ceil(std::log2(sqrtp1)));
+            // TODO: ask Greg (was sqrtp1)
+            auto numRounds = int(std::ceil(std::log2(Py)));
             tournament_rounds(
                     n_local_active_rows,
                     v, 
@@ -863,7 +886,7 @@ void LU_rep(T* A,
                     candidatePivotBuffPerm,
                     ipiv, perm,
                     numRounds, 
-                    sqrtp1, layrK, 
+                    Px, layrK, 
                     lu_comm);
 
                 // TODO: final value (all superstep 0)
@@ -889,7 +912,7 @@ void LU_rep(T* A,
 
             std::unordered_map<int, std::vector<int>> lpivots;
             std::unordered_map<int, std::vector<int>> loffsets;
-            std::tie(lpivots, loffsets) = g2lnoTile(gpivots, sqrtp1, v);
+            std::tie(lpivots, loffsets) = g2lnoTile(gpivots, Px, v);
             // locally set curPivots
             if (n_local_active_rows > 0) {
                 curPivots[0] = lpivots[pi].size();
@@ -902,8 +925,8 @@ void LU_rep(T* A,
 
             // send A00 to pi = k % sqrtp1 && pk = layrK
             // pj = k % sqrtp1; pk = layrK
-            if (pi != pj) {
-                auto p_rcv = X2p(lu_comm, k % sqrtp1, pi, layrK);
+            if (pi < Py) {
+                auto p_rcv = X2p(lu_comm, k % Px, pi, layrK);
                 MPI_Isend(&A00Buff[0], v*v, MPI_DOUBLE,
                         p_rcv, 50, lu_comm, &A00_req[n_A00_reqs++]);
             }
@@ -911,8 +934,8 @@ void LU_rep(T* A,
 
         // (pi, k % sqrtp1, layrK) -> (k % sqrtp1, pi, layrK)
         // # Receiving A00Buff:
-        if (pi != pj && pi == k % sqrtp1 && pk == layrK) {
-            auto p_send = X2p(lu_comm, pj, k % sqrtp1, layrK);
+        if (pj < Px && pi == k % Px && pi < Py && pk == layrK) {
+            auto p_send = X2p(lu_comm, pj, pi, layrK);
             MPI_Irecv(&A00Buff[0], v*v, MPI_DOUBLE,
                     p_send, 50, lu_comm, &A00_req[n_A00_reqs++]);
         }
@@ -924,7 +947,7 @@ void LU_rep(T* A,
         // COMMUNICATION
         // MPI_Request reqs_pivots[4];
         // the one who entered this is the root
-        auto root = X2p(jk_comm, k % sqrtp1, layrK);
+        auto root = X2p(jk_comm, k % Py, layrK);
 
         // # Sending A00Buff:
         // MPI_Bcast(&A00Buff[0], v * v, MPI_DOUBLE, root, jk_comm);
@@ -965,36 +988,36 @@ void LU_rep(T* A,
             if (pi == 0 && pj == 1 && pk == 0) {
                 std::cout << "A11 before pushing pivots up" << std::endl;
                 print_matrix(A11Buff.data(), 
-                             0, Nl, 
+                             0, Ml, 
                              0, Nl, 
                              Nl);
                 std::cout << "GRI before pushing pivots up" << std::endl;
                 print_matrix(gri.data(), 
                              0, 1,
-                             0, Nl,
-                             Nl);
+                             0, Ml,
+                             Ml);
             }
         }
         MPI_Barrier(lu_comm);
 #endif
 
         push_pivots_up<T>(A11Buff, A11BuffTemp,
-                       Nl, Nl,
+                       Ml, Nl,
                        layout, curPivots,
                        first_non_pivot_row);
 
         push_pivots_up<T>(A10Buff, A10BuffTemp,
-                       Nl, v,
+                       Ml, v,
                        layout, curPivots,
                        first_non_pivot_row);
 
         push_pivots_up<int>(gri, griTemp, 
-                            Nl, 1,
+                            Ml, 1,
                             layout, curPivots,
                             first_non_pivot_row);
 
         igri.clear();
-        for (int i = 0; i < Nl; ++i) {
+        for (int i = 0; i < Ml; ++i) {
             igri[gri[i]] = i;
         }
 
@@ -1003,14 +1026,14 @@ void LU_rep(T* A,
             if (pi == 0 && pj == 1 && pk == 0) {
                 std::cout << "A11 after pushing pivots up" << std::endl;
                 print_matrix(A11Buff.data(), 
-                             0, Nl, 
+                             0, Ml, 
                              0, Nl, 
                              Nl);
                 std::cout << "GRI after pushing pivots up" << std::endl;
                 print_matrix(gri.data(), 
                              0, 1, 
-                             0, Nl, 
-                             Nl);
+                             0, Ml, 
+                             Ml);
             }
         }
         MPI_Barrier(lu_comm);
@@ -1064,7 +1087,7 @@ void LU_rep(T* A,
         // # -------------------------------------------------- #
         if (pk == layrK) {
             // curPivOrder[i] refers to the target
-            auto p_rcv = X2p(lu_comm, k % sqrtp1, pj, layrK);
+            auto p_rcv = X2p(lu_comm, k % Px, pj, layrK);
             for (int i = 0; i < curPivots[0]; ++i) {
                 auto dest_dspls = curPivOrder[i] * (Nl-loff);
                 MPI_Put(&A01Buff[i * (Nl-loff)], Nl-loff, MPI_DOUBLE,
@@ -1098,7 +1121,7 @@ void LU_rep(T* A,
         if (k == chosen_step) {
             if (rank == print_rank) {
                 std::cout << "A10Buff before row swapping" << std::endl;
-                print_matrix(A10Buff.data(), 0, Nl, 0, v, v);
+                print_matrix(A10Buff.data(), 0, Ml, 0, v, v);
             }
         }
 #endif
@@ -1128,19 +1151,20 @@ void LU_rep(T* A,
         if (k == chosen_step) {
             if (rank == print_rank) {
                 std::cout << "A10Buff after row swapping" << std::endl;
-                print_matrix(A10Buff.data(), 0, Nl, 0, v, v);
+                print_matrix(A10Buff.data(), 0, Ml, 0, v, v);
             }
         }
 #endif
 
-        MPI_Request reqs[2 * c * sqrtp1 +  2];
+        // TODO: ask Greg (2 * c * sqrtp1)
+        MPI_Request reqs[Pz * (Px + Py) +  2];
         int req_id = 0;
 
         ts = te;
     // # ---------------------------------------------- #
     // # 5. compute A10 and broadcast it to A10BuffRecv #
     // # ---------------------------------------------- #
-        if (pk == layrK && pj == k % sqrtp1) {
+        if (pk == layrK && pj == k % Py) {
             // # this could basically be a sparse-dense A10 = A10 * U^(-1)   (BLAS tiangular solve) with A10 sparse and U dense
             // however, since we are ignoring the mask, it's dense, potentially with more computation than necessary.
 #ifdef DEBUG
@@ -1151,7 +1175,7 @@ void LU_rep(T* A,
                     std::cout << "A00Buff = " << std::endl;
                     print_matrix(A00Buff.data(), 0, v, 0, v, v);
                     std::cout << "A10Buff = " << std::endl;
-                    print_matrix(A10Buff.data(), 0, Nl, 0, v, v);
+                    print_matrix(A10Buff.data(), 0, Ml, 0, v, v);
                 }
             }
 #endif
@@ -1175,7 +1199,7 @@ void LU_rep(T* A,
 
                 if (rank == print_rank) {
                     std::cout << "A10Buff after trsm" << std::endl;
-                    print_matrix(A10Buff.data(), 0, Nl, 0, v, v);
+                    print_matrix(A10Buff.data(), 0, Ml, 0, v, v);
                 }
             }
 #endif
@@ -1184,7 +1208,7 @@ void LU_rep(T* A,
             // # -- BROADCAST -- #
             // # after compute, send it to sqrt(p1) * c processors
 #pragma omp parallel for
-            for (int pk_rcv = 0; pk_rcv < c; ++pk_rcv) {
+            for (int pk_rcv = 0; pk_rcv < Pz; ++pk_rcv) {
                 // # for the receive layer pk_rcv, its A10BuffRcv is formed by the following columns of A11Buff[p]
                 auto colStart = pk_rcv*nlayr;
                 auto colEnd   = (pk_rcv+1)*nlayr;
@@ -1194,13 +1218,13 @@ void LU_rep(T* A,
 
                 // copy [colStart, colEnd) columns of A10Buff -> A10BuffTemp densely
                 mcopy(A10Buff.data(), &A10BuffTemp[offset], 
-                        first_non_pivot_row, Nl, colStart, colEnd, v,
+                        first_non_pivot_row, Ml, colStart, colEnd, v,
                         0, n_local_active_rows, 0, nlayr, nlayr);
             }
             PL();
 
             PE(step5_comm);
-            for (int pk_rcv = 0; pk_rcv < c; ++pk_rcv) {
+            for (int pk_rcv = 0; pk_rcv < Pz; ++pk_rcv) {
                 // # for the receive layer pk_rcv, its A10BuffRcv is formed by the following columns of A11Buff[p]
                 auto colStart = pk_rcv*nlayr;
                 // auto colEnd   = (pk_rcv+1)*nlayr;
@@ -1209,7 +1233,7 @@ void LU_rep(T* A,
                 int size = nlayr * n_local_active_rows; // nlayr = v / c
 
                 // # all pjs receive the same data A11Buff[p, rows, colStart : colEnd]
-                for (int pj_rcv = 0; pj_rcv <  sqrtp1; ++pj_rcv) {
+                for (int pj_rcv = 0; pj_rcv < Py; ++pj_rcv) {
                     auto p_rcv = X2p(lu_comm, pi, pj_rcv, pk_rcv);
                     MPI_Isend(&A10BuffTemp[offset], size, MPI_DOUBLE, 
                             p_rcv, 5, lu_comm, &reqs[req_id]);
@@ -1219,7 +1243,7 @@ void LU_rep(T* A,
             PL();
         }
 
-        auto p_send = X2p(lu_comm, pi, k % sqrtp1, layrK);
+        auto p_send = X2p(lu_comm, pi, k % Py, layrK);
         int size = nlayr * n_local_active_rows; // nlayr = v / c
         if (size < 0) {
             std::cout << "weird size = " << size << ", nlayr = " << nlayr << ", active rowws = " << n_local_active_rows << std::endl;
@@ -1249,7 +1273,7 @@ void LU_rep(T* A,
         // # 6. compute A01 and broadcast it to A01BuffRecv #
         // # ---------------------------------------------- #
         // # here, only ranks which own data in A01Buff (step 3) participate
-        if (pk == layrK && pi == k % sqrtp1) {
+        if (pk == layrK && pi == k % Px) {
             PE(step6_dtrsm);
             // # this is a dense-dense A01 =  L^(-1) * A01
             cblas_dtrsm(CblasRowMajor, // side
@@ -1272,12 +1296,12 @@ void LU_rep(T* A,
             PE(step6_comm);
             // # -- BROADCAST -- #
             // # after compute, send it to sqrt(p1) * c processors
-            for(int pk_rcv = 0; pk_rcv < c; ++pk_rcv) {
+            for(int pk_rcv = 0; pk_rcv < Pz; ++pk_rcv) {
                 // # for the receive layer pk_rcv, its A01BuffRcv is formed by the following rows of A01Buff[p]
                 auto rowStart = pk_rcv * nlayr;
                 // auto rowEnd = (pk_rcv + 1) * nlayr;
                 // # all pjs receive the same data A11Buff[p, rows, colStart : colEnd]
-                for(int pi_rcv = 0; pi_rcv < sqrtp1; ++pi_rcv) {
+                for(int pi_rcv = 0; pi_rcv < Px; ++pi_rcv) {
                     const int n_cols = Nl - loff;
                     auto p_rcv = X2p(lu_comm, pi_rcv, pj, pk_rcv);
                     MPI_Isend(&A01Buff[rowStart * n_cols],
@@ -1289,7 +1313,7 @@ void LU_rep(T* A,
             PL();
         }
 
-        p_send = X2p(lu_comm, k % sqrtp1, pj, layrK);
+        p_send = X2p(lu_comm, k % Px, pj, layrK);
         size = nlayr * (Nl-loff); // nlayr = v / c
         MPI_Irecv(&A01BuffRcv[0], size, MPI_DOUBLE, 
                 p_send, 6, lu_comm, &reqs[req_id]);
@@ -1314,7 +1338,7 @@ void LU_rep(T* A,
             if (rank == 0) {
                 std::cout << "A11 (before) = " << std::endl;
             }
-            print_matrix_all(A11Buff.data(), 0, Nl, 
+            print_matrix_all(A11Buff.data(), 0, Ml, 
                              0, Nl, Nl,
                              rank, P, lu_comm);
             MPI_Barrier(lu_comm);
@@ -1344,7 +1368,7 @@ void LU_rep(T* A,
             if (rank == 0) {
                 std::cout << "A11Buff after computeA11:" << std::endl;
             }
-            print_matrix_all(A11Buff.data(), 0, Nl,
+            print_matrix_all(A11Buff.data(), 0, Ml,
                     0, Nl,
                     Nl,
                     rank, P, lu_comm);
@@ -1358,14 +1382,14 @@ void LU_rep(T* A,
             if (rank == 0) {
                 std::cout << "A10Buff after storing the results back:" << std::endl;
             }
-            print_matrix_all(A10Buff.data(), 0, Nl,
+            print_matrix_all(A10Buff.data(), 0, Ml,
                     0, v,
                     v,
                     rank, P, lu_comm);
             if (rank == 0) {
                 std::cout << "A10BuffRcv after storing the results back:" << std::endl;
             }
-            print_matrix_all(A10BuffRcv.data(), 0, Nl,
+            print_matrix_all(A10BuffRcv.data(), 0, Ml,
                     0, nlayr,
                     nlayr,
                     rank, P, lu_comm);
@@ -1378,7 +1402,7 @@ void LU_rep(T* A,
         //
         // the only ranks that need to receive A00 buffer
         // are the one participating in dtrsm(A01Buff)
-        if (pj == k % sqrtp1 && pk == layrK) {
+        if (pj == k % Py && pk == layrK) {
             // condensed A10 to non-condensed result buff
             // n_local_active_rows already reduced beforehand
 #pragma omp parallel for
@@ -1408,7 +1432,7 @@ void LU_rep(T* A,
             if (rank == 0) {
                 std::cout << "A11Buff after storing the results back:" << std::endl;
             }
-            print_matrix_all(A11Buff.data(), 0, Nl,
+            print_matrix_all(A11Buff.data(), 0, Ml,
                     0, Nl,
                     Nl,
                     rank, P, lu_comm);
