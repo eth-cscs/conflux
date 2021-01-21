@@ -582,6 +582,7 @@ void LU_rep(T* A,
     std::vector<T> A01BuffRcv(nlayr * Nl);
 
     std::vector<T> A11Buff(Ml * Nl);
+    std::vector<T> resultBuff(Ml * Nl);
     /*
     for (int i = 0; i < A11Buff.size(); ++i) {
         A11Buff[i] = 100 + i;
@@ -1053,6 +1054,13 @@ void LU_rep(T* A,
             int pivot_row = first_non_pivot_row - curPivots[0] + i;
             std::copy_n(&A11Buff[pivot_row * Nl + loff], Nl-loff, &A01Buff[i*(Nl-loff)]);
         }
+        // those who take part in the tournament pivoting
+        if (pj == k % Py && pk == layrK) {
+            for (int i = 0; i < curPivots[0]; ++i) {
+                int pivot_row = first_non_pivot_row - curPivots[0] + i;
+                std::copy_n(&A00Buff[curPivOrder[i] * v], v, &resultBuff[pivot_row * Nl + loff]);
+            }
+        }
 
         if (pk == layrK) {
             MPI_Reduce(MPI_IN_PLACE, &A01Buff[0],
@@ -1320,6 +1328,30 @@ void LU_rep(T* A,
                 p_send, 6, lu_comm, &reqs[req_id]);
         ++req_id;
 
+        if (pk == layrK) {
+            /*
+            for (int i = 0; i < curPivots[0]; ++i) {
+                int pivot_row = first_non_pivot_row - curPivots[0] + i;
+                std::copy_n(&A01Buff[curPivOrder[i] * (Nl-loff)], Nl-loff, &resultBuff[pivot_row * Nl + loff]);
+            }
+            */
+            for (int i = 0; i < curPivots[0]; ++i) {
+                int pivot_row = first_non_pivot_row - curPivots[0] + i;
+                std::copy_n(&A01Buff[i * (Nl-loff)], Nl-loff, &resultBuff[pivot_row * Nl + loff]);
+            }
+        }
+        if (pi == 0 && pj == 1 && pk == 0 && k == 2) {
+            std::cout << "chosen rank matrices" << std::endl;
+            std::cout << "A01Buff" << std::endl;
+            print_matrix(A01Buff.data(), 0, v, 0, Nl-loff, Nl-loff);
+            /*
+            std::cout << "A10Buff" << std::endl;
+            print_matrix(A10Buff.data(), 0, Ml, 0, v, v);
+            std::cout << "A11Buff" << std::endl;
+            print_matrix(A11Buff.data(), 0, Ml, 0, Nl, Nl);
+            */
+        }
+
         PE(step56_recv);
         MPI_Waitall(req_id, reqs, MPI_STATUSES_IGNORE);
         PL();
@@ -1407,8 +1439,8 @@ void LU_rep(T* A,
             // condensed A10 to non-condensed result buff
             // n_local_active_rows already reduced beforehand
 #pragma omp parallel for
-            for (int i = first_non_pivot_row; i < Nl; ++i) {
-                std::copy_n(&A10Buff[i * v], v, &A11Buff[i*Nl+loff]);
+            for (int i = first_non_pivot_row-curPivots[0]; i < Ml; ++i) {
+                std::copy_n(&A10Buff[i * v], v, &resultBuff[i*Nl+loff]);
             }
         }
 
@@ -1459,6 +1491,25 @@ void LU_rep(T* A,
     MPI_Win_fence(MPI_MODE_NOSUCCEED, A01Win);
     // Delete all windows
     MPI_Win_free(&A01Win);
+
+    if (rank ==  0) {
+        std::cout << "A11Buff" << std::endl;
+    }
+    print_matrix_all(A11Buff.data(), 0, Ml, 
+                     0, Nl, Nl,
+                     rank, P, lu_comm);
+    if (rank ==  0) {
+        std::cout << "A00Buff" << std::endl;
+    }
+    print_matrix_all(A00Buff.data(), 0, v, 
+                     0, v, v,
+                     rank, P, lu_comm);
+    if (rank ==  0) {
+        std::cout << "resultBuff" << std::endl;
+    }
+    print_matrix_all(resultBuff.data(), 0, Ml, 
+                     0, Nl, Nl,
+                     rank, P, lu_comm);
 
 #ifdef DEBUG
     std::cout << "rank: " << X2p(lu_comm, pi, pj, pk) <<", Finished everything" << std::endl;

@@ -1,16 +1,10 @@
 cmake_minimum_required(VERSION 3.12 FATAL_ERROR)
 
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
+include(cmake/build_type.cmake)
+include(cmake/adjust_mpiexec_flags.cmake)
 
 project(conflux VERSION 0.1 LANGUAGES CXX)
-
-if(NOT CMAKE_BUILD_TYPE)
-  set(CMAKE_BUILD_TYPE Release)
-endif()
-
-set(CMAKE_CXX_FLAGS "-Wall -Wextra")
-set(CMAKE_CXX_FLAGS_DEBUG "-g")
-set(CMAKE_CXX_FLAGS_RELEASE "-O3")
 
 set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -DDEBUG")
 
@@ -35,12 +29,14 @@ endif()
 # Dependencies
 #
 find_package(MPI REQUIRED)
+adjust_mpiexec_flags()
 find_package(OpenMP REQUIRED)
 
 # MKL BLAS
-find_package(MKL REQUIRED COMPONENTS BLAS_32BIT_OMP SCALAPACK_32BIT_OMP)
-set(BLAS_TARGET "mkl::blas_32bit_omp")
-set(SCALAPACK_TARGET "mkl::scalapack_32bit_omp")
+find_package(MKL REQUIRED)
+find_package(MKL REQUIRED)
+set(BLAS_TARGET "mkl::mkl_intel_32bit_omp_dyn")
+set(SCALAPACK_TARGET "mkl::scalapack_${MPI_TYPE}_intel_32bit_omp_dyn")
 
 if (CONFLUX_WITH_PROFILING)
     option(SEMIPROF_WITH_INSTALL "" ${CONFLUX_WITH_INSTALL})
