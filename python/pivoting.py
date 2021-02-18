@@ -1,10 +1,12 @@
 import numpy as np
 #from mpi4py import MPI
-import mpi4py
+#import mpi4py
 from reference_lu import *
 from utils import *
 import math
 
+debugK = 200
+debugNumPivots = False
 
 def flipbit(n, k):
     return n ^ (1 << k)
@@ -66,7 +68,6 @@ def EmptyPivot(k, PivotBuff, A11Buff, A00Buff, A11MaskBuff, curPivots, curPivOrd
     return
 
 
-
 # finds v consecutive pivots
 # !!!!!!!!!!!! this is a collective call. Parallelism is further down in this function
 # note that there is no p in the function argument
@@ -110,6 +111,10 @@ def TournPivotNoTile(k, PivotBuff, A11Buff, A00Buff, A11MaskBuff, growsBuff, cur
         src_pi = min(flipbit(pi, 0), sqrtp1 - 1)
         src_p = X2p(src_pi, pj, pk)
 
+        if (k == debugK):
+            print("Rank pi == " + str(pi) + ", initial value of candidatePivotBuff (before anything):")
+            print(PivotBuff[p])
+
         if src_p < p:
             # move my candidates below
             [PivotBuff[p, v: 2*v, :], _, Perm] = LUPnoTile(PivotBuff[p])
@@ -117,6 +122,10 @@ def TournPivotNoTile(k, PivotBuff, A11Buff, A00Buff, A11MaskBuff, growsBuff, cur
         else:
             [PivotBuff[p, :v, :], _, Perm] = LUPnoTile(PivotBuff[p])
             growsBuff[p, :v] = (growsBuff[p] @ Perm)[:v]
+
+        if (k == debugK):
+            print("Rank pi == " + str(pi) + ", candidatePivotBuff (after first LUP and swap):")
+            print(PivotBuff[p])
 
     # ------------- REMAINING STEPS -------------- #
     # now we do numRounds parallel steps which synchronization after each step
@@ -148,6 +157,10 @@ def TournPivotNoTile(k, PivotBuff, A11Buff, A00Buff, A11MaskBuff, growsBuff, cur
                     commRcvCounter[p, 2] += data_size
             # - end comm counters - #
 
+            if (k == debugK):
+                print("Rank pi == " + str(pi) + ", candidatePivotBuff after " + str(r) + "round of communication:")
+                print(PivotBuff[p])
+
         # local computation step
         for p in range(P):
             [pi, pj, pk] = p2X(p)
@@ -168,6 +181,7 @@ def TournPivotNoTile(k, PivotBuff, A11Buff, A00Buff, A11MaskBuff, growsBuff, cur
                     [PivotBuff[p, :v, :], _, Perm] = LUPnoTile(PivotBuff[p, :2*v])
                     growsBuff[p, :v] = (growsBuff[p, :2 * v] @ Perm)[:v]
 
+
 # distribute A00buff
 # !! COMMUNICATION !!
     for p in range(P):
@@ -176,11 +190,18 @@ def TournPivotNoTile(k, PivotBuff, A11Buff, A00Buff, A11MaskBuff, growsBuff, cur
             continue
         [lpivots, loffsets] = g2lnoTile(growsBuff[p, :v])
 
+        if (k == debugK):
+            print("Rank pi == " + str(pi) + ", candidatePivotBuff, final value:")
+            print(PivotBuff[p])
+
         # locally set curPivots
         curPivots[p, 0] = len(lpivots[pi])
         curPivots[p, 1: 1 + len(lpivots[pi])] = lpivots[pi]
         curPivOrder[p, :len(loffsets[pi])] = loffsets[pi]
         pivotIndsBuff[p, k * v:(k + 1) * v] = growsBuff[p, :v]
+
+        if (debugNumPivots):
+            print("Superstep k = " + str(k) + ", rank pi == " + str(pi) + ", curPivots[0] = " + str(curPivots[p, 0]))
 
         # -------------------------- #
         # !!!!! COMMUNICATION !!!!!! #

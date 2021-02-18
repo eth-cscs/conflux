@@ -6,6 +6,7 @@ from pivoting import *
 import utils
 from collections import defaultdict
 
+
 np.set_printoptions(precision=4, suppress=True)
 parrange = range
 
@@ -26,6 +27,14 @@ def LU_rep(A, measureComm, commCounter, commRcvCounter):
     tA10 = global_vars['tA10']
     # local n
     Nl = tA11 * v
+
+    printA11 = True
+    debugSteps = range(0, 10)
+    breakAfterStep = 10
+    #debugP = range(P)
+    debugP = [0]
+    debugPi = [0]
+
 
     B = np.copy(A)
     Perm = np.eye(N)
@@ -99,7 +108,6 @@ def LU_rep(A, measureComm, commCounter, commRcvCounter):
             else:
                 checksum += np.linalg.norm(A11Buff[pp, A11MaskBuff[pp], loff + v:])
         layrK = 0
-
 
         # ----------------------------------------------------------------- #
         # 0. reduce first tile column of A11buff                            #
@@ -236,9 +244,9 @@ def LU_rep(A, measureComm, commCounter, commRcvCounter):
                             commRcvCounter[p_rcv, 4] += data_size
                     # - end comm counters - #
 
-        print("\nAfter step 4:\n")
-        for p in range(P):
-            print("rank " + str(p) + ", A10BuffRcv[" + str(p) + "]:\n" + str(A10BuffRcv[p]) + "\n\n")
+        # print("\nAfter step 4:\n")
+        # for p in range(P):
+        #     print("rank " + str(p) + ", A10BuffRcv[" + str(p) + "]:\n" + str(A10BuffRcv[p]) + "\n\n")
 
         # ---------------------------------------------- #
         # 5. compute A01 and broadcast it to A01BuffRecv #
@@ -276,9 +284,9 @@ def LU_rep(A, measureComm, commCounter, commRcvCounter):
                             commRcvCounter[p_rcv, 5] += data_size
                     # - end comm counters - #
 
-        print("\nAfter step 5:\n")
-        for p in range(P):
-            print("rank " + str(p) + ", A01BuffRcv["+str(p)+"]:\n" + str(A01BuffRcv[p]) + "\n\n")
+        # print("\nAfter step 5:\n")
+        # for p in range(P):
+        #     print("rank " + str(p) + ", A01BuffRcv["+str(p)+"]:\n" + str(A01BuffRcv[p]) + "\n\n")
 
         # ----------------------------------------------------------------- #
         # ------------------------- DEBUG ONLY ---------------------------- #
@@ -325,18 +333,36 @@ def LU_rep(A, measureComm, commCounter, commRcvCounter):
             tmp3 = A01BuffRcv[2]
             a = 1
 
-        print("\nBefore step 6:\n")
-        for p in range(P):
-            print("rank " + str(p) + ", A11Buff["+str(p)+"]:\n" + str(A11Buff[p]) + "\n\n")
+        if (printA11):
+            if k in debugSteps:
+                print ("-----------superstep k = " + str(k) + " -------------")
+                print("Before step 6 (computeA11Buff):")
+                for p in range(P):
+                    if p in debugP:
+                        [pi, pj, pk] = p2X(p)
+                        if pi in debugPi:
+                            print("rank " + str(p) + ", A11Buff["+str(p)+"]:\n" + str(A11Buff[p, A11MaskBuff[p]]) + "\n\n")
 
         for p in range(P):
             # filter which rows of this tile should be processed:
             rows = A11MaskBuff[p]
-            A11Buff[p, rows,  loff:] -= A10BuffRcv[p, rows] @ A01BuffRcv[p, :, loff:]
+           # A11Buff[p, rows, loff:] -= A10BuffRcv[p, rows] @ A01BuffRcv[p, :, loff:]
+            if pj <= k % sqrtp1 and pj != sqrtp1:
+                A11Buff[p, rows,  loff:] -= A10BuffRcv[p, rows] @ A01BuffRcv[p, :, loff:]
+            else:
+                A11Buff[p, rows, loff:] -= A10BuffRcv[p, rows] @ A01BuffRcv[p, :, loff:]
 
-        print("\nAfter step 6:\n")
-        for p in range(P):
-            print("rank " + str(p) + ", A11Buff["+str(p)+"]:\n" + str(A11Buff[p]) + "\n\n")
+        if (printA11):
+            if k in debugSteps:
+                print("\nAfter step 6 (computeA11Buff):\n")
+                for p in range(P):
+                    if p in debugP:
+                        [pi, pj, pk] = p2X(p)
+                        if pi in debugPi:
+                            print("rank " + str(p) + ", A11Buff["+str(p)+"]:\n" + str(A11Buff[p, A11MaskBuff[p]]) + "\n\n")
+
+        if k == breakAfterStep:
+            return
 
         a = 1
 
