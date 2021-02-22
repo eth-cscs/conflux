@@ -4,6 +4,7 @@
 
 #include <cxxopts.hpp>
 #include <conflux/conflux_opt.hpp>
+#include <conflux/profiler.hpp>
 
 int main(int argc, char *argv[]) {
     cxxopts::Options options("conflux miniapp", 
@@ -59,10 +60,10 @@ int main(int argc, char *argv[]) {
                                Perm.data(), 
                                gv, 
                                MPI_COMM_WORLD);
-    }
-
-    if (rank == 0) {
-        PP();
+        // print the profiler data
+        if (rank == 0) {
+            PP();
+        }
     }
 
     MPI_Finalize();

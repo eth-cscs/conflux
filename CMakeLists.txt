@@ -108,21 +108,26 @@ endif()
 # BLAS providers
 #
 set(BLAS_TARGET "")
+set(BLAS_DEF "")
 
 # BLAS LIBRARIES below can be used together with the GPU backend
 # For this reason, we use MATCHES to also match entries like "MKL,CUDA" for BLAS
 if (${CONFLUX_BLAS} MATCHES "MKL")
     find_package(MKL REQUIRED)
     set(BLAS_TARGET "mkl::mkl_intel_32bit_omp_dyn")
+    set(BLAS_DEF "CONFLUX_MKL_BLAS")
 elseif (${CONFLUX_BLAS} MATCHES "CRAY_LIBSCI")
     find_package(CRAY_LIBSCI REQUIRED)
     set(BLAS_TARGET "${CRAY_LIBSCI_LIBRARIES}")
+    set(BLAS_DEF "CONFLUX_CRAY_LIBSCI_BLAS")
 elseif (${CONFLUX_BLAS} MATCHES "CUSTOM")
     find_package(BLAS REQUIRED)
     set(BLAS_TARGET "${BLAS_LIBRARIES}")
+    set(BLAS_DEF "CONFLUX_CUSTOM_BLAS")
 elseif (${CONFLUX_BLAS} MATCHES "OPENBLAS")
     find_package(OpenBLAS REQUIRED)
     set(BLAS_TARGET "openblas")
+    set(BLAS_DEF "CONFLUX_OPEN_BLAS")
 endif()
 
 # (optional) SCALAPACK providers

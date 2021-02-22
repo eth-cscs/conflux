@@ -1,6 +1,7 @@
 set(INSTALLED_TARGETS_LIST "")
 if(NOT TARGET conflux)
-    set(conflux_src_files conflux_opt.cpp)
+    set(conflux_src_files conflux_opt.cpp
+                          blas.cpp)
 
     add_library(conflux ${conflux_src_files})
 
@@ -10,7 +11,7 @@ if(NOT TARGET conflux)
         OpenMP::OpenMP_CXX
         PRIVATE ${BLAS_TARGET}
         )
-    # target_compile_definitions(conflux_opt PRIVATE "VALIDATE")
+    target_compile_definitions(conflux PRIVATE ${BLAS_DEF})
 
     if(CONFLUX_WITH_PROFILING)
         target_link_libraries(conflux PUBLIC semiprof)
