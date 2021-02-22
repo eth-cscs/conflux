@@ -32,3 +32,52 @@ In order to profile CONFLUX, the `cmake` should be run with the following option
 cmake -DCONFLUX_BLAS=MKL -DCONFLUX_SCALAPACK=MKL -DCONFLUX_WITH_PROFILING=ON ..
 make -j 8
 ```
+The profiler outputs the regions sorted by duration, e.g. after locally running:
+```
+mpirun -np 8 ./examples/conflux_miniapp -M 16 -N 16 -b 2
+```
+The output might looks something like:
+```
+_p_ REGION                     CALLS      THREAD        WALL       %
+_p_ total                          -       0.130       0.130   100.0
+_p_   step3                        -       0.054       0.054    41.6
+_p_     put                        8       0.054       0.054    41.6
+_p_   fence                        -       0.026       0.026    19.8
+_p_     create                     1       0.015       0.015    11.8
+_p_     destroy                    1       0.010       0.010     8.0
+_p_   step5                        -       0.019       0.019    14.5
+_p_     waitall                    8       0.019       0.019    14.5
+_p_     dtrsm                      4       0.000       0.000     0.0
+_p_     isend                     16       0.000       0.000     0.0
+_p_     localcopy                  8       0.000       0.000     0.0
+_p_     reshuffling               20       0.000       0.000     0.0
+_p_     irecv                      8       0.000       0.000     0.0
+_p_   step1                        -       0.015       0.015    11.6
+_p_     curPivots                  8       0.006       0.006     4.5
+_p_     barrier                    8       0.006       0.006     4.3
+_p_     pivoting                   4       0.002       0.002     1.8
+_p_     A00Buff                    -       0.001       0.001     0.8
+_p_       bcast                    8       0.001       0.001     0.8
+_p_       isend                    4       0.000       0.000     0.0
+_p_       irecv                    8       0.000       0.000     0.0
+_p_       waitall                  8       0.000       0.000     0.0
+_p_     rowpermute                 4       0.000       0.000     0.2
+_p_     lup                        4       0.000       0.000     0.0
+_p_     A10copy                    4       0.000       0.000     0.0
+_p_   step2                        -       0.014       0.014    11.0
+_p_     reduce                     8       0.011       0.011     8.4
+_p_     pushingpivots              8       0.003       0.003     2.7
+_p_     localcopy                  8       0.000       0.000     0.0
+_p_   step0                        -       0.001       0.001     1.0
+_p_     reduce                     4       0.001       0.001     0.9
+_p_     copy                       4       0.000       0.000     0.0
+_p_   step4                        -       0.000       0.000     0.3
+_p_     reshuffling                4       0.000       0.000     0.2
+_p_     dtrsm                      4       0.000       0.000     0.0
+_p_     comm                      12       0.000       0.000     0.0
+_p_   storingresults               8       0.000       0.000     0.1
+_p_   step6                        -       0.000       0.000     0.0
+_p_     dgemm                      8       0.000       0.000     0.0
+_p_   init                         1       0.000       0.000     0.0
+_p_     A11copy                    1       0.000       0.000     0.0
+```
