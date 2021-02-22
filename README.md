@@ -20,7 +20,7 @@ export CC=`which cc`
 export CXX=`which CC`
 
 # build the library with a chosen blas backend
-cmake -DCONFLUX_BLAS=MKL ..
+cmake -DCONFLUX_BLAS=MKL -DCONFLUX_SCALAPACK=MKL ..
 make -j 8
 ```
 Other available blas backends include: `CRAY_LIBSCI, OPENBLAS, CUSTOM`.
@@ -29,6 +29,6 @@ Other available blas backends include: `CRAY_LIBSCI, OPENBLAS, CUSTOM`.
 
 In order to profile CONFLUX, the `cmake` should be run with the following option:
 ```bash
-cmake -DCONFLUX_BLAS=MKL -DCONFLUX_WITH_PROFILING=ON ..
+cmake -DCONFLUX_BLAS=MKL -DCONFLUX_SCALAPACK=MKL -DCONFLUX_WITH_PROFILING=ON ..
 make -j 8
 ```
