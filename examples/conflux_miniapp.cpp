@@ -3,8 +3,8 @@
 #include <iostream>
 
 #include <cxxopts.hpp>
-#include <conflux/conflux_opt.hpp>
-#include <conflux/profiler.hpp>
+#include <conflux/lu/conflux_opt.hpp>
+#include <conflux/lu/profiler.hpp>
 
 int main(int argc, char *argv[]) {
     cxxopts::Options options("conflux miniapp", 

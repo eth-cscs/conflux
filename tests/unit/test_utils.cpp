@@ -1,6 +1,6 @@
 #include "../gtest.h"
 #include <vector>
-#include <conflux/conflux_opt.hpp>
+#include <conflux/lu/conflux_opt.hpp>
 
 TEST(permute_rows, row_major) {
     // input matrix

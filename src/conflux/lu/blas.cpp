@@ -1,4 +1,4 @@
-#include <conflux/blas.hpp>
+#include <conflux/lu/blas.hpp>
 
 #ifdef CONFLUX_MKL_BLAS
 #include <mkl.h>

@@ -1,6 +1,6 @@
 #pragma once
 #include <omp.h>
-#include <conflux/matrix_view.hpp>
+#include <conflux/lu/matrix_view.hpp>
 
 namespace conflux {
 // writes indices given in `indices` to the first column of matrix `mat`

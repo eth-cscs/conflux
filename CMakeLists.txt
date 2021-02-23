@@ -147,7 +147,7 @@ else  ()
 endif ()
 
 # library
-add_subdirectory(src/conflux)
+add_subdirectory(src/conflux/lu)
 
 if(CONFLUX_WITH_INSTALL)
     include(CMakePackageConfigHelpers)
