@@ -64,6 +64,37 @@ int main(int argc, char *argv[]) {
         if (rank == 0) {
             PP();
         }
+
+        if (rank == 0) {
+            auto N = gv.N;
+            dtype* U = new dtype[N * N]{0};
+            dtype* L = new dtype[N * N] {0};
+            for (auto i = 0; i < N; ++i) {
+                for (auto j = 0; j < i; ++j) {
+                    L[i * N + j] = C.data()[i * N + j];
+                }
+                L[i * N + i] = 1;
+                for (auto j = i; j < N; ++j) {
+                    U[i * N + j] = C.data()[i * N + j];
+                }
+            }
+            // mm<dtype>(L, U, C, N, N, N);
+            // gemm<dtype>(PP, gv.matrix, C, -1.0, 1.0, N, N, N);
+            cblas_dgemm(CblasRowMajor, CblasNoTrans, CblasNoTrans, N, N, N,
+                        1.0, L, N, U, N, 0.0, C.data(), N);
+            cblas_dgemm(CblasRowMajor, CblasNoTrans, CblasNoTrans, N, N, N,
+                        -1.0, Perm.data(), N, gv.matrix, N, 1.0, C.data(), N);
+            dtype norm = 0;
+            for (auto i = 0; i < N; ++i) {
+                for (auto j = 0; j < i; ++j) {
+                    norm += C.data()[i * N + j] * C.data()[i * N + j];
+                }
+            }
+            norm = std::sqrt(norm);
+            std::cout << "residual: " << norm << std::endl << std::flush;\
+            delete U;
+            delete L;
+        }
     }
 
     MPI_Finalize();
