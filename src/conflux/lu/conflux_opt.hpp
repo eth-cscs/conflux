@@ -547,6 +547,9 @@ void LU_rep(T* A,
     auto Ml = tA11x * v;
     auto Nl = tA11y * v;
 
+    auto tA11 = 4;
+    auto tA10 = 1;
+
     MPI_Comm lu_comm;
     int dim[] = {Px, Py, Pz}; // 3D processor grid
     int period[] = {0, 0, 0};
@@ -570,8 +573,15 @@ void LU_rep(T* A,
     int pi, pj, pk;
     std::tie(pi, pj, pk) = p2X(lu_comm, rank);
 
+    std::vector<T> B(M*N);
+
     // Create buffers
     std::vector<T> A00Buff(v * v);
+    std::vector<T> buf(v * v);
+    std::vector<int> bufpivots(N);
+    std::vector<int>  remaining(N);
+    std::vector<T> tmpA10(tA10 * P * v * v);
+    std::vector<T>tmpA01(tA10 * P * v * v);
 
     // A10 => M
     // A01 => N
@@ -703,7 +713,7 @@ void LU_rep(T* A,
         if (k == 1) break;
 
         // global current offset
-        // auto off = k * v;
+        auto off = k * v;
         // local current offset
         auto loff = (k / Py) * v; // sqrtp1 = 2, k = 157
 
@@ -1527,6 +1537,121 @@ if (debug_level > 0) {
         }
        }
 #endif
+
+        // # ----------------------------------------------------------------- #
+        // # ------------------------- DEBUG ONLY ---------------------------- #
+        // # ----------- STORING BACK RESULTS FOR VERIFICATION --------------- #
+
+        // # -- A10 -- #
+        if (rank == 0) {
+            // std::copy(pivotIndsBuff, pivotIndsBuff + N, bufpivots);
+            std::copy_n(pivotIndsBuff.begin(), N, bufpivots.begin());
+        }
+        MPI_Bcast(&bufpivots[0], N, MPI_INT, 0, lu_comm);
+        // remaining = np.setdiff1d(np.array(range(N)), bufpivots)
+        int rem_num = 0;
+        for (auto i = 0; i < N; ++i) {
+            bool found = false;
+            for (auto j = 0; j < N; ++j) {
+                if (i == bufpivots[j]) {
+                    found = true;
+                    break;
+                }
+            }
+            if (!found) {
+                remaining[rem_num] = i;
+                rem_num++;
+            }
+        }
+        // tmpA10 = np.zeros([1,v])
+        for (auto ltiA10 = 0; ltiA10 < tA10; ++ ltiA10) {
+            for (auto r = 0; r < P; ++r) {
+                if (rank == r) {
+                    // std::copy(A10Buff + ltiA10 * v * v,
+                    //           A10Buff + (ltiA10 + 1) * v * v,
+                    //           buf);
+                    std::copy_n(A10Buff.begin() + ltiA10 * v * v, v * v, buf.begin());
+                    // buf[:] = A10Buff[ltiA10]
+                }
+                MPI_Bcast(&buf[0], v * v, mtype, r, lu_comm);
+                // std::copy(buf, buf + v * v, tmpA10 + (ltiA10 * P + r) * v * v);
+                std::copy_n(buf.begin(), v * v, tmpA10.begin() + (ltiA10 * P + r) * v * v);
+                // tmpA10 = np.concatenate((tmpA10, buf), axis = 0)
+            }
+        }
+        // tmpA10 = tmpA10[1:, :]
+        for (auto i = 0; i < rem_num; ++i) {
+            auto rem = remaining[i];
+            // std::copy(tmpA10 + rem * v, tmpA10 + (rem + 1) * v, B + rem * N + off);
+            std::copy_n(tmpA10.begin() + rem * v, v, B.begin() + rem * N + off);
+        }
+        // B[remaining, off : off + v] = tmpA10[remaining]
+
+        // # -- A00 and A01 -- #
+        // tmpA01 = np.zeros([v,1])
+        for (auto ltjA10 = 0; ltjA10 < tA10; ++ ltjA10) {
+            for (auto r = 0; r < P; ++r) {
+                auto gtj = l2gA10(r, ltjA10, P);
+                if (gtj >= Nt) break;
+                if (rank == r) {
+                    // std::copy(A01Buff + ltjA10 * v * v,
+                    //           A01Buff + (ltjA10 + 1) * v * v,
+                    //           buf);
+                    std::copy_n(A01Buff.begin() + ltjA10 * v * v, v * v, buf.begin());
+                }
+                MPI_Bcast(&buf[0], v * v, mtype, r, lu_comm);
+                mcopy(&buf[0], &tmpA01[0], 0, v, 0, v, v, 0, v,
+                      (ltjA10 * P + r) * v, (ltjA10 * P + r + 1) * v, tA10 * P * v);
+                // tmpA01 = np.concatenate((tmpA01, buf), axis = 1)
+            }
+        }
+        // tmpA01 = tmpA01[:, (1+ (k+1)*v):]
+
+        if (rank == 0) {
+            // std::copy(A00Buff, A00Buff + v * v, buf);
+            std::copy_n(A00Buff.begin(), v * v, buf.begin());
+        }
+        MPI_Bcast(&buf[0], v * v, mtype, 0, lu_comm);
+        if (rank == layrK) {
+            // std::copy(pivotIndsBuff, pivotIndsBuff + N, bufpivots);
+            std::copy_n(pivotIndsBuff.begin(), N, bufpivots.begin());
+        }
+        MPI_Bcast(&bufpivots[0], N, MPI_INT, layrK, lu_comm);
+        // curPivots = bufpivots[off : off + v]
+        for (auto i = 0; i < v; ++i) {
+            // # B[curPivots[i], off : off + v] = A00buff[0, i, :]
+            assert(off + i < N);
+            int cpiv = int(bufpivots[off + i]);
+            // if (cpiv == -1) cpiv = N - 1;
+            if (cpiv < 0 or cpiv >= N) cpiv = N - 1;
+            // B[curPivots[i], off : off + v] = buf[i, :]
+            // assert(i * v + v <= v * v);
+            // assert(curpiv * N + off + v <= N * N);
+            // if (rank == 0) std::cout << "(" << k << ", " << curpiv << ", " << off << ", " << i << "):" << std::flush;
+            // if (rank == 0) std::cout << B[curpiv * N + off + i] << std::endl << std::flush;
+            // std::copy(buf + i * v, buf + i * v + v, B + curpiv * N + off);
+            assert(cpiv * N + off + v <= M * N);
+            std::copy_n(buf.begin() + i * v, v, B.begin() + cpiv * N + off);
+            // B[curPivots[i], (off + v):] = tmpA01[i, :]
+            // std::copy(tmpA01 + i * tA10 * P * v + (k+1)*v,
+            //           tmpA01 + (i + 1) * tA10 * P * v,
+            //           B + curpiv * N + off + v);
+            // assert(cpiv * N + off + v + tA10 * P * v - (k+1) * v < M * N);
+            if (cpiv * N + off + v + tA10 * P * v - (k+1) * v > M * N) {
+                printf("%d %d %d %d %d %d %d %d\n", cpiv, N, off, v, tA10, P, k, M);
+                assert(false);
+            }
+            std::copy(tmpA01.begin() + i * tA10 * P * v + (k+1)*v,
+                      tmpA01.begin() + (i + 1) * tA10 * P * v,
+                      B.begin() + cpiv * N + off + v);
+        }
+
+        // MPI_Barrier(lu_comm);
+
+        // # ----------------------------------------------------------------- #
+        // # ----------------------END OF DEBUG ONLY ------------------------- #
+        // # ----------------------------------------------------------------- #
+
     }
 
     PE(fence_destroy);
@@ -1624,6 +1749,17 @@ if (debug_level > -1) {
         for (auto i = 0; i < 8; ++i) {
             std::cout << "Runtime " << i << ": " << double(timers[i]) / 1000000 << " seconds" << std::endl;
         }
+    }
+
+    print_matrix_all(pivotIndsBuff.data(), 0, 1, 
+                     0, M, M,
+                     rank, P, lu_comm);
+    // Hack
+    pivotIndsBuff[N-1] = 0;  // Or 9?
+    for (auto i = 0; i < N; ++i) {
+        int idx = int(pivotIndsBuff[i]);
+        std::copy(B.begin() + idx * N, B.begin() + (idx + 1) * N, C + i * N);
+        PP[i * N + idx] = 1;
     }
 }
 }
