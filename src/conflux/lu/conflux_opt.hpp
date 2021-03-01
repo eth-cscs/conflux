@@ -10,6 +10,7 @@
 #include <random>
 #include <tuple>
 #include <unordered_map>
+#include <iomanip>  
 
 #include <omp.h>
 #include <mpi.h>
@@ -274,18 +275,44 @@ MPI_Comm create_comm(MPI_Comm& comm, std::vector<int>& ranks) {
     return newcomm;
 }
 
-template <typename T> 
-void print_matrix(T* pointer, 
-        int row_start, int row_end,
-        int col_start, int col_end,
-        int stride) {
-    for (int i = row_start; i < row_end; ++i) {
-        for (int j = col_start; j < col_end; ++j) {
-            std::cout << pointer[i * stride + j] << ", \t";
+		 
+									 
+template <typename T>
+    void print_matrix(T *pointer,
+                      int row_start, int row_end,
+                      int col_start, int col_end,
+                      int stride)
+    {
+        for (int i = row_start; i < row_end; ++i)
+        {
+            //std::cout << "[" << i << "]:\t";
+            printf("[%2u:] ", i);  
+            for (int j = col_start; j < col_end; ++j)
+            { 
+                std::cout << pointer[i * stride + j] << ", \t";
+            }
+            std::cout << std::endl;
         }
-        std::cout << std::endl;
     }
-}
+
+
+    template <>
+    void print_matrix<double>(double *pointer,
+                      int row_start, int row_end,
+                      int col_start, int col_end,
+                      int stride)
+    {
+        for (int i = row_start; i < row_end; ++i)
+        {
+            printf("[%2u:] ", i);  
+            for (int j = col_start; j < col_end; ++j)
+            {
+                printf("%8.3f", pointer[i * stride + j]);  
+                // std::cout << pointer[i * stride + j] << ", \t";
+            }
+            std::cout << std::endl;
+        }
+    }
 
 template <typename T> 
 void print_matrix_all(T* pointer, 
@@ -560,6 +587,7 @@ void LU_rep(T* A,
     MPI_Comm_rank(lu_comm, &rank);
 
     int print_rank = X2p(lu_comm, 0, 0, 0);
+    int debug_level = 2;
 
     MPI_Comm k_comm;
     int keep_dims_k[] = {0, 0, 1};
@@ -573,7 +601,7 @@ void LU_rep(T* A,
     int pi, pj, pk;
     std::tie(pi, pj, pk) = p2X(lu_comm, rank);
 
-    std::vector<T> B(M*N);
+    //std::vector<T> B(M*N);
 
     // Create buffers
     std::vector<T> A00Buff(v * v);
@@ -634,6 +662,18 @@ void LU_rep(T* A,
     for (int i = 0; i < v; ++i) {
         curPivOrder[i] = i;
     }
+
+    
+			
+    // GLOBAL result buffer
+    // For debug only!
+    std::cout << std::setprecision(3); 
+    std::vector<T> B(M * N);
+    MPI_Win B_Win = create_window(lu_comm,
+                                    B.data(),
+                                    B.size(),
+                                    true);
+
 
     // RNG
     std::mt19937_64 eng(gv.seed);
@@ -709,7 +749,7 @@ void LU_rep(T* A,
         std::cout << "Iteration = " << k << std::endl;
         MPI_Barrier(lu_comm);
 #endif
-        // if (k == 1) break;
+        //if (k == 1) break;
 
         // global current offset
         auto off = k * v;
@@ -1492,109 +1532,175 @@ void LU_rep(T* A,
         // # ------------------------- DEBUG ONLY ---------------------------- #
         // # ----------- STORING BACK RESULTS FOR VERIFICATION --------------- #
 
-        // # -- A10 -- #
-        if (rank == 0) {
-            // std::copy(pivotIndsBuff, pivotIndsBuff + N, bufpivots);
-            std::copy_n(pivotIndsBuff.begin(), N, bufpivots.begin());
-        }
-        MPI_Bcast(&bufpivots[0], N, MPI_INT, 0, lu_comm);
-        // remaining = np.setdiff1d(np.array(range(N)), bufpivots)
-        int rem_num = 0;
-        for (auto i = 0; i < N; ++i) {
-            bool found = false;
-            for (auto j = 0; j < N; ++j) {
-                if (i == bufpivots[j]) {
-                    found = true;
-                    break;
-                }
-            }
-            if (!found) {
-                remaining[rem_num] = i;
-                rem_num++;
-            }
-        }
-        // tmpA10 = np.zeros([1,v])
-        for (auto ltiA10 = 0; ltiA10 < tA10; ++ ltiA10) {
-            for (auto r = 0; r < P; ++r) {
-                if (rank == r) {
-                    // std::copy(A10Buff + ltiA10 * v * v,
-                    //           A10Buff + (ltiA10 + 1) * v * v,
-                    //           buf);
-                    std::copy_n(A10Buff.begin() + ltiA10 * v * v, v * v, buf.begin());
-                    // buf[:] = A10Buff[ltiA10]
-                }
-                MPI_Bcast(&buf[0], v * v, mtype, r, lu_comm);
-                // std::copy(buf, buf + v * v, tmpA10 + (ltiA10 * P + r) * v * v);
-                std::copy_n(buf.begin(), v * v, tmpA10.begin() + (ltiA10 * P + r) * v * v);
-                // tmpA10 = np.concatenate((tmpA10, buf), axis = 0)
-            }
-        }
-        // tmpA10 = tmpA10[1:, :]
-        for (auto i = 0; i < rem_num; ++i) {
-            auto rem = remaining[i];
-            // std::copy(tmpA10 + rem * v, tmpA10 + (rem + 1) * v, B + rem * N + off);
-            std::copy_n(tmpA10.begin() + rem * v, v, B.begin() + rem * N + off);
-        }
-        // B[remaining, off : off + v] = tmpA10[remaining]
 
-        // # -- A00 and A01 -- #
-        // tmpA01 = np.zeros([v,1])
-        for (auto ltjA10 = 0; ltjA10 < tA10; ++ ltjA10) {
-            for (auto r = 0; r < P; ++r) {
-                auto gtj = l2gA10(r, ltjA10, P);
-                if (gtj >= Nt) break;
-                if (rank == r) {
-                    // std::copy(A01Buff + ltjA10 * v * v,
-                    //           A01Buff + (ltjA10 + 1) * v * v,
-                    //           buf);
-                    std::copy_n(A01Buff.begin() + ltjA10 * v * v, v * v, buf.begin());
-                }
-                MPI_Bcast(&buf[0], v * v, mtype, r, lu_comm);
-                mcopy(&buf[0], &tmpA01[0], 0, v, 0, v, v, 0, v,
-                      (ltjA10 * P + r) * v, (ltjA10 * P + r + 1) * v, tA10 * P * v);
-                // tmpA01 = np.concatenate((tmpA01, buf), axis = 1)
+        // # -- A00 -- #
+        // All the ranks which participated in this tournament round (pj == k % Py) own the same A00.
+        // We just take an arbirary rank (pi == 0 and pk == 0)
+        MPI_Win_fence(0, B_Win);
+        if (pi == 0 && pj == k % Py && pk == 0) {
+            // we will put it row by row, since A00 is v x v, and global B is N x N, so it has a different stride
+            for (int i = 0; i < v; i++) {
+                int B_row_offset = N*(i + k*v);
+                int B_col_offset = k*v;
+                MPI_Put(&A00Buff[i*v], v, MPI_DOUBLE,
+                            0, B_row_offset + B_col_offset, v, MPI_DOUBLE,
+                            B_Win);
             }
         }
-        // tmpA01 = tmpA01[:, (1+ (k+1)*v):]
+        MPI_Win_fence(0, B_Win);
 
-        if (rank == 0) {
-            // std::copy(A00Buff, A00Buff + v * v, buf);
-            std::copy_n(A00Buff.begin(), v * v, buf.begin());
-        }
-        MPI_Bcast(&buf[0], v * v, mtype, 0, lu_comm);
-        if (rank == layrK) {
-            // std::copy(pivotIndsBuff, pivotIndsBuff + N, bufpivots);
-            std::copy_n(pivotIndsBuff.begin(), N, bufpivots.begin());
-        }
-        MPI_Bcast(&bufpivots[0], N, MPI_INT, layrK, lu_comm);
-        // curPivots = bufpivots[off : off + v]
-        for (auto i = 0; i < v; ++i) {
-            // # B[curPivots[i], off : off + v] = A00buff[0, i, :]
-            assert(off + i < N);
-            int cpiv = int(bufpivots[off + i]);
-            // if (cpiv == -1) cpiv = N - 1;
-            if (cpiv < 0 or cpiv >= N) cpiv = N - 1;
-            // B[curPivots[i], off : off + v] = buf[i, :]
-            // assert(i * v + v <= v * v);
-            // assert(curpiv * N + off + v <= N * N);
-            // if (rank == 0) std::cout << "(" << k << ", " << curpiv << ", " << off << ", " << i << "):" << std::flush;
-            // if (rank == 0) std::cout << B[curpiv * N + off + i] << std::endl << std::flush;
-            // std::copy(buf + i * v, buf + i * v + v, B + curpiv * N + off);
-            assert(cpiv * N + off + v <= M * N);
-            std::copy_n(buf.begin() + i * v, v, B.begin() + cpiv * N + off);
-            // B[curPivots[i], (off + v):] = tmpA01[i, :]
-            // std::copy(tmpA01 + i * tA10 * P * v + (k+1)*v,
-            //           tmpA01 + (i + 1) * tA10 * P * v,
-            //           B + curpiv * N + off + v);
-            // assert(cpiv * N + off + v + tA10 * P * v - (k+1) * v < M * N);
-            if (cpiv * N + off + v + tA10 * P * v - (k+1) * v > M * N) {
-                printf("%d %d %d %d %d %d %d %d\n", cpiv, N, off, v, tA10, P, k, M);
-                assert(false);
+        // # -- A01 -- #
+        // Ranks who own the final data: (pk == layrK && pi == k % Px)
+        MPI_Barrier(comm);
+        if (pk == layrK && pi == k % Px) {
+
+            if (debug_level > 1) {
+                std::cout << "Rank [" << pi << ", " << pj << ", "  << pk << "]. A01: \n"; 
+                    print_matrix(A01Buff.data(), 0, v,
+                                0, Nl, Nl);
             }
-            std::copy(tmpA01.begin() + i * tA10 * P * v + (k+1)*v,
-                      tmpA01.begin() + (i + 1) * tA10 * P * v,
-                      B.begin() + cpiv * N + off + v);
+
+            // Cool. Now we need a proper row offset. Imagine that you have, e.g., Py = 4 ranks in y-dimension.
+            // Then, depending on the iteration (k), some ranks will already have to skip their first v rows
+            // (the onces that were processed). So after Py steps of the outermost k loop, every rank was processed
+            int local_tile_offset = k / Py; // + 1;
+            if (k % Py >= pj) {
+                // then it means that our rank was already processed in this big round (one big round is Py iterations of k loop)
+                local_tile_offset++;
+            }
+    
+            // again, we will put it row by row            
+            for (int i = 0; i < v; i++) {
+                // we now loop over all tiles (going horizontally)
+                for (int j = local_tile_offset; j < tA11; j++) {
+                    int B_row_offset = N*(i + k*v);
+                    // ok, sooooo, j is a local tile. The gloal column shoud be:            
+                    int B_col_offset =  (j*Py + pj)* v;
+                    MPI_Put(&A01Buff[i*Nl + j*v], v, MPI_DOUBLE,
+                                0, B_row_offset + B_col_offset, v, MPI_DOUBLE,
+                                B_Win);
+                }
+            }
         }
+        MPI_Barrier(comm);
+
+        if (debug_level > 1) {
+            if (rank == 0)
+            {
+                std::cout << "GLOBAL result matrix B" << std::endl;
+            }
+            MPI_Barrier(comm);
+            if (rank == print_rank)
+            {
+                print_matrix(B.data(), 0, M,
+                            0, N, N);
+            }
+        }
+
+
+        // // # -- A10 -- #
+        // if (rank == 0) {
+        //     // std::copy(pivotIndsBuff, pivotIndsBuff + N, bufpivots);
+        //     std::copy_n(pivotIndsBuff.begin(), N, bufpivots.begin());
+        // }
+        // MPI_Bcast(&bufpivots[0], N, MPI_INT, 0, lu_comm);
+        // // remaining = np.setdiff1d(np.array(range(N)), bufpivots)
+        // int rem_num = 0;
+        // for (auto i = 0; i < N; ++i) {
+        //     bool found = false;
+        //     for (auto j = 0; j < N; ++j) {
+        //         if (i == bufpivots[j]) {
+        //             found = true;
+        //             break;
+        //         }
+        //     }
+        //     if (!found) {
+        //         remaining[rem_num] = i;
+        //         rem_num++;
+        //     }
+        // }
+        // // tmpA10 = np.zeros([1,v])
+        // for (auto ltiA10 = 0; ltiA10 < tA10; ++ ltiA10) {
+        //     for (auto r = 0; r < P; ++r) {
+        //         if (rank == r) {
+        //             // std::copy(A10Buff + ltiA10 * v * v,
+        //             //           A10Buff + (ltiA10 + 1) * v * v,
+        //             //           buf);
+        //             std::copy_n(A10Buff.begin() + ltiA10 * v * v, v * v, buf.begin());
+        //             // buf[:] = A10Buff[ltiA10]
+        //         }
+        //         MPI_Bcast(&buf[0], v * v, mtype, r, lu_comm);
+        //         // std::copy(buf, buf + v * v, tmpA10 + (ltiA10 * P + r) * v * v);
+        //         std::copy_n(buf.begin(), v * v, tmpA10.begin() + (ltiA10 * P + r) * v * v);
+        //         // tmpA10 = np.concatenate((tmpA10, buf), axis = 0)
+        //     }
+        // }
+        // // tmpA10 = tmpA10[1:, :]
+        // for (auto i = 0; i < rem_num; ++i) {
+        //     auto rem = remaining[i];
+        //     // std::copy(tmpA10 + rem * v, tmpA10 + (rem + 1) * v, B + rem * N + off);
+        //     std::copy_n(tmpA10.begin() + rem * v, v, B.begin() + rem * N + off);
+        // }
+        // // B[remaining, off : off + v] = tmpA10[remaining]
+
+        // // # -- A00 and A01 -- #
+        // // tmpA01 = np.zeros([v,1])
+        // for (auto ltjA10 = 0; ltjA10 < tA10; ++ ltjA10) {
+        //     for (auto r = 0; r < P; ++r) {
+        //         auto gtj = l2gA10(r, ltjA10, P);
+        //         if (gtj >= Nt) break;
+        //         if (rank == r) {
+        //             // std::copy(A01Buff + ltjA10 * v * v,
+        //             //           A01Buff + (ltjA10 + 1) * v * v,
+        //             //           buf);
+        //             std::copy_n(A01Buff.begin() + ltjA10 * v * v, v * v, buf.begin());
+        //         }
+        //         MPI_Bcast(&buf[0], v * v, mtype, r, lu_comm);
+        //         mcopy(&buf[0], &tmpA01[0], 0, v, 0, v, v, 0, v,
+        //               (ltjA10 * P + r) * v, (ltjA10 * P + r + 1) * v, tA10 * P * v);
+        //         // tmpA01 = np.concatenate((tmpA01, buf), axis = 1)
+        //     }
+        // }
+        // // tmpA01 = tmpA01[:, (1+ (k+1)*v):]
+
+        // if (rank == 0) {
+        //     // std::copy(A00Buff, A00Buff + v * v, buf);
+        //     std::copy_n(A00Buff.begin(), v * v, buf.begin());
+        // }
+        // MPI_Bcast(&buf[0], v * v, mtype, 0, lu_comm);
+        // if (rank == layrK) {
+        //     // std::copy(pivotIndsBuff, pivotIndsBuff + N, bufpivots);
+        //     std::copy_n(pivotIndsBuff.begin(), N, bufpivots.begin());
+        // }
+        // MPI_Bcast(&bufpivots[0], N, MPI_INT, layrK, lu_comm);
+        // // curPivots = bufpivots[off : off + v]
+        // for (auto i = 0; i < v; ++i) {
+        //     // # B[curPivots[i], off : off + v] = A00buff[0, i, :]
+        //     assert(off + i < N);
+        //     int cpiv = int(bufpivots[off + i]);
+        //     // if (cpiv == -1) cpiv = N - 1;
+        //     if (cpiv < 0 or cpiv >= N) cpiv = N - 1;
+        //     // B[curPivots[i], off : off + v] = buf[i, :]
+        //     // assert(i * v + v <= v * v);
+        //     // assert(curpiv * N + off + v <= N * N);
+        //     // if (rank == 0) std::cout << "(" << k << ", " << curpiv << ", " << off << ", " << i << "):" << std::flush;
+        //     // if (rank == 0) std::cout << B[curpiv * N + off + i] << std::endl << std::flush;
+        //     // std::copy(buf + i * v, buf + i * v + v, B + curpiv * N + off);
+        //     assert(cpiv * N + off + v <= M * N);
+        //     std::copy_n(buf.begin() + i * v, v, B.begin() + cpiv * N + off);
+        //     // B[curPivots[i], (off + v):] = tmpA01[i, :]
+        //     // std::copy(tmpA01 + i * tA10 * P * v + (k+1)*v,
+        //     //           tmpA01 + (i + 1) * tA10 * P * v,
+        //     //           B + curpiv * N + off + v);
+        //     // assert(cpiv * N + off + v + tA10 * P * v - (k+1) * v < M * N);
+        //     if (cpiv * N + off + v + tA10 * P * v - (k+1) * v > M * N) {
+        //         printf("%d %d %d %d %d %d %d %d\n", cpiv, N, off, v, tA10, P, k, M);
+        //         assert(false);
+        //     }
+        //     std::copy(tmpA01.begin() + i * tA10 * P * v + (k+1)*v,
+        //               tmpA01.begin() + (i + 1) * tA10 * P * v,
+        //               B.begin() + cpiv * N + off + v);
+        // }
 
         // MPI_Barrier(lu_comm);
 
@@ -1611,33 +1717,45 @@ void LU_rep(T* A,
     PL();
 
 #ifdef DEBUG
-    if (rank ==  0) {
-        std::cout << "Final Results:" << std::endl;
-    }
-    MPI_Barrier(comm);
 
-    if (rank ==  0) {
-        std::cout << "A11Buff" << std::endl;
-    }
-    MPI_Barrier(comm);
+    if (rank == 0)
+        {
+            std::cout << "GLOBAL result matrix B" << std::endl;
+        }
+        MPI_Barrier(comm);
+        if (rank == print_rank)
+        {
+            print_matrix(B.data(), 0, M,
+                        0, N, N);
+        }
+    
+    // if (rank ==  0) {
+    //     std::cout << "Final Results:" << std::endl;
+    // }
+    // MPI_Barrier(comm);
 
-    print_matrix_all(A11Buff.data(), 0, Ml, 
-                     0, Nl, Nl,
-                     rank, P, lu_comm);
-    if (rank ==  0) {
-        std::cout << "A00Buff" << std::endl;
-    }
-    MPI_Barrier(comm);
-    print_matrix_all(A00Buff.data(), 0, v, 
-                     0, v, v,
-                     rank, P, lu_comm);
-    if (rank ==  0) {
-        std::cout << "resultBuff" << std::endl;
-    }
-    MPI_Barrier(comm);
-    print_matrix_all(resultBuff.data(), 0, Ml, 
-                     0, Nl, Nl,
-                     rank, P, lu_comm);
+    // if (rank ==  0) {
+    //     std::cout << "A11Buff" << std::endl;
+    // }
+    // MPI_Barrier(comm);
+
+    // print_matrix_all(A11Buff.data(), 0, Ml, 
+    //                  0, Nl, Nl,
+    //                  rank, P, lu_comm);
+    // if (rank ==  0) {
+    //     std::cout << "A00Buff" << std::endl;
+    // }
+    // MPI_Barrier(comm);
+    // print_matrix_all(A00Buff.data(), 0, v, 
+    //                  0, v, v,
+    //                  rank, P, lu_comm);
+    // if (rank ==  0) {
+    //     std::cout << "resultBuff" << std::endl;
+    // }
+    // MPI_Barrier(comm);
+    // print_matrix_all(resultBuff.data(), 0, Ml, 
+    //                  0, Nl, Nl,
+    //                  rank, P, lu_comm);
 #endif
 
     MPI_Barrier(lu_comm);
