@@ -147,6 +147,8 @@ set(_mkl_search_paths "${MKL_ROOT}"
     "${MKL_ROOT}/lib"
     "${MKL_ROOT}/compiler")
 
+message(${MKL_ROOT})
+
 # Functions: finds both static and shared MKL libraries
 #
 function(__mkl_find_library _varname _libname)
@@ -166,6 +168,8 @@ endfunction()
 #
 find_path(MKL_INCLUDE_DIR mkl.h
     HINTS ${MKL_ROOT}/include
+    HINTS ${MKL_ROOT}/include/mkl
+    HINTS ${MKL_ROOT}
     ${MKL_ROOT}/mkl/include)
 mark_as_advanced(MKL_INCLUDE_DIR)
 

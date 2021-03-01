@@ -25,6 +25,14 @@ make -j 8
 ```
 Other available blas backends include: `CRAY_LIBSCI, OPENBLAS, CUSTOM`.
 
+### On Piz Daint supercomputer:
+
+First run:
+```bash
+source ./scripts/piz_daint_cpu.sh
+```
+to load all the modules and then run `cmake` and `make` commands as shown above.
+
 ## Profiling CONFLUX
 
 In order to profile CONFLUX, the `cmake` should be run with the following option:
