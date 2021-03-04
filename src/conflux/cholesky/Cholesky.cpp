@@ -38,7 +38,7 @@
 #include <string>
 #include <random>
 #include <iostream>
-#include<sstream>
+#include <sstream>
 
 #ifdef DEBUG
 #include <unistd.h>
@@ -54,12 +54,10 @@
 #include "Processor.h"
 #include "TileMatrix.h"
 
-#define SEED 1
-
 // global variables (defined extern elsewhere)
-Processor *proc;
-CholeskyProperties *prop;
-CholeskyIO *io;
+conflux::Processor *proc;
+conflux::CholeskyProperties *prop;
+conflux::CholeskyIO *io;
 std::string pathToMatrix;
 MPI_Datatype MPI_SUBTILE;
 
@@ -75,7 +73,7 @@ MPI_Datatype MPI_SUBTILE;
  * @param argv an array of pointers to command line arguments (from main fnc)
  * @param N the size of the matrix
  */
-void initialize(int argc, char *argv[], uint32_t N)
+void conflux::initialize(int argc, char *argv[], uint32_t N)
 {
     // initialize the MPI environment
     MPI_Init(&argc, &argv);
@@ -124,7 +122,7 @@ void initialize(int argc, char *argv[], uint32_t N)
  * @param v the tile size
  * @param grid pointer to the grid dimensions
  */
-void initialize(int argc, char *argv[], uint32_t N, uint32_t v, ProcCoord *grid)
+void conflux::initialize(int argc, char *argv[], uint32_t N, uint32_t v, ProcCoord *grid)
 {
     // initialize the MPI environment
     MPI_Init(&argc, &argv);
@@ -165,7 +163,7 @@ void initialize(int argc, char *argv[], uint32_t N, uint32_t v, ProcCoord *grid)
  * 
  * @param clean flag indicating whether data buffers are to be freed
  */
-void finalize(bool clean)
+void conflux::finalize(bool clean)
 {
     // delete the CholeskyIO object
     delete io;
@@ -185,7 +183,7 @@ void finalize(bool clean)
  * @param k the current iteration index (must not be modified)
  * @param world the global MPI communicator
  */
-static void choleskyA00(const TileIndex k, const MPI_Comm &world)
+void choleskyA00(const conflux::TileIndex k, const MPI_Comm &world)
 {
     // compute Cholesky factorization of A00 tile
     LAPACKE_dpotrf(LAPACK_ROW_MAJOR, 'L', prop->v, proc->A00, prop->v);
@@ -213,15 +211,15 @@ static void choleskyA00(const TileIndex k, const MPI_Comm &world)
  * @param k the current iteration index (must not be modified)
  * @param world the global MPI communicator
  */
-static void updateA10(const TileIndex k, const MPI_Comm &world)
+void updateA10(const conflux::TileIndex k, const MPI_Comm &world)
 {
     // 1.) post receive statements to later receive sub-tile representatives
 
     // post to later receive representatives of A10
-    for (TileIndex iLoc = k / prop->PX; iLoc < proc->maxIndexA11i; ++iLoc) {
+    for (conflux::TileIndex iLoc = k / prop->PX; iLoc < proc->maxIndexA11i; ++iLoc) {
         // compute processor to receive from
-        TileIndices glob = prop->localToGlobal(proc->px, proc->py, iLoc, iLoc);
-        ProcRank pSnd = (prop->globalToLocal(glob.i)).p;
+        conflux::TileIndices glob = prop->localToGlobal(proc->px, proc->py, iLoc, iLoc);
+        conflux::ProcRank pSnd = (prop->globalToLocal(glob.i)).p;
 
         // continue with next iteration if this row has a global index <= k
         // because in this case the tile is irrelevant (above the diagonal)
@@ -235,10 +233,10 @@ static void updateA10(const TileIndex k, const MPI_Comm &world)
     }
 
     // post to later receive representatives of A01
-    for (TileIndex jLoc = k / prop->PY; jLoc < proc->maxIndexA11j; ++jLoc) {
+    for (conflux::TileIndex jLoc = k / prop->PY; jLoc < proc->maxIndexA11j; ++jLoc) {
         // compute processor to receive from
-        TileIndices glob = prop->localToGlobal(proc->px, proc->py, jLoc, jLoc);
-        ProcRank pSnd = (prop->globalToLocal(glob.j)).p;
+        conflux::TileIndices glob = prop->localToGlobal(proc->px, proc->py, jLoc, jLoc);
+        conflux::ProcRank pSnd = (prop->globalToLocal(glob.j)).p;
 
         // continue with next iteration if this col has a global index <= k,
         // because in this case the tile has already been handled.
@@ -256,11 +254,11 @@ static void updateA10(const TileIndex k, const MPI_Comm &world)
 
     // iterate over processor's local tiles in A10
     // iLocRecv is needed for the reception of the scattering
-    TileIndex iLocRecv = (k+1)/prop->P;
-    for (TileIndex iLoc = k / prop->P; iLoc < proc->maxIndexA10; ++iLoc, ++iLocRecv) {
+    conflux::TileIndex iLocRecv = (k+1)/prop->P;
+    for (conflux::TileIndex iLoc = k / prop->P; iLoc < proc->maxIndexA10; ++iLoc, ++iLocRecv) {
 
-        TileIndex iGlob = prop->localToGlobal(proc->rank, iLoc);
-        TileIndex iGlobRecv = prop->localToGlobal(proc->rank, iLocRecv);
+        conflux::TileIndex iGlob = prop->localToGlobal(proc->rank, iLoc);
+        conflux::TileIndex iGlobRecv = prop->localToGlobal(proc->rank, iLocRecv);
 
         // skip tiles that were already handled or out-of-bounds
         if (iGlob <= k) continue;
@@ -274,13 +272,13 @@ static void updateA10(const TileIndex k, const MPI_Comm &world)
                     prop->v, prop->v, 1.0, proc->A00, prop->v, tile, prop->v);
 
         // determine processors that own tile-rows or -cols with index iGlob
-        ProcIndexPair2D tileOwners = prop->globalToLocal(iGlob, iGlob);
+        conflux::ProcIndexPair2D tileOwners = prop->globalToLocal(iGlob, iGlob);
 
         // send tile synchronously as representative of A10 to all processors 
         // that own tile-rows with index iGlob, split into subtiles among Z-layer
-        for (ProcCoord pyRcv = 0; pyRcv < prop->PY; ++pyRcv) {
-            for (ProcCoord pzRcv = 0; pzRcv < prop->PZ; ++pzRcv) {
-                ProcRank pRcv = prop->gridToGlobal(tileOwners.px, pyRcv, pzRcv);
+        for (conflux::ProcCoord pyRcv = 0; pyRcv < prop->PY; ++pyRcv) {
+            for (conflux::ProcCoord pzRcv = 0; pzRcv < prop->PZ; ++pzRcv) {
+                conflux::ProcRank pRcv = prop->gridToGlobal(tileOwners.px, pyRcv, pzRcv);
 
                 MPI_Ssend(tile + pzRcv * prop->l, 1, MPI_SUBTILE, pRcv, iGlob, world);
 
@@ -292,9 +290,9 @@ static void updateA10(const TileIndex k, const MPI_Comm &world)
 
         // send tile synchronously as representative of A01 to all processors 
         // that own tile-cols with index iGlob, split into subtiles along Z-layer
-        for (ProcCoord pxRcv = 0; pxRcv < prop->PX; ++pxRcv) {
-            for (ProcCoord pzRcv = 0; pzRcv < prop->PZ; ++pzRcv) {
-                ProcRank pRcv = prop->gridToGlobal(pxRcv, tileOwners.py, pzRcv);
+        for (conflux::ProcCoord pxRcv = 0; pxRcv < prop->PX; ++pxRcv) {
+            for (conflux::ProcCoord pzRcv = 0; pzRcv < prop->PZ; ++pzRcv) {
+                conflux::ProcRank pRcv = prop->gridToGlobal(pxRcv, tileOwners.py, pzRcv);
 
                 MPI_Ssend(tile + pzRcv * prop->l, 1, MPI_SUBTILE, pRcv, iGlob, world);
 
@@ -325,15 +323,15 @@ static void updateA10(const TileIndex k, const MPI_Comm &world)
  * @param k the current iteration index (must not be modified)
  * @param world the global MPI communicator
  */
-static void computeA11(const TileIndex k, const MPI_Comm &world)
+void computeA11(const conflux::TileIndex k, const MPI_Comm &world)
 {
     // iterate over all tiles below (inclusive) the diagonal that this processor
     // owns and update them via low-rank update.
     // TODO: algo descriptions says that indices start from k/P, which imo is wrong (saethrej)
-    for (TileIndex iLoc = k / prop->PX; iLoc < proc->maxIndexA11i; ++iLoc) {
-        for (TileIndex jLoc = k / prop->PY; jLoc <= iLoc && jLoc < proc->maxIndexA11j; ++jLoc) {
+    for (conflux::TileIndex iLoc = k / prop->PX; iLoc < proc->maxIndexA11i; ++iLoc) {
+        for (conflux::TileIndex jLoc = k / prop->PY; jLoc <= iLoc && jLoc < proc->maxIndexA11j; ++jLoc) {
             // compute global index and skip tile if at least one index is <= k
-            TileIndices glob = prop->localToGlobal(proc->px, proc->py, iLoc, jLoc);
+            conflux::TileIndices glob = prop->localToGlobal(proc->px, proc->py, iLoc, jLoc);
             if (glob.i <= k || glob.j > glob.i || glob.j <= k) continue;
 
             // perform "low-rank" update (A11 <- A11 - A10 * A01^T)
@@ -362,24 +360,24 @@ static void computeA11(const TileIndex k, const MPI_Comm &world)
  * @param k the current iteration index (must not be modified)
  * @param world the global MPI communicator
  */
-static void reduceA11(const TileIndex k, const MPI_Comm &world)
+void reduceA11(const conflux::TileIndex k, const MPI_Comm &world)
 {
     // fix the index of the tile-column index to be reduced
-    TileIndex jLoc = prop->globalToLocal(k+1, k+1).j;
+    conflux::TileIndex jLoc = prop->globalToLocal(k+1, k+1).j;
 
     // only parts of all processors take part in the reduction
     // in particular, we only consider processors with certain y-coordinates for sending and receiving
     // the receiving, reduction executing processors will will have y and z coordinates
     // (k+1) % PY, (k+1) % PZ respectively
-    ProcCoord pyRed = prop->globalToLocal(k+1, k+1).py;
+    conflux::ProcCoord pyRed = prop->globalToLocal(k+1, k+1).py;
     if (proc->py == pyRed) {
 
-        ProcRank recvProcessorRank = prop->gridToGlobal(proc->px, proc->py, (k + 1) % prop->PZ);
+        conflux::ProcRank recvProcessorRank = prop->gridToGlobal(proc->px, proc->py, (k + 1) % prop->PZ);
 
         // maybe check if this is the correct loop boundary
-        for (TileIndex iLoc = k / prop->PX; iLoc < proc->maxIndexA11i; ++iLoc) {
+        for (conflux::TileIndex iLoc = k / prop->PX; iLoc < proc->maxIndexA11i; ++iLoc) {
 
-            TileIndices globalIndices = prop->localToGlobal(proc->px, proc->py, iLoc, jLoc);
+            conflux::TileIndices globalIndices = prop->localToGlobal(proc->px, proc->py, iLoc, jLoc);
             // we dont care about old indices
             if (globalIndices.i <= k)  continue;
 
@@ -426,19 +424,19 @@ static void reduceA11(const TileIndex k, const MPI_Comm &world)
  * @param k current iteration index (must not be changed)
  * @param world the global communicator
  */
-static void scatterA11(const TileIndex k, const MPI_Comm &world)
+void scatterA11(const conflux::TileIndex k, const MPI_Comm &world)
 {
     // post receive statements for tiles to be scattered in this function, which
     // will be the tiles in next iteration's A10
-    for (TileIndex iLocRecv = (k+1)/prop->P; iLocRecv < proc->maxIndexA10; iLocRecv++) {
-        TileIndex iGlobRecv = prop->localToGlobal(proc->rank, iLocRecv);
+    for (conflux::TileIndex iLocRecv = (k+1)/prop->P; iLocRecv < proc->maxIndexA10; iLocRecv++) {
+        conflux::TileIndex iGlobRecv = prop->localToGlobal(proc->rank, iLocRecv);
         if (iGlobRecv <= k+1) continue;
         if (iGlobRecv >= prop->Kappa) break;
          // receive tile from A10 from scattering procedure
         // the indices match the sends postet in the same round 
-        ProcIndexPair2D owners = prop->globalToLocal(iGlobRecv, k+1);
-        ProcCoord zOwner = static_cast<ProcCoord>((k + 1) % prop->PZ);
-        ProcRank senderProc = prop->gridToGlobal(owners.px, owners.py, zOwner);
+        conflux::ProcIndexPair2D owners = prop->globalToLocal(iGlobRecv, k+1);
+        conflux::ProcCoord zOwner = static_cast<conflux::ProcCoord>((k + 1) % prop->PZ);
+        conflux::ProcRank senderProc = prop->gridToGlobal(owners.px, owners.py, zOwner);
         MPI_Request req;
         MPI_Irecv(proc->A10->get(iLocRecv), prop->vSquare, MPI_DOUBLE, senderProc,
                     iLocRecv, world, &req);
@@ -446,8 +444,8 @@ static void scatterA11(const TileIndex k, const MPI_Comm &world)
     }
 
     // we need to extract which processor owns the A00 tile of this round
-    ProcIndexPair2D rootProcessorPair = prop->globalToLocal(k + 1, k + 1);
-    ProcRank rootProcessorRank = prop->gridToGlobal(rootProcessorPair.px, rootProcessorPair.py, (k + 1) % prop->PZ);
+    conflux::ProcIndexPair2D rootProcessorPair = prop->globalToLocal(k + 1, k + 1);
+    conflux::ProcRank rootProcessorRank = prop->gridToGlobal(rootProcessorPair.px, rootProcessorPair.py, (k + 1) % prop->PZ);
     // processor that owns next A00 has to copy the tile into its A00 buffer
     if (proc->rank == rootProcessorRank) {
         std::memcpy(
@@ -458,22 +456,22 @@ static void scatterA11(const TileIndex k, const MPI_Comm &world)
     }
 
     // only processors that participated actively in the reduction are scattering
-    ProcCoord pyScat = prop->globalToLocal(k+1, k+1).py;
+    conflux::ProcCoord pyScat = prop->globalToLocal(k+1, k+1).py;
     if (proc->pz == (k + 1) % prop->PZ && proc->py == pyScat) {
-        TileIndex jLoc = prop->globalToLocal(k+1, k+1).j;
+        conflux::TileIndex jLoc = prop->globalToLocal(k+1, k+1).j;
 
         // is this loop boundary correct?
-        for (ProcCoord iLoc = k / prop->PX; iLoc < proc->maxIndexA11i; ++iLoc) {
+        for (conflux::ProcCoord iLoc = k / prop->PX; iLoc < proc->maxIndexA11i; ++iLoc) {
 
             // compute global index and skip or break loop if limits are exceeded
-            TileIndices globalTile = prop->localToGlobal(proc->px, proc->py, iLoc, jLoc);
+            conflux::TileIndices globalTile = prop->localToGlobal(proc->px, proc->py, iLoc, jLoc);
 
             // break if global index is too large, and skip new A00 and too small global indices
             if (globalTile.i >= prop->Kappa) break; 
             if ((globalTile.i == k + 1 && globalTile.j == k + 1) || globalTile.i < k + 1 ) continue;
 
             // send the A11 tiles that become A10 tiles in the next round
-            ProcIndexPair1D A10pair = prop->globalToLocal(globalTile.i);
+            conflux::ProcIndexPair1D A10pair = prop->globalToLocal(globalTile.i);
 
             #ifdef BENCHMARK
             uint32_t num_of_bytes = prop->vSquare;
@@ -523,7 +521,7 @@ static void scatterA11(const TileIndex k, const MPI_Comm &world)
  * cessors on the grid. This distribution is known, i.e. the matrix can be
  * reconstructed entirely from the processors.
  */
-void parallelCholesky()
+void conflux::parallelCholesky()
 {
     // create shortcut for MPI_COMM_WORLD
     MPI_Comm world = MPI_COMM_WORLD;

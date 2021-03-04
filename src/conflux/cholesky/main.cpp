@@ -58,12 +58,12 @@
 // in debug or benchmarking mode, we require access to the global variable
 // proc defined in Cholesky.cpp
 #if defined(DEBUG) || defined(BENCHMARK)
-extern Processor *proc;
+extern conflux::Processor *proc;
 #endif
 
 // in debug mode we require access to the global variables defined in Cholesky.cpp
 #ifdef DEBUG
-extern CholeskyProperties *prop;
+extern conflux::CholeskyProperties *prop;
 extern std::string pathToMatrix;
 #endif // DEBUG
 
@@ -99,10 +99,10 @@ void printHelp()
  */
 #if defined(BENCHMARK)
 void parseArgs(int argc, char* argv[], uint32_t &dim, uint32_t &tile, 
-               ProcCoord *grid, bool &store, uint32_t &run)
+               conflux::ProcCoord *grid, bool &store, uint32_t &run)
 #else
 void parseArgs(int argc, char* argv[], uint32_t &dim, uint32_t &tile, 
-               ProcCoord *grid, bool &store)
+               conflux::ProcCoord *grid, bool &store)
 #endif
 {
     // defines the allowed command line options in their "long" form
@@ -220,7 +220,7 @@ int main(int argc, char *argv[])
     // parse command line arguments
     uint32_t matrixDim = 0;
     uint32_t tileSize = 0;
-    ProcCoord grid[3] = {0, 0, 0};
+    conflux::ProcCoord grid[3] = {0, 0, 0};
     bool storeMatrix = true;    
     
     #if defined(BENCHMARK)
@@ -239,9 +239,9 @@ int main(int argc, char *argv[])
     // if both tile size and grid were provided, use these values, otherwise
     // compute optimal parameters
     if (tileSize > 0 && grid[0] > 0 && grid[1] > 0 && grid[2] > 0) {
-        initialize(argc, argv, matrixDim, tileSize, grid);
+        conflux::initialize(argc, argv, matrixDim, tileSize, grid);
     } else {
-        initialize(argc, argv, matrixDim);
+        conflux::initialize(argc, argv, matrixDim);
     }
 
     #ifdef BENCHMARK
@@ -250,12 +250,12 @@ int main(int argc, char *argv[])
     proc->benchmark->timer_start();
     #endif
 
-    parallelCholesky();
+    conflux::parallelCholesky();
     
     #ifdef BENCHMARK
     proc->benchmark->timer_stop();
     #endif 
 
-    finalize(true);
+    conflux::finalize(true);
     return 0;
 }

@@ -49,7 +49,7 @@
  * @param tileRows the number of tile rows in this matrix
  * @param tileCols the number of tile cols in this matrix, defaults to 1
  */
-TileMatrix::TileMatrix(MatrixType type, uint32_t rowsPerTile, uint32_t colsPerTile,
+conflux::TileMatrix::TileMatrix(MatrixType type, uint32_t rowsPerTile, uint32_t colsPerTile,
                        uint32_t tileRows, uint32_t tileCols)
 {
     // asign parameters to local variables
@@ -66,7 +66,7 @@ TileMatrix::TileMatrix(MatrixType type, uint32_t rowsPerTile, uint32_t colsPerTi
 /** 
  * @brief destructor of a tile matrix instance, deletes the buffer
  */
-TileMatrix::~TileMatrix()
+conflux::TileMatrix::~TileMatrix()
 {
     // delete the data buffer
     delete[] data;
@@ -79,7 +79,7 @@ TileMatrix::~TileMatrix()
  * @throws CholeskyException if type is MATRIX
  * @returns pointer to the start of the tile
  */
-double* TileMatrix::get(uint32_t i)
+double* conflux::TileMatrix::get(uint32_t i)
 {
     // throw CholeskyException if type is not vector, since one parameter
     // does not suffice in this case
@@ -98,7 +98,7 @@ double* TileMatrix::get(uint32_t i)
  * @throws CholeskyException if type is VECTOR
  * @returns pointer to start of the tile
  */
-double* TileMatrix::get(uint32_t i, uint32_t j)
+double* conflux::TileMatrix::get(uint32_t i, uint32_t j)
 {
     // throw CholeskyException if type is not vector, since the second parameter
     // would bear no meaning and this is clearly unintended behaviour

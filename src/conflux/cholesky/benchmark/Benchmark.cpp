@@ -42,7 +42,7 @@
 /**
  * @brief constructs a Benchmark object
  */
-Benchmark::Benchmark()
+conflux::Benchmark::Benchmark()
 {
     // Get MPI_COMM_WORLD properties
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
@@ -76,7 +76,7 @@ Benchmark::Benchmark()
 /**
  * @brief dumps the benchmark data to a binary file that can later be read
  */
-void Benchmark::finish()
+void conflux::Benchmark::finish()
 {
     std::stringstream filename;
     filename << outputDir
@@ -103,7 +103,7 @@ void Benchmark::finish()
 /**
  * @brief start the timer associated with this object
  */
-void Benchmark::timer_start()
+void conflux::Benchmark::timer_start()
 {
     current_tm = new time_measurement();
     current_tm->rank = rank;
@@ -113,7 +113,7 @@ void Benchmark::timer_start()
 /**
  * @brief stop the timer associated with this object
  */
-void Benchmark::timer_stop()
+void conflux::Benchmark::timer_stop()
 {
     current_tm->end = MPI_Wtime();
     time_measurements.push_back(current_tm);
@@ -123,7 +123,7 @@ void Benchmark::timer_stop()
  * @brief get the duration that the timer associated with this object measured
  * @returns the duration in s
  */
-double Benchmark::timer_duration()
+double conflux::Benchmark::timer_duration()
 {
     double duration = current_tm->end - current_tm->begin;
     
@@ -144,7 +144,7 @@ double Benchmark::timer_duration()
  * @param Py_ the number of processors along a y-axis
  * @param Pz_ the number of processors along a z-axis
  */
-void Benchmark::set_props(std::string outputDir_, uint32_t run_, uint32_t N_, uint32_t v_,
+void conflux::Benchmark::set_props(std::string outputDir_, uint32_t run_, uint32_t N_, uint32_t v_,
                           uint32_t Px_, uint32_t Py_, uint32_t Pz_) {
     outputDir = outputDir_;
     run = run_;
@@ -159,7 +159,7 @@ void Benchmark::set_props(std::string outputDir_, uint32_t run_, uint32_t N_, ui
  * @brief adds a number of bytes to the send counter
  * @param val the number of bytes to be added
  */
-void Benchmark::add(uint64_t val)
+void conflux::Benchmark::add(uint64_t val)
 {
     current_tm->bytes_sent += val;
 }
@@ -167,7 +167,7 @@ void Benchmark::add(uint64_t val)
 /**
  * @brief destructor that deletes all measurements
  */
-Benchmark::~Benchmark()
+conflux::Benchmark::~Benchmark()
 {
     std::vector<time_measurement*>::iterator it;
     for (it = time_measurements.begin(); it < time_measurements.end(); it++) {

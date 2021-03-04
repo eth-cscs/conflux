@@ -39,7 +39,9 @@
 #include "Processor.h"
 #include "TileMatrix.h"
 
-typedef struct ompi_file_t *MPI_File;
+typedef struct ompi_file_t *MPI_File; // forward declaration
+
+namespace conflux {
 
 /**
  * @brief object that handles the creation of s.p.d. input matrices for the
@@ -78,5 +80,7 @@ private:
     void dumpA10(ProcIndexPair1D local, TileIndex global, TileIndex round);
     void dumpA11();
 };
+
+} // namespace conflux
 
 #endif // CHOLEKSY_IO_H

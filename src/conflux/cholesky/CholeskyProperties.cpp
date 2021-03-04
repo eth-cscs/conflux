@@ -40,7 +40,7 @@
  * @param numProc the number of processors in the current MPI environment
  * @param matrixDim the dimension of the s.p.d. input matrix
  */
-CholeskyProperties::CholeskyProperties(ProcRank numProc, uint32_t matrixDim)
+conflux::CholeskyProperties::CholeskyProperties(ProcRank numProc, uint32_t matrixDim)
 {
     // throw an exception if there are less than 4 processors
     if (numProc < 4) {
@@ -70,7 +70,7 @@ CholeskyProperties::CholeskyProperties(ProcRank numProc, uint32_t matrixDim)
  * @param yGrid number of processors in y-direction
  * @param zGrid number of processors in z-direction
  */
-CholeskyProperties::CholeskyProperties(ProcRank numProc, uint32_t dim, uint32_t tileSize,
+conflux::CholeskyProperties::CholeskyProperties(ProcRank numProc, uint32_t dim, uint32_t tileSize,
                        ProcCoord xGrid, ProcCoord yGrid, ProcCoord zGrid)
 {
     // throw an exception if there are less than 4 processors or if grid
@@ -108,7 +108,7 @@ CholeskyProperties::CholeskyProperties(ProcRank numProc, uint32_t dim, uint32_t 
 /**
  * @brief destroys a CholeskyProperties instance
  */
-CholeskyProperties::~CholeskyProperties()
+conflux::CholeskyProperties::~CholeskyProperties()
 {
     // nothing to do here.
 }
@@ -128,7 +128,7 @@ CholeskyProperties::~CholeskyProperties()
  * @param pz the processor's z-coordinate on the grid
  * @return the processor's global rank p
  */ 
-ProcRank CholeskyProperties::gridToGlobal(ProcCoord px, ProcCoord py, ProcCoord pz)
+conflux::ProcRank conflux::CholeskyProperties::gridToGlobal(ProcCoord px, ProcCoord py, ProcCoord pz)
 {
     return px + py * this->PY + pz * this->PXY;
 }
@@ -140,7 +140,7 @@ ProcRank CholeskyProperties::gridToGlobal(ProcCoord px, ProcCoord py, ProcCoord 
  * @param grid the processor's coordinates on the grid
  * @return the processor's global rank p
  */
-ProcRank CholeskyProperties::gridToGlobal(GridProc grid)
+conflux::ProcRank conflux::CholeskyProperties::gridToGlobal(GridProc grid)
 {
     return grid.px + grid.py * this->PY + grid.pz * this->PXY;
 }
@@ -153,7 +153,7 @@ ProcRank CholeskyProperties::gridToGlobal(GridProc grid)
  * @param p the global processor coordinate
  * @return the processor's grid coordinates as a struct
  */
-GridProc CholeskyProperties::globalToGrid(ProcRank p)
+conflux::GridProc conflux::CholeskyProperties::globalToGrid(ProcRank p)
 {
     ProcCoord pz = p / this->PXY;
     p -= pz * this->PXY;
@@ -169,7 +169,7 @@ GridProc CholeskyProperties::globalToGrid(ProcRank p)
  * @param i local tile index of the tile under consideration
  * @return the global tile index of the tile 
  */
-TileIndex CholeskyProperties::localToGlobal(ProcRank p, TileIndex i)
+conflux::TileIndex conflux::CholeskyProperties::localToGlobal(ProcRank p, TileIndex i)
 {
     return i * this->P + p + 1;
 }
@@ -180,7 +180,7 @@ TileIndex CholeskyProperties::localToGlobal(ProcRank p, TileIndex i)
  * @param pair processor-local-index pair of tile
  * @return the global tile index 
  */
-TileIndex CholeskyProperties::localToGlobal(ProcIndexPair1D pair)
+conflux::TileIndex conflux::CholeskyProperties::localToGlobal(ProcIndexPair1D pair)
 {
     return pair.i * this->P + pair.p + 1;
 }
@@ -194,7 +194,7 @@ TileIndex CholeskyProperties::localToGlobal(ProcIndexPair1D pair)
  * @param j local tile-column index (for A11)
  * @return global tile indices (pair)
  */
-TileIndices CholeskyProperties::localToGlobal(ProcCoord px, ProcCoord py, TileIndex i, TileIndex j)
+conflux::TileIndices conflux::CholeskyProperties::localToGlobal(ProcCoord px, ProcCoord py, TileIndex i, TileIndex j)
 {
     return TileIndices{this->PX * i + px + 1, this->PY * j + py + 1};
 }
@@ -205,7 +205,7 @@ TileIndices CholeskyProperties::localToGlobal(ProcCoord px, ProcCoord py, TileIn
  * @param pair 2d pair of processor and local tile index
  * @return global tile indices (pair)
  */
-TileIndices CholeskyProperties::localToGlobal(ProcIndexPair2D pair)
+conflux::TileIndices conflux::CholeskyProperties::localToGlobal(ProcIndexPair2D pair)
 {
     return TileIndices{this->PX * pair.i + pair.px + 1, this->PY * pair.j + pair.py + 1};
 }
@@ -217,7 +217,7 @@ TileIndices CholeskyProperties::localToGlobal(ProcIndexPair2D pair)
  * @param i global tile index (in A10)
  * @return pair (p, i_L) of processor p (global) and local tile index
  */
-ProcIndexPair1D CholeskyProperties::globalToLocal(TileIndex i)
+conflux::ProcIndexPair1D conflux::CholeskyProperties::globalToLocal(TileIndex i)
 {
     return ProcIndexPair1D{(i-1) % this->P, (i-1) / this->P};
 }
@@ -230,7 +230,7 @@ ProcIndexPair1D CholeskyProperties::globalToLocal(TileIndex i)
  * @param j tile-column index (for A11)
  * @return 2D processor-local-index pair (px,py,i_L,j_L)
  */
-ProcIndexPair2D CholeskyProperties::globalToLocal(TileIndex i, TileIndex j)
+conflux::ProcIndexPair2D conflux::CholeskyProperties::globalToLocal(TileIndex i, TileIndex j)
 {
     return ProcIndexPair2D{
         (i-1) % this->PX, 
@@ -247,7 +247,7 @@ ProcIndexPair2D CholeskyProperties::globalToLocal(TileIndex i, TileIndex j)
  * @param ind pair of global tile indices (for A11)
  * @return 2d processor-local-index pair (px,py,i_L,j_L)
  */
-ProcIndexPair2D CholeskyProperties::globalToLocal(TileIndices ind)
+conflux::ProcIndexPair2D conflux::CholeskyProperties::globalToLocal(TileIndices ind)
 {
     return ProcIndexPair2D{
         (ind.i-1) % this->PX,

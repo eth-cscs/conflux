@@ -37,6 +37,8 @@
 
 #include "CholeskyTypes.h"
 
+namespace conflux {
+
 /**
  * @brief class that stores properties for a run of the Cholesky factorization
  * algorithm.
@@ -79,5 +81,7 @@ public:
     uint32_t l;      //!< number of columns in a sub-tile
     TileIndex Kappa; //!< number of tiles along row or cols-dimension of matrix
 };
+
+} // namespace conflux
 
 #endif // CHOLESKY_PROPERTIES_H

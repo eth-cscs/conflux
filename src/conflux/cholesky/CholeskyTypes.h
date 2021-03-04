@@ -37,6 +37,8 @@
 #include <stdint.h>
 #include <stdexcept>
 
+namespace conflux {
+
 /**************************** Type Definitions *******************************/
 
 typedef uint32_t ProcRank;  // data structure for global processor rank
@@ -123,7 +125,8 @@ class CholeskyException : public std::logic_error
         }
 
         CholeskyException(const char* code) : std::logic_error(code){};
-
 };
+
+} // namespace conflux
 
 #endif // CHOLESKY_TYPES_H

@@ -31,10 +31,10 @@
  * @date 23.11.2020
  */
 
-#include <mpi/mpi.h>
+#include <sstream>
+#include <mpi.h>
 
 #include "Processor.h"
-#include <sstream>
 
 /**
  * @brief creates a Processor object and allocates all the buffers
@@ -49,7 +49,7 @@
  * 
  * @param prop pointer to properties of the Cholesky algorithm
  */
-Processor::Processor(CholeskyProperties *prop)
+conflux::Processor::Processor(CholeskyProperties *prop)
 {
     // check if MPI environment was already initialized, throw exception if not
     int init;
@@ -124,7 +124,7 @@ Processor::Processor(CholeskyProperties *prop)
 /**
  * @brief destroys a processor object and frees all buffers
  */
-Processor::~Processor()
+conflux::Processor::~Processor()
 {
     // delete permanent buffers
     delete[] A00;

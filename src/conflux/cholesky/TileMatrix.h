@@ -39,6 +39,8 @@
 #include <stdint.h>
 #include <exception>
 
+namespace conflux {
+
 /**
  * @brief defines a type for a TileMatrix object, if it's a tile-column vector
  * only (e.g for A10snd and A01snd), which is 1-dimensional, or a tile matrix 
@@ -71,5 +73,7 @@ private:
     uint32_t tileRows;      //!< number of rows in this tile matrix
     uint32_t tileCols;      //!< number of cols in this tile matrix
 }; 
+
+} // namespace conflux
 
 #endif // TILEMATRIX_H

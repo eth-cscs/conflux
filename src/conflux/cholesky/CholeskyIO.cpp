@@ -34,10 +34,10 @@
 #include <math.h>
 #include <string>
 #include <random>
+#include <sstream>
 
-#include <mpi/mpi.h>
-#include <lapacke/lapacke.h>
-#include <cblas/cblas.h>
+#include <mpi.h>
+#include <mkl.h>
 
 #include "CholeskyIO.h"
 
@@ -56,7 +56,7 @@
  * @param proc pointer to a processor's local variables, including all buffers
  * @throws CholeskyException if the MPI environment was not initialized
  */
-CholeskyIO::CholeskyIO(CholeskyProperties *prop, Processor *proc)
+conflux::CholeskyIO::CholeskyIO(CholeskyProperties *prop, Processor *proc)
 {
     // throw an exception if the MPI environment was not initialized yet or if
     // any of the supplied pointers is NULL
@@ -83,7 +83,7 @@ CholeskyIO::CholeskyIO(CholeskyProperties *prop, Processor *proc)
  * @brief destructor of the CholeskyIO class. Closes file handle if not
  * done already.
  */
-CholeskyIO::~CholeskyIO()
+conflux::CholeskyIO::~CholeskyIO()
 {
     // close the file if this was not done already
     if (*fh != MPI_FILE_NULL) {
@@ -110,7 +110,7 @@ CholeskyIO::~CholeskyIO()
  * void initialize() function in @ref Cholesky.cpp has been called.
  * @post the data is distributed to the processes according to algorithm 8
  */
-void CholeskyIO::generateInputMatrixDistributed()
+void conflux::CholeskyIO::generateInputMatrixDistributed()
 {
     // set random seed at each rank s.t. all ranks compute same tile
     srand(SEED);
@@ -195,7 +195,7 @@ void CholeskyIO::generateInputMatrixDistributed()
 * void initialize() function in @ref Cholesky.cpp has been called.
 * @post the data is distributed to the processes according to algorithm 8
 */
-void CholeskyIO::parseAndDistributeMatrix()
+void conflux::CholeskyIO::parseAndDistributeMatrix()
 {
     // calculate new matrix size if needed
     int mod = (prop->N % prop->v) ? (prop->v - (prop->N % prop->v)) : 0;
@@ -391,7 +391,7 @@ void CholeskyIO::parseAndDistributeMatrix()
  * @brief Opens a file handle to enable dumping of the matrix
  * @param filename the name of the file and its path
  */
-void CholeskyIO::openFile(std::string filename)
+void conflux::CholeskyIO::openFile(std::string filename)
 {
     MPI_File_open(MPI_COMM_WORLD, filename.c_str(), MPI_MODE_CREATE | MPI_MODE_WRONLY,
                   MPI_INFO_NULL, fh);
@@ -400,7 +400,7 @@ void CholeskyIO::openFile(std::string filename)
 /**
 * @brief closes the file associated with this object
 */
-void CholeskyIO::closeFile()
+void conflux::CholeskyIO::closeFile()
 {
     MPI_File_close(fh);
 }
@@ -412,7 +412,7 @@ void CholeskyIO::closeFile()
  * @pre The algorithm has not yet touched the distributed matrix
  * @post The input matrix is completely dumped to the file and the buffers can be altered
  */
-void CholeskyIO::dumpMatrix()
+void conflux::CholeskyIO::dumpMatrix()
 {
     // dump the current, single tile column consisting of A00 and A10
     dumpSingleTileColumn(0);
@@ -427,7 +427,7 @@ void CholeskyIO::dumpMatrix()
  * @brief dumps a specified tile column to the opened file
  * @param round the iteration that the algorithm is in while dumping
  */
-void CholeskyIO::dumpSingleTileColumn(TileIndex round)
+void conflux::CholeskyIO::dumpSingleTileColumn(TileIndex round)
 {
     // if we have an idle processor, let this one dump A00
     if (prop->P > prop->Kappa - round - 1) {
@@ -457,7 +457,7 @@ void CholeskyIO::dumpSingleTileColumn(TileIndex round)
  * @brief dumps the A00 tile of the specified round to the file
  * @param round the iteration that the Cholesky factorization algorithm is in
  */
-void CholeskyIO::dumpA00(TileIndex round)
+void conflux::CholeskyIO::dumpA00(TileIndex round)
 {
     // dump the tile row-by-row
     for (int h = 0; h < prop->v; h++) {
@@ -474,7 +474,7 @@ void CholeskyIO::dumpA00(TileIndex round)
  * @param iGlob the tile's global rank, used for offset calculation
  * @param round the iteration that the Cholesky algorithm is in
  */
-void CholeskyIO::dumpA10(ProcIndexPair1D loc, TileIndex iGlob, TileIndex round)
+void conflux::CholeskyIO::dumpA10(ProcIndexPair1D loc, TileIndex iGlob, TileIndex round)
 {
     double *cur = proc->A10->get(loc.i);
     // we need different offset calculations depending on if we are transposing or not
@@ -490,7 +490,7 @@ void CholeskyIO::dumpA10(ProcIndexPair1D loc, TileIndex iGlob, TileIndex round)
 /**
  * @brief dump all data in A11 into the opened file
  */
-void CholeskyIO::dumpA11()
+void conflux::CholeskyIO::dumpA11()
 {
     // iterate over all local tiles in A11 owned by this processor
     for (TileIndex i = 0; i < proc->maxIndexA11i; i++) {

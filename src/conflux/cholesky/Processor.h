@@ -37,7 +37,7 @@
 
 
 #include <vector>
-#include <mpi/mpi.h>
+#include <mpi.h>
 
 #include "CholeskyProperties.h"
 #include "CholeskyTypes.h"
@@ -47,10 +47,13 @@
 #include "benchmark/Benchmark.h"
 #endif
 
+
 // forward declare MPI_Comm to avoid having to include mpi.h here
 struct ompi_communicator_t;
 typedef ompi_communicator_t *MPI_Comm;
 
+namespace conflux {
+    
 /**
  * @brief an instance for a processor storing its properties and all its buffers
  */
@@ -101,5 +104,7 @@ public:
     Benchmark *benchmark;
     #endif
 };
+
+} // namespace conflux
 
 #endif // PROCESSOR_H

@@ -39,6 +39,8 @@
 #include <string>
 #include <mpi.h>
 
+namespace conflux {
+
 class Benchmark
 {
 private:
@@ -91,5 +93,7 @@ public:
     // Communication measurement methos
     void add(uint64_t val);
 };
+
+} // namespace conflux
 
 #endif // BENCHMARK_H
