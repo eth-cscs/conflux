@@ -1002,14 +1002,20 @@ if (debug_level > 1) {
                 std::tie(lpivots, loffsets) = g2lnoTile(gpivots, Px, v);
 
                 // locally set curPivots
-                if (n_local_active_rows > 0) {
-                    curPivots[0] = lpivots[pi].size();
-                    std::copy_n(&lpivots[pi][0], curPivots[0], &curPivots[1]);                    
-                    curPivOrder = loffsets[pi];
-                    std::copy_n(&gpivots[0], v, &pivotIndsBuff[k * v]);                    
-                } else {
-                    curPivots[0] = 0;
-                }
+                // if (n_local_active_rows > 0) {
+                /*
+                 because the thing is that n_local_active_rows is BEFORE tournament pivoting
+                 so you entered the tournnament with empty hands but at least 
+                 you should tell others what was the outcome of the tournament. 
+                 So other ranks produced A00, gpivots, etc. and this information has to be propagated further
+                 */
+                curPivots[0] = lpivots[pi].size();
+                std::copy_n(&lpivots[pi][0], curPivots[0], &curPivots[1]);                    
+                curPivOrder = loffsets[pi];
+                std::copy_n(&gpivots[0], v, &pivotIndsBuff[k * v]);                    
+                // } else {
+                //    curPivots[0] = 0;
+                // }
                 PL();
 
                 PE(step1_A00Buff_isend);
