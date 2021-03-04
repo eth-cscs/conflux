@@ -79,7 +79,7 @@ int main(int argc, char *argv[]) {
                 }
             }
 
-            if (rank == 0) {
+            if (rank == 0 && N < 20) {
                 std::cout << "L:\n";
                 conflux::print_matrix(L, 0, M, 0, N, N);
                 std::cout << "\nU:\n";

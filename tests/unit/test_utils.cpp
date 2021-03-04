@@ -1,6 +1,78 @@
 #include "../gtest.h"
 #include <vector>
 #include <conflux/lu/conflux_opt.hpp>
+#include <conflux/lu/utils.hpp>
+#include <conflux/lu/matrix_view.hpp>
+#include <cmath>
+
+TEST(push_pivots_up, row_major) {
+    // this is the input
+    std::vector<int> in = {
+        9, 1, 1, 9, 5, 5, 3, 3, // [0]
+        7, 3, 4, 5, 2, 4, 5, 2, // [1]
+        5, 5, 1, 3, 3, 9, 1, 9, // [2]
+        9, 2, 3, 9, 5, 2, 2, 9, // [3]
+        7, 6, 5, 7, 8, 1, 4, 4, // [4]
+        2, 2, 4, 6, 5, 2, 6, 5, // [5]
+        3, 7, 4, 4, 4, 7, 1, 7, // [6]
+        3, 8, 1, 6, 4, 8, 7, 8  // [7]
+    };
+
+    // this is the correct result we are expecting
+    std::vector<int> result = {
+        5, 5, 1, 3, 3, 9, 1, 9, // [2]
+        7, 3, 4, 5, 2, 4, 5, 2, // [1]
+        2, 2, 4, 6, 5, 2, 6, 5, // [5]
+        9, 2, 3, 9, 5, 2, 2, 9, // [3]
+        7, 6, 5, 7, 8, 1, 4, 4, // [4]
+        9, 1, 1, 9, 5, 5, 3, 3, // [0]
+        3, 7, 4, 4, 4, 7, 1, 7, // [6]
+        3, 8, 1, 6, 4, 8, 7, 8  // [7]
+    };
+
+
+    // dimension
+    int n = (int) sqrt(in.size());
+
+    // the starting row for pushing pivots
+    int first_non_pivot_row = 0;
+
+    // matrix layout (row/col major)
+    auto layout = conflux::order::row_major;
+
+
+    // current (local) pivots
+    // curPivots[0] is the number of local pivots
+    // (i.e. the size of the array)
+    std::vector<int> curPivots = {3, 2, 1, 5};
+
+    // temporary matrix
+    std::vector<int> in_temp(result.size());
+
+    // input matrix
+    conflux::matrix_view in_mat(in.data(), n, n, layout);
+    conflux::matrix_view result_mat(result.data(), n, n, layout);
+
+    std::cout << "Input matrix:" << std::endl;
+    std::cout << in_mat.to_string() << std::endl;
+
+    // in-place pushing pivots up
+    conflux::push_pivots_up<int>(in, in_temp, 
+                        n, n, layout, 
+                        curPivots, first_non_pivot_row);
+
+    std::vector<bool> correct_row(n, true);
+
+    std::cout << "Output matrix:" << std::endl;
+    std::cout << in_mat.to_string() << std::endl;
+    std::cout << "-------------------" << std::endl;
+    std::cout << "Target Matrix:" << std::endl;
+    std::cout << result_mat.to_string() << std::endl;
+    std::cout << "===================" << std::endl;
+
+    // the output matrix and the result matrix should match
+    EXPECT_TRUE(in_mat == result_mat);
+}
 
 TEST(permute_rows, row_major) {
     // input matrix
