@@ -377,7 +377,7 @@ void push_pivots_up(std::vector<T> &in, std::vector<T> &temp,
     // extract from first pivot-rows those which are non-pivots
     std::vector<int> early_non_pivots;
     for (int i = first_non_pivot_row;
-         i < first_non_pivot_row + curPivots[0]; ++i) {
+         i < std::min(first_non_pivot_row + curPivots[0], n_rows); ++i) {
         if (!pivots[i]) {
             early_non_pivots.push_back(i);
         }
@@ -392,34 +392,35 @@ void push_pivots_up(std::vector<T> &in, std::vector<T> &temp,
         }
     }
 
-    // copy first non_pivots from in to temp
+    // std::cout << "late pivots = " << late_pivots.size() << std::endl;
+    // std::cout << "early non pivots = " << early_non_pivots.size() << std::endl;
+    assert(late_pivots.size() == early_non_pivots.size());
+
+#pragma omp parallel for
+    // copy first v pivots to temporary buffer
+    for (int i = 0; i < curPivots[0]; ++i) {
+        int pivot_row = curPivots[i + 1];
+        std::copy_n(&in[pivot_row * n_cols],
+                    n_cols,
+                    &temp[i * n_cols]);
+    }
+
+    // copy early non_pivots to late pivots positions
 #pragma omp parallel for
     for (int i = 0; i < early_non_pivots.size(); ++i) {
         int row = early_non_pivots[i];
         std::copy_n(&in[row * n_cols],
                     n_cols,
-                    &temp[i * n_cols]);
+                    &in[late_pivots[i] * n_cols]);
     }
 
 #pragma omp parallel for
     // overwrites first v rows with pivots
     for (int i = 0; i < curPivots[0]; ++i) {
         int pivot_row = curPivots[i + 1];
-        std::copy_n(&in[pivot_row * n_cols],
-                    n_cols,
-                    &in[(first_non_pivot_row + i) * n_cols]);
-    }
-
-    // std::cout << "late pivots = " << late_pivots.size() << std::endl;
-    // std::cout << "early non pivots = " << early_non_pivots.size() << std::endl;
-    assert(late_pivots.size() == early_non_pivots.size());
-
-#pragma omp parallel for
-    // copy non_pivots to late_pivots's positions from temp to in
-    for (int i = 0; i < late_pivots.size(); ++i) {
         std::copy_n(&temp[i * n_cols],
                     n_cols,
-                    &in[late_pivots[i] * n_cols]);
+                    &in[(first_non_pivot_row + i) * n_cols]);
     }
 }
 
@@ -1131,6 +1132,7 @@ if (debug_level > 1) {
                                 0, 1,
                                 0, v+1,
                                 v+1);
+                        std::cout << "first non pivot row = " << first_non_pivot_row << std::endl;
                     }
                 }
             }
@@ -1199,8 +1201,7 @@ if (debug_level > 1) {
                 int pivot_row = first_non_pivot_row - curPivots[0] + i;            
                 std::copy_n(&A11Buff[pivot_row * Nl + loff], Nl - loff, &A01Buff[i * (Nl - loff)]);
             }
-            
-            
+
             // if (pi == 1 && pj == 1 && pk == 0 && (k % Px) == 0){
             //     std::cout << "A01Buff before reduce. Rank [" << pi << ", " << pj << ", " << pk << "]:" << std::endl;
             //     print_matrix(A01Buff.data(), 0, v, 0, Nl, Nl);

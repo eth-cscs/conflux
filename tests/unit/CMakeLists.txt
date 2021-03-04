@@ -4,7 +4,8 @@ set(unit_test_files
     test.cpp
 )
 
-add_executable(unit EXCLUDE_FROM_ALL ${unit_test_files})
-add_dependencies(tests unit)
+add_executable(unit ${unit_test_files})
 target_include_directories(unit PRIVATE "${CMAKE_CURRENT_BINARY_DIR}")
-target_link_libraries(unit PRIVATE gtest conflux)
+target_link_libraries(unit PRIVATE gtest conflux-lu)
+add_test(NAME unit COMMAND unit)
+add_dependencies(tests unit)
