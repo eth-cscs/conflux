@@ -78,21 +78,29 @@ int main(int argc, char *argv[]) {
                     U[i * N + j] = C.data()[i * N + j];
                 }
             }
+            
+            // mm<dtype>(L, U, C, N, N, N);
+            // gemm<dtype>(PP, gv.matrix, C, -1.0, 1.0, N, N, N);
+            cblas_dgemm(CblasRowMajor, CblasNoTrans, CblasNoTrans, N, N, N,
+                        1.0, L, N, U, N, 0.0, C.data(), N);
 
-            if (rank == 0 && N < 20) {
+            if (rank == 0) {
                 std::cout << "L:\n";
                 conflux::print_matrix(L, 0, M, 0, N, N);
                 std::cout << "\nU:\n";
                 conflux::print_matrix(U, 0, M, 0, N, N);
                 std::cout << "\nPerm:\n";
                 conflux::print_matrix(Perm.data(), 0, M, 0, N, N);
+                std::cout << "\nL*U:\n";
+                conflux::print_matrix(C.data(), 0, M, 0, N, N);
             }
-            // mm<dtype>(L, U, C, N, N, N);
-            // gemm<dtype>(PP, gv.matrix, C, -1.0, 1.0, N, N, N);
-            cblas_dgemm(CblasRowMajor, CblasNoTrans, CblasNoTrans, N, N, N,
-                        1.0, L, N, U, N, 0.0, C.data(), N);
+            
             cblas_dgemm(CblasRowMajor, CblasNoTrans, CblasNoTrans, N, N, N,
                         -1.0, Perm.data(), N, gv.matrix, N, 1.0, C.data(), N);
+            if (rank == 0){ 
+                std::cout << "\nL*U - P*A:\n";
+                conflux::print_matrix(C.data(), 0, M, 0, N, N);
+            }
             dtype norm = 0;
             for (auto i = 0; i < N; ++i) {
                 for (auto j = 0; j < i; ++j) {
