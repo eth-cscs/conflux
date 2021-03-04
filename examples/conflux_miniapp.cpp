@@ -79,14 +79,14 @@ int main(int argc, char *argv[]) {
                 }
             }
 
-            if (rank == 0) {
-                std::cout << "L:\n";
-                conflux::print_matrix(L, 0, M, 0, N, N);
-                std::cout << "\nU:\n";
-                conflux::print_matrix(U, 0, M, 0, N, N);
-                std::cout << "\nPerm:\n";
-                conflux::print_matrix(Perm.data(), 0, M, 0, N, N);
-            }
+            // if (rank == 0) {
+            //     std::cout << "L:\n";
+            //     conflux::print_matrix(L, 0, M, 0, N, N);
+            //     std::cout << "\nU:\n";
+            //     conflux::print_matrix(U, 0, M, 0, N, N);
+            //     std::cout << "\nPerm:\n";
+            //     conflux::print_matrix(Perm.data(), 0, M, 0, N, N);
+            // }
             // mm<dtype>(L, U, C, N, N, N);
             // gemm<dtype>(PP, gv.matrix, C, -1.0, 1.0, N, N, N);
             cblas_dgemm(CblasRowMajor, CblasNoTrans, CblasNoTrans, N, N, N,
