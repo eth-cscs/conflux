@@ -1695,7 +1695,7 @@ if (debug_level > 1) {
                     
                     // if (k == chosen_step) { 
 #ifdef DEBUG
-                        if (debug_level > -1 && k > 12) {
+                        if (debug_level > 0 && k > 12) {
                             std::cout << "Rank [" << pi << ", " << pj << ", " << pk << "], k = " << k << ". A01: \n";
                             print_matrix(A01Buff.data(), 0, v,
                                         0, A01cols, A01cols);
@@ -1711,7 +1711,7 @@ if (debug_level > 1) {
                             // ok, sooooo, j is a local tile. The gloal column shoud be:
                             int B_col_offset = (j * Py + pj) * v;
 #ifdef DEBUG
-                            if (debug_level > -1 && pi == 1 && pj == 1 && pk == 0 && k == chosen_step){
+                            if (debug_level > 0 && pi == 1 && pj == 1 && pk == 0 && k == chosen_step){
                                 std::cout << "local_tile_offset: " << local_tile_offset << ", B_row_offset: " 
                                             << B_row_offset << ", B_col_offset: " << B_col_offset << "\n" << std::flush;
                             }
@@ -1754,7 +1754,7 @@ if (debug_level > 1) {
 
 #ifdef DEBUG
             if (k == chosen_step) { 
-                if (debug_level > -1) {
+                if (debug_level > 0) {
                     if (rank == 0) {
                         std::cout << "GLOBAL result matrix B" << std::endl;
                     }
@@ -1766,7 +1766,7 @@ if (debug_level > 1) {
                 }
             }
 
-            if (debug_level > -1){
+            if (debug_level > 0){
                 if (rank == print_rank) {
                     std::cout << "k = " << k << ", pivotIndsBuff: \n";
                     print_matrix(pivotIndsBuff.data(), 0, 1, 0, N, N);
