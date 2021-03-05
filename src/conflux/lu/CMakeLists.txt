@@ -13,6 +13,10 @@ if(NOT TARGET conflux-lu)
         )
     target_compile_definitions(conflux-lu PRIVATE ${BLAS_DEF})
 
+    if(CONFLUX_WITH_VALIDATION)
+        target_compile_definitions(conflux-lu PUBLIC CONFLUX_WITH_VALIDATION)
+    endif()
+
     if(CONFLUX_WITH_PROFILING)
         target_link_libraries(conflux-lu PUBLIC semiprof)
         target_compile_definitions(conflux-lu PUBLIC CONFLUX_WITH_PROFILING)

@@ -24,6 +24,7 @@ option(CONFLUX_WITH_APPS "Generate the miniapp targets." ${MASTER_PROJECT})
 option(CONFLUX_WITH_BENCHMARKS "Generate the benchmark targets." ${MASTER_PROJECT})
 option(CONFLUX_WITH_INSTALL "Enable installation." ${MASTER_PROJECT})
 option(CONFLUX_WITH_PROFILING "Enable profiling." OFF)
+option(CONFLUX_WITH_VALIDATION "Enable results validation." OFF)
 option(BUILD_SHARED_LIBS "Build shared libraries." OFF)
 
 set(CONFLUX_BLAS "MKL" CACHE STRING
