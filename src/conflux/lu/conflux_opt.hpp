@@ -939,7 +939,7 @@ if (debug_level > 1) {
                 // # ------------- REMAINING STEPS -------------- #
                 // # now we do numRounds parallel steps which synchronization after each step
                 PE(step1_pivoting);
-                auto numRounds = int(std::ceil(std::log2(Py)));
+                auto numRounds = int(std::ceil(std::log2(Px)));
 
                 tournament_rounds(
                         n_local_active_rows,
