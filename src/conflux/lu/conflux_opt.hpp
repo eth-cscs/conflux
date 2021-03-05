@@ -656,11 +656,14 @@ void LU_rep(T *A,
     // GLOBAL result buffer
     // For debug only!
     std::cout << std::setprecision(3);
+
+#ifdef CONFLUX_WITH_VALIDATION
     std::vector<T> B(M * N);
     MPI_Win B_Win = create_window(lu_comm,
                                   B.data(),
                                   B.size(),
                                   true);
+#endif
     //MPI_Win_create(B.data(), B.size() * sizeof(double), sizeof(double),)
     //MPI_Win_fence(MPI_MODE_NOPRECEDE, B_Win);
 
@@ -1125,10 +1128,12 @@ if (debug_level > 1) {
                     layout, curPivots,
                     first_non_pivot_row);
 
+#ifdef CONFLUX_WITH_VALIDATION
             push_pivots_up<T>(A10resultBuff, A11BuffTemp,
                     Ml, Nl,
                     layout, curPivots,
                     first_non_pivot_row);
+#endif
 
             push_pivots_up<T>(A10Buff, A10BuffTemp,
                     Ml, v,
@@ -1592,6 +1597,7 @@ if (debug_level > 1) {
             }
 #endif
 
+#ifdef CONFLUX_WITH_VALIDATION
             // # ----------------------------------------------------------------- #
             // # ------------------------- DEBUG ONLY ---------------------------- #
             // # ----------- STORING BACK RESULTS FOR VERIFICATION --------------- #
@@ -1730,13 +1736,12 @@ if (debug_level > 1) {
                             B_Win);
                 }
             }
-            MPI_Win_fence(0, B_Win);
-
+#endif
 
             // Printing global B
             MPI_Win_fence(0, B_Win);
-            MPI_Barrier(lu_comm);
 
+#ifdef DEBUG
             if (k == chosen_step) { 
                 if (debug_level > -1) {
                     if (rank == 0) {
@@ -1757,6 +1762,7 @@ if (debug_level > 1) {
                     std::cout << "\n\n";
                 }
             }
+#endif
         }
 
 
@@ -1772,14 +1778,15 @@ if (debug_level > 1) {
             }
         }
 
+#ifdef CONFLUX_WITH_VALIDATION
         std::copy(B.begin(), B.end(), C);
-        
         MPI_Barrier(lu_comm);
         for (auto i = 0; i < N; ++i) {
             int idx = int(pivotIndsBuff[i]);
             //std::copy(B.begin() + idx * N, B.begin() + (idx + 1) * N, C + i * N);
             PP[i * N + idx] = 1;
-        }  
+        }
+#endif
     }
 }
 

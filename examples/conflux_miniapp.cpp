@@ -65,6 +65,7 @@ int main(int argc, char *argv[]) {
             PP();
         }
 
+#ifdef CONFLUX_WITH_VALIDATION
         if (rank == 0) {
             auto N = gv.N;
             dtype* U = new dtype[N * N]{0};
@@ -112,6 +113,7 @@ int main(int argc, char *argv[]) {
             delete U;
             delete L;
         }
+#endif
     }
 
     MPI_Finalize();
