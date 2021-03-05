@@ -567,7 +567,6 @@ void LU_rep(T *A,
     Nt = gv.Nt;
     tA11x = gv.tA11x;
     tA11y = gv.tA11y;
-    // tA10 = gv.tA10;
     // local n
     auto Ml = tA11x * v;
     auto Nl = tA11y * v;
@@ -620,13 +619,7 @@ void LU_rep(T *A,
 
     std::vector<T> A11Buff(Ml * Nl);
     std::vector<T> A10resultBuff(Ml * Nl);
-    /*
-       for (int i = 0; i < A11Buff.size(); ++i) {
-       A11Buff[i] = 100 + i;
-       }
-       */
     std::vector<T> A11BuffTemp(Ml * Nl);
-
 
     // global row indices
     std::vector<int> gri(Ml);
@@ -669,7 +662,6 @@ void LU_rep(T *A,
                                   B.size(),
                                   true);
     //MPI_Win_create(B.data(), B.size() * sizeof(double), sizeof(double),)
-    
     //MPI_Win_fence(MPI_MODE_NOPRECEDE, B_Win);
 
     // RNG
@@ -735,8 +727,6 @@ if (debug_level > 1) {
 # ---------------------------------------------- #
 */
 
-        
-
         MPI_Barrier(lu_comm);
         auto t1 = std::chrono::high_resolution_clock::now();
 
@@ -773,11 +763,6 @@ if (debug_level > 1) {
 
             // flush the buffer
             curPivots[0] = 0;
-            /*
-               for (int i = 0; i < v; ++i) {
-               curPivOrder[i] = i;
-               }
-               */
 
             if (n_local_active_rows < v) {
                 int padding_start = n_local_active_rows * (v + 1);
@@ -938,9 +923,6 @@ if (debug_level > 1) {
                                 0, n_local_active_rows, 0, v + 1, v + 1);
                     }
                 }
-#endif
-
-                // std::cout << "Matrices permuted" << std::endl;
 
                 if (k == chosen_step && debug_level > 1) {
                     std::cout << "Rank [" << pi << ", " << pj << ", " << pk << "], n_local_active_rows: "
@@ -948,10 +930,11 @@ if (debug_level > 1) {
                     print_matrix(candidatePivotBuff.data(), 0, Ml, 0, v+1, v+1);
                     std::cout << "\n\n" << std::flush;
                 }
+#endif
+                // std::cout << "Matrices permuted" << std::endl;
 
                 // # ------------- REMAINING STEPS -------------- #
                 // # now we do numRounds parallel steps which synchronization after each step
-                // TODO: ask Greg (was sqrtp1)
                 PE(step1_pivoting);
                 auto numRounds = int(std::ceil(std::log2(Py)));
 
@@ -976,7 +959,7 @@ if (debug_level > 1) {
                     print_matrix(candidatePivotBuff.data(), 0, Ml, 0, v+1, v+1);
                     std::cout << "\n\n" << std::flush;
                 }
-                // TODO: final value (all superstep 0)
+
 #ifdef DEBUG
                 if (k == chosen_step && debug_level > 1) {
                         std::cout << "candidatePivotBuff FINAL VALUE " << pi << std::endl;
@@ -995,7 +978,7 @@ if (debug_level > 1) {
                 auto gpivots = column<T, int>(matrix_view<T>(&candidatePivotBuff[0],
                             min_perm_size, v + 1, v + 1,
                             layout),
-                        0);                
+                        0);
 
                 std::unordered_map<int, std::vector<int>> lpivots;
                 std::unordered_map<int, std::vector<int>> loffsets;
@@ -1037,8 +1020,7 @@ if (debug_level > 1) {
                     }
                 }
                 PL();
-            }            
-            
+            }
 
             // (pi, k % sqrtp1, layrK) -> (k % sqrtp1, pi, layrK)
             // # Receiving A00Buff:
@@ -1063,9 +1045,8 @@ if (debug_level > 1) {
             MPI_Barrier(lu_comm);
             PL();
 
-
             if (debug_level > 1) {
-                if (k == chosen_step) {                    
+                if (k == chosen_step) {
                     std::cout << "After ircv. Rank [" << pi << ", " << pj << ", " << pk << "], k = " << k << ", A00Buff = " << std::endl;
                     print_matrix(A00Buff.data(), 0, v, 0, v, v);
                 }
@@ -1098,32 +1079,6 @@ if (debug_level > 1) {
             for (int i = 0; i < curPivots[0]; ++i) {
                 curPivots[i + 1] = igri[curPivots[i + 1]];
             }
-
-            
-            // MPI_Barrier(lu_comm);
-            // if (k == 7 && pi == 1 && pj == 0 && pk == 0) {
-            //     std::cout << "\n\nRank [" << pi << ", " << pj << ", " << pk << "]. curPivots[0]: " << curPivots[0] <<"\n" << std::flush;     
-            // }       
-            // MPI_Barrier(lu_comm);
-            // if (k == 7 && pi == 0 && pj == 0 && pk == 0) {
-            //     std::cout << "\n\nRank [" << pi << ", " << pj << ", " << pk << "]. curPivots:\n";
-            //     print_matrix(curPivots.data(), 0, 1,
-            //                     0, v+1, v+1);
-            //     std::cout << "\ncurPivOrder:\n";
-            //     print_matrix(curPivOrder.data(), 0, 1,
-            //                     0, v, v);
-            // }
-            // MPI_Barrier(lu_comm);
-            // if (k == 7 && pi == 1 && pj == 0 && pk == 0) {
-            //     std::cout << "\n\nRank [" << pi << ", " << pj << ", " << pk << "]. curPivots:\n";
-            //     print_matrix(curPivots.data(), 0, 1,
-            //                     0, v+1, v+1);
-            //     std::cout << "\ncurPivOrder:\n";
-            //     print_matrix(curPivOrder.data(), 0, 1,
-            //                     0, v, v);
-            //     std::cout << "\n\n-------------\n\n" << std::flush;
-            // }
-            // MPI_Barrier(lu_comm);
 
             // wait for both broadcasts
             // MPI_Waitall(4, reqs_pivots, MPI_STATUSES_IGNORE);
@@ -1291,7 +1246,6 @@ if (debug_level > 1) {
 
                 for (int i = 0; i < curPivots[0]; ++i) {
                     auto dest_dspls = curPivOrder[i] * (Nl - loff);
-                                        
                     MPI_Put(&A01BuffTemp[i * (Nl - loff)], Nl - loff, MPI_DOUBLE,
                             p_rcv, dest_dspls, Nl - loff, MPI_DOUBLE,
                             A01Win);
@@ -1442,10 +1396,6 @@ if (debug_level > 1) {
 
             auto lld_A01 = Nl - loff;
 
-
-            #ifdef DEBUG
-            MPI_Barrier(lu_comm);
-            #endif
             // # ---------------------------------------------- #
             // # 5. compute A01 and broadcast it to A01BuffRecv #
             // # ---------------------------------------------- #
@@ -1518,11 +1468,6 @@ if (debug_level > 1) {
                 PL();
             }
 
-
-            #ifdef DEBUG
-            MPI_Barrier(lu_comm);
-            #endif
-
             PE(step5_irecv);
             p_send = X2p(lu_comm, k % Px, pj, layrK);
             size = nlayr * (Nl - loff);  // nlayr = v / c
@@ -1530,25 +1475,6 @@ if (debug_level > 1) {
                     p_send, 6, lu_comm, &reqs[req_id]);
             ++req_id;
             PL();
-
-            PE(step5_localcopy);
-            if (pk == layrK) {
-                /*
-            for (int i = 0; i < curPivots[0]; ++i) {
-                int pivot_row = first_non_pivot_row - curPivots[0] + i;
-                std::copy_n(&A01Buff[curPivOrder[i] * (Nl-loff)], Nl-loff, &resultBuff[pivot_row * Nl + loff]);
-            }
-            */
-                // for (int i = 0; i < curPivots[0]; ++i) {
-                //     int pivot_row = first_non_pivot_row - curPivots[0] + i;
-                //     std::copy_n(&A01Buff[i * (Nl - loff)], Nl - loff, &resultBuff[pivot_row * Nl + loff]);
-                // }
-            }
-            PL();
-
-            #ifdef DEBUG
-            MPI_Barrier(lu_comm);
-            #endif
 
             PE(step5_waitall);
             MPI_Waitall(req_id, reqs, MPI_STATUSES_IGNORE);
@@ -1562,16 +1488,11 @@ if (debug_level > 1) {
                 if (k == chosen_step) {
                     if (rank == print_rank) {
                         std::cout << "Step 5 finished." << std::endl;
+
                         std::cout << "A01BuffRcv = " << std::endl;
-                    }
-                    if (rank == print_rank) {
                         print_matrix(A01BuffRcv.data(), 0, nlayr, 0, Nl, Nl);
-                    }
-                    MPI_Barrier(lu_comm);
-                    if (rank == print_rank) {
+
                         std::cout << "A11 (before) = " << std::endl;
-                    }
-                    if (rank == print_rank) {
                         print_matrix(A11Buff.data(), 0, Ml,
                                 0, Nl, Nl);
                     }
@@ -1581,11 +1502,6 @@ if (debug_level > 1) {
 #endif
 
             ts = te;
-
-            #ifdef DEBUG
-            MPI_Barrier(lu_comm);
-            #endif
-
 
             // # ---------------------------------------------- #
             // # 7. compute A11  ------------------------------ #
@@ -1604,21 +1520,6 @@ if (debug_level > 1) {
                     1.0, &A11Buff[first_non_pivot_row * Nl + loff], Nl);
             PL();
 
-
-#ifdef DEBUG
-            if (debug_level > 0) {
-                if (k == chosen_step) {
-                    if (rank == print_rank) {
-                        std::cout << "A11Buff after computeA11:" << std::endl;
-                    }
-                    if (rank == print_rank) {
-                        print_matrix(A11Buff.data(), 0, Ml,
-                                0, Nl,
-                                Nl);
-                    }
-                }
-            }
-#endif
             te = std::chrono::high_resolution_clock::now();
             timers[6] += std::chrono::duration_cast<std::chrono::microseconds>(te - ts).count();
 
@@ -1626,17 +1527,15 @@ if (debug_level > 1) {
             if (debug_level > 0) {
                 if (k == chosen_step) {
                     if (rank == print_rank) {
+                        std::cout << "A11Buff after computeA11:" << std::endl;
+                        print_matrix(A11Buff.data(), 0, Ml,
+                                0, Nl,
+                                Nl);
                         std::cout << "A10Buff after storing the results back:" << std::endl;
-                    }
-                    if (rank == print_rank) {
                         print_matrix(A10Buff.data(), 0, Ml,
                                 0, v,
                                 v);
-                    }
-                    if (rank == print_rank) {
                         std::cout << "A10BuffRcv after storing the results back:" << std::endl;
-                    }
-                    if (rank == print_rank) {
                         print_matrix(A10BuffRcv.data(), 0, Ml,
                                 0, nlayr,
                                 nlayr);
@@ -1664,67 +1563,23 @@ if (debug_level > 1) {
             }
             PL();
 
-            /*
-            // storing back A01 = v * n_local_active_cols
-            // and storing back A00
-            // A00 has to be communicated from pivot to (pi = k%sqrtp1, pk = layrk)
-            // (the reversed pi and pj of the sender)
-            if (pi == k % sqrtp1 && pk == layrK) {
-            for (int i = 0; i < curPivots[0]; ++i) {
-            std::copy_n(&A01Buff[i * (Nl-loff) + v],
-            Nl-loff-v,
-            // columns always move by v
-            &A11Buff[(first_non_pivot_row-curPivots[0] + i) * Nl + loff + v]);
-            // &A11Buff[loff + v]);
-            }
-            }
-            */
-
-#ifdef DEBUG
-            
 #ifdef DEBUG
             if (debug_level > 0) {
                 if (k == chosen_step) {
                     if (rank == print_rank) {
                         std::cout << "A01Buff after storing the results back:" << std::endl;
-                    }
-                    if (rank == print_rank) {
                         print_matrix(A01Buff.data(), 0, v,
                                 0, Nl,
                                 Nl);
-                    }
-                    if (rank == print_rank) {
                         std::cout << "A01BuffRcv after storing the results back:" << std::endl;
-                    }
-                    if (rank == print_rank) {
                         print_matrix(A01BuffRcv.data(), 0, nlayr,
                                 0, Nl,
                                 Nl);
-                    }
-                }
-            }
-#endif
-
-
-            if (debug_level > 0) {
-                if (k == chosen_step) {
-                    if (rank == print_rank) {
                         std::cout << "A11Buff after storing the results back:" << std::endl;
-                    }
-                    if (rank == print_rank) {
                         print_matrix(A11Buff.data(), 0, Ml,
                                 0, Nl,
                                 Nl);
                     }
-                }
-            }
-            /*
-        if (k == chosen_step) {
-            std::exit(0);
-        }
-        */
-            if (debug_level > 0) {
-                if (k == chosen_step) {
                     if (pi == 1 && pj == 0 && pk == 0) {
                         std::cout << "Superstep: " << k << std::endl;
                         std::cout << "A00Buff after storing the results back:" << std::endl;
