@@ -116,19 +116,19 @@ set(BLAS_DEF "")
 if (${CONFLUX_BLAS} MATCHES "MKL")
     find_package(MKL REQUIRED)
     set(BLAS_TARGET "mkl::mkl_intel_32bit_omp_dyn")
-    set(BLAS_DEF "CONFLUX_MKL_BLAS")
+    set(BLAS_DEF "__USE_MKL")
 elseif (${CONFLUX_BLAS} MATCHES "CRAY_LIBSCI")
     find_package(CRAY_LIBSCI REQUIRED)
     set(BLAS_TARGET "${CRAY_LIBSCI_LIBRARIES}")
-    set(BLAS_DEF "CONFLUX_CRAY_LIBSCI_BLAS")
+    # set(BLAS_DEF "CONFLUX_CRAY_LIBSCI_BLAS")
 elseif (${CONFLUX_BLAS} MATCHES "CUSTOM")
     find_package(BLAS REQUIRED)
     set(BLAS_TARGET "${BLAS_LIBRARIES}")
-    set(BLAS_DEF "CONFLUX_CUSTOM_BLAS")
+    # set(BLAS_DEF "CONFLUX_CUSTOM_BLAS")
 elseif (${CONFLUX_BLAS} MATCHES "OPENBLAS")
     find_package(OpenBLAS REQUIRED)
     set(BLAS_TARGET "openblas")
-    set(BLAS_DEF "CONFLUX_OPEN_BLAS")
+    # set(BLAS_DEF "CONFLUX_OPEN_BLAS")
 endif()
 
 # (optional) SCALAPACK providers
@@ -148,13 +148,33 @@ else  ()
 endif ()
 
 # library
+# lu decomposition
 add_subdirectory(src/conflux/lu)
+
+# cholesky decomposition
+add_subdirectory(src/conflux/cholesky)
+
+# testing
+if(CONFLUX_WITH_TESTS)
+    enable_testing()
+    add_subdirectory(tests)
+endif()
+
+# miniapps
+if(CONFLUX_WITH_APPS)
+    add_subdirectory(examples)
+endif()
+
 
 if(CONFLUX_WITH_INSTALL)
     include(CMakePackageConfigHelpers)
     include(GNUInstallDirs)
 
-    install(DIRECTORY "${conflux_SOURCE_DIR}/src/conflux"
+    install(DIRECTORY "${conflux_SOURCE_DIR}/src/conflux/lu"
+        DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}"
+        FILES_MATCHING
+        PATTERN "*.hpp")
+    install(DIRECTORY "${conflux_SOURCE_DIR}/src/conflux/cholesky"
         DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}"
         FILES_MATCHING
         PATTERN "*.hpp")
@@ -179,14 +199,5 @@ if(CONFLUX_WITH_INSTALL)
 
     install(FILES "${conflux_BINARY_DIR}/conflux.pc"
         DESTINATION "${CMAKE_INSTALL_LIBDIR}/pkgconfig")
-endif()
-
-if(CONFLUX_WITH_TESTS)
-    enable_testing()
-    add_subdirectory(tests)
-endif()
-
-if(CONFLUX_WITH_APPS)
-    add_subdirectory(examples)
 endif()
 
