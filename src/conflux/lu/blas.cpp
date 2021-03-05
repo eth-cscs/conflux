@@ -1,6 +1,6 @@
 #include <conflux/lu/blas.hpp>
 
-#ifdef CONFLUX_MKL_BLAS
+#ifdef __USE_MKL 
 #include <mkl.h>
 #else 
 #include <cblas.h>

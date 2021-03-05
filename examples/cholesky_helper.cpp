@@ -33,19 +33,25 @@
  * @date 15.12.2020
  */
 
-#include <stdint.h>
-#include <unistd.h>
-#include <getopt.h>
 #include <iostream>
 #include <string>
 #include <sstream>
 #include <fstream>
 #include <random>
 #include <stdexcept>
+#include <sys/types.h>
+#include <unistd.h>
 #include <sys/stat.h>
+#include <getopt.h>
 
-#include <lapacke/lapacke.h>
-#include <cblas/cblas.h>
+#ifdef __USE_MKL
+#include <mkl_cblas.h>
+#include <mkl_lapacke.h>
+#include <mkl.h>
+#else
+#include <cblas.h>
+#include <lapacke.h>
+#endif
 
 // defines the mode for the current execution 
 enum Mode {GENERATE = 0, COMPARE = 1};

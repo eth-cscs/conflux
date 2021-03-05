@@ -45,7 +45,12 @@
 #endif
 
 #include <mpi.h>
+
+#ifdef __USE_MKL
 #include <mkl.h>
+#else
+#include <cblas.h>
+#endif
 
 #include "CholeskyTypes.h"
 #include "CholeskyProperties.h"

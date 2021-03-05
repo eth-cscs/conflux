@@ -39,7 +39,7 @@
 #include "Processor.h"
 #include "TileMatrix.h"
 
-typedef struct ompi_file_t *MPI_File; // forward declaration
+// typedef struct ompi_file_t *MPI_File; // forward declaration
 
 namespace conflux {
 
@@ -83,4 +83,4 @@ private:
 
 } // namespace conflux
 
-#endif // CHOLEKSY_IO_H
+#endif // CHOLESKY_IO_H

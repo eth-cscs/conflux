@@ -49,8 +49,9 @@
 
 
 // forward declare MPI_Comm to avoid having to include mpi.h here
-struct ompi_communicator_t;
-typedef ompi_communicator_t *MPI_Comm;
+// this is OpenMPI specific.
+// struct ompi_communicator_t;
+// typedef ompi_communicator_t *MPI_Comm;
 
 namespace conflux {
     
