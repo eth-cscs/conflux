@@ -122,7 +122,7 @@ class GlobalVars {
         int nLocalTilesx = (int)(std::ceil((double)inpM / (v * Px)));
         int nLocalTilesy = (int)(std::ceil((double)inpN / (v * Py)));
         M = v * Px * nLocalTilesx;
-        M = v * Py * nLocalTilesy;
+        N = v * Py * nLocalTilesy;
         // std::cout << sqrtp1 << " " << c << std::endl << std::flush;
         // std::cout << v << " " << nLocalTiles << std::endl << std::flush;
         /*
@@ -155,7 +155,7 @@ class GlobalVars {
                 4, 5, 1, 5, 3, 7, 4, 4, 7, 5, 8, 2, 4, 7, 1, 7,
                 8, 3, 2, 4, 3, 8, 1, 6, 9, 6, 3, 6, 4, 8, 7, 8};
         } else if (N == 32 && M == 32) {
-            matrix = new T[N * N]{9.0, 4.0, 8.0, 8.0, 3.0, 8.0, 0.0, 5.0, 2.0, 1.0, 0.0, 6.0, 3.0, 7.0, 0.0, 3.0, 5.0, 7.0, 3.0, 6.0, 8.0, 6.0, 2.0, 0.0, 8.0, 0.0, 8.0, 5.0, 9.0, 7.0, 9.0, 3.0,
+            matrix = new T[M * N]{9.0, 4.0, 8.0, 8.0, 3.0, 8.0, 0.0, 5.0, 2.0, 1.0, 0.0, 6.0, 3.0, 7.0, 0.0, 3.0, 5.0, 7.0, 3.0, 6.0, 8.0, 6.0, 2.0, 0.0, 8.0, 0.0, 8.0, 5.0, 9.0, 7.0, 9.0, 3.0,
                                   7.0, 4.0, 4.0, 6.0, 8.0, 9.0, 7.0, 4.0, 4.0, 7.0, 2.0, 1.0, 3.0, 2.0, 2.0, 2.0, 0.0, 0.0, 9.0, 4.0, 3.0, 6.0, 2.0, 9.0, 7.0, 0.0, 4.0, 8.0, 9.0, 4.0, 6.0, 1.0,
                                   9.0, 2.0, 9.0, 6.0, 6.0, 5.0, 2.0, 1.0, 2.0, 1.0, 7.0, 3.0, 0.0, 9.0, 8.0, 9.0, 9.0, 1.0, 3.0, 7.0, 6.0, 1.0, 8.0, 2.0, 2.0, 5.0, 5.0, 5.0, 0.0, 8.0, 2.0, 1.0,
                                   8.0, 9.0, 8.0, 8.0, 6.0, 5.0, 0.0, 4.0, 3.0, 2.0, 7.0, 4.0, 0.0, 2.0, 6.0, 0.0, 8.0, 4.0, 4.0, 5.0, 8.0, 3.0, 6.0, 5.0, 2.0, 8.0, 7.0, 6.0, 8.0, 8.0, 7.0, 8.0,
@@ -574,7 +574,6 @@ void LU_rep(T *A,
     auto chosen_step = Nt - 1;
     auto debug_level = 0;
 
-
     MPI_Comm lu_comm;
     int dim[] = {Px, Py, Pz};  // 3D processor grid
     int period[] = {0, 0, 0};
@@ -598,13 +597,8 @@ void LU_rep(T *A,
     int pi, pj, pk;
     std::tie(pi, pj, pk) = p2X(lu_comm, rank);
 
-    //std::vector<T> B(M*N);
-
     // Create buffers
     std::vector<T> A00Buff(v * v);
-    std::vector<T> buf(v * v);
-    std::vector<int> bufpivots(N);
-    std::vector<int> remaining(N);
 
     // A10 => M
     // A01 => N
@@ -1777,6 +1771,8 @@ if (debug_level > 1) {
 #endif
         }
 
+        MPI_Win_free(&A01Win);
+
         MPI_Barrier(lu_comm);
         if (rank == print_rank) {
             auto t2 = std::chrono::high_resolution_clock::now();
@@ -1789,6 +1785,7 @@ if (debug_level > 1) {
         }
 
 #ifdef CONFLUX_WITH_VALIDATION
+        MPI_Win_free(&B_Win);
         std::copy(B.begin(), B.end(), C);
         MPI_Barrier(lu_comm);
         for (auto i = 0; i < N; ++i) {
@@ -1797,6 +1794,9 @@ if (debug_level > 1) {
             PP[i * N + idx] = 1;
         }
 #endif
+        MPI_Comm_free(&k_comm);
+        MPI_Comm_free(&jk_comm);
+        MPI_Comm_free(&lu_comm);
     }
 }
 

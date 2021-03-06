@@ -71,6 +71,7 @@ int main(int argc, char *argv[]) {
 
 #ifdef CONFLUX_WITH_VALIDATION
         if (rank == 0) {
+            auto M = gv.M;
             auto N = gv.N;
             dtype* U = new dtype[N * N]{0};
             dtype* L = new dtype[N * N] {0};
