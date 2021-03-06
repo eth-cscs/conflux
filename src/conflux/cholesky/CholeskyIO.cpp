@@ -35,7 +35,6 @@
 #include <string>
 #include <random>
 #include <sstream>
-
 #include <mpi.h>
 
 #ifdef __USE_MKL
@@ -91,10 +90,10 @@ conflux::CholeskyIO::CholeskyIO(CholeskyProperties *prop, Processor *proc)
 conflux::CholeskyIO::~CholeskyIO()
 {
     // close the file if this was not done already
-    if (*fh != MPI_FILE_NULL) {
-        MPI_File_close(fh);
-    }
-
+    // commented this out as it results in segfault
+    //if (*fh != MPI_FILE_NULL) {
+    //   MPI_File_close(fh);
+    //}
     // delete file handle, but nothing else since this is done by another object
     delete fh;
 }
