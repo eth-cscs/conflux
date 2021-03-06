@@ -474,12 +474,6 @@ void tournament_rounds(
                     */
         }
 
-        // if (n_local_active_rows == 0) {            
-        //     std::cout << "Rank [" << pi << ", " << pj << ", " << pk << "], k = " << k << ",  ENDED TOURNAMENT PREMATURELY!!!" << std::flush;
-        //  //   continue;
-        // }
-
-        // TODO: after 0th round of communication
         // candidatePivotBuff := input
         LUP(2 * v, v, v + 1, &pivotBuff[0], &candidatePivotBuff[1], ipiv, perm);
 
@@ -706,7 +700,7 @@ if (debug_level > 1) {
         // Sync all windows
         MPI_Win_fence(MPI_MODE_NOPRECEDE, A01Win);
         PL();
-        int timers[8] = {0};
+        std::vector<int> timers(8);
 
         auto layout = order::row_major;
 
