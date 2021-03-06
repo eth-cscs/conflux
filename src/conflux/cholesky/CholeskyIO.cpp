@@ -84,8 +84,12 @@ conflux::CholeskyIO::CholeskyIO(CholeskyProperties *prop, Processor *proc)
 }
 
 /**
- * @brief destructor of the CholeskyIO class. Closes file handle if not
- * done already.
+ * @brief destructor of the CholeskyIO class. Deletes the file handle
+ * 
+ * @note the destructor does not take care of the closing of the file 
+ * associated with this object. Any call to CholeskyIO::openFile() must
+ * be followed by a call to CholeskyIO::closeFile(), otherwise the behaviour
+ * of the object is undefined.
  */
 conflux::CholeskyIO::~CholeskyIO()
 {
@@ -394,6 +398,9 @@ void conflux::CholeskyIO::parseAndDistributeMatrix()
 /**
  * @brief Opens a file handle to enable dumping of the matrix
  * @param filename the name of the file and its path
+ * 
+ * @note The user is responsible that a file opened with a call to this method
+ * is closed with a call to @ref CholeskyIO::closeFile()
  */
 void conflux::CholeskyIO::openFile(std::string filename)
 {
