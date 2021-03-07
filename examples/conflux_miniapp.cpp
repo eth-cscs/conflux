@@ -103,7 +103,7 @@ int main(int argc, char *argv[]) {
 
             cblas_dgemm(CblasRowMajor, CblasNoTrans, CblasNoTrans, N, N, N,
                         -1.0, Perm.data(), N, gv.matrix, N, 1.0, C.data(), N);
-            if (rank == 0){ 
+            if (rank == 0 && std::max(M, N) < print_limit){ 
                 std::cout << "\nL*U - P*A:\n";
                 conflux::print_matrix(C.data(), 0, M, 0, N, N);
             }
