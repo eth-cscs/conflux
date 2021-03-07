@@ -262,9 +262,27 @@ class GlobalVars {
     }
 };
 
+
 int flipbit(int n, int k) {
     return n ^ (1ll << k);
 }
+
+
+int butterfly_pair(int pi, int r, int Px){
+    auto src_pi = flipbit(pi, r);
+    if (src_pi >= Px){
+        if (r == 0)
+            src_pi = pi;
+        else {
+            src_pi = flipbit(src_pi, r-1);
+            if (src_pi >= Px)
+                src_pi = Px - 1; 
+        }
+    }
+    return src_pi;
+    // return std::min(flipbit(pi, r), Px - 1);
+}
+
 
 // taken from COSMA
 template <typename T>
@@ -478,7 +496,8 @@ void tournament_rounds(
     std::tie(pi, pj, pk) = p2X(lu_comm, rank);
 
     for (int r = 0; r < n_rounds; ++r) {
-        auto src_pi = std::min(flipbit(pi, r), Px - 1);
+        // auto src_pi = std::min(flipbit(pi, r), Px - 1);
+        auto src_pi = butterfly_pair(pi, r, Px);
         auto p_rcv = X2p(lu_comm, src_pi, pj, pk);
 
 
@@ -515,7 +534,7 @@ void tournament_rounds(
         // first, check who wants something from us:
         for (int ppi = 0; ppi < Px; ppi++){
             //then it means that ppi wants something from us
-            if (std::min(flipbit(ppi, r), Px - 1) == pi && ppi != src_pi) {
+            if (butterfly_pair(ppi, r, Px) == pi && ppi != src_pi) {
                 p_rcv = X2p(lu_comm, ppi, pj, pk);
                 MPI_Isend(&candidatePivotBuff[v*(v+1)], v*(v+1), MPI_DOUBLE,
                     p_rcv, 1, lu_comm, &reqs[0]);
@@ -553,7 +572,7 @@ void tournament_rounds(
                           &pivotBuff[0], v,
                           &A00Buff[0], v);
         } else {
-            auto src_pi = std::min(flipbit(pi, r+1), Px - 1);
+            src_pi = butterfly_pair(pi, r+1, Px); //std::min(flipbit(pi, r+1), Px - 1);
             if (src_pi < pi) {
                 inverse_permute_rows(&candidatePivotBuff[0],
                                      &candidatePivotBuffPerm[v * (v + 1)],
