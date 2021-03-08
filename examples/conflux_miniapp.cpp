@@ -73,8 +73,8 @@ int main(int argc, char *argv[]) {
         if (rank == 0) {
             auto M = gv.M;
             auto N = gv.N;
-            dtype* U = new dtype[N * N]{0};
-            dtype* L = new dtype[N * N] {0};
+            std::vector<dtype> L(N*N);
+            std::vector<dtype> U(N*N);
             for (auto i = 0; i < N; ++i) {
                 for (auto j = 0; j < i; ++j) {
                     L[i * N + j] = C.data()[i * N + j];
@@ -88,13 +88,13 @@ int main(int argc, char *argv[]) {
             // mm<dtype>(L, U, C, N, N, N);
             // gemm<dtype>(PP, gv.matrix, C, -1.0, 1.0, N, N, N);
             cblas_dgemm(CblasRowMajor, CblasNoTrans, CblasNoTrans, N, N, N,
-                        1.0, L, N, U, N, 0.0, C.data(), N);
+                        1.0, &L[0], N, &U[0], N, 0.0, C.data(), N);
 
             if (rank == 0 && std::max(M, N) < print_limit) {
                 std::cout << "L:\n";
-                conflux::print_matrix(L, 0, M, 0, N, N);
+                conflux::print_matrix(&L[0], 0, M, 0, N, N);
                 std::cout << "\nU:\n";
-                conflux::print_matrix(U, 0, M, 0, N, N);
+                conflux::print_matrix(&U[0], 0, M, 0, N, N);
                 std::cout << "\nPerm:\n";
                 conflux::print_matrix(Perm.data(), 0, M, 0, N, N);
                 std::cout << "\nL*U:\n";
@@ -115,8 +115,6 @@ int main(int argc, char *argv[]) {
             }
             norm = std::sqrt(norm);
             std::cout << "residual: " << norm << std::endl << std::flush;\
-            delete U;
-            delete L;
         }
 #endif
     }
