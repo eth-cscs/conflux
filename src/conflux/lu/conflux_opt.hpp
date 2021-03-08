@@ -118,6 +118,12 @@ class GlobalVars {
         CalculateDecomposition(inpM, inpN, inpP, Px, Py, Pz);
         // v = std::lcm(sqrtp1, c);
         // v = 256;
+        // inpM = 27;
+        // inpN = 27;
+        // inpP = 9;
+        // Px = 3;
+        // Py = 3;
+        // Pz = 1;
         this->v = v;
         int nLocalTilesx = (int)(std::ceil((double)inpM / (v * Px)));
         int nLocalTilesy = (int)(std::ceil((double)inpN / (v * Py)));
@@ -154,6 +160,34 @@ class GlobalVars {
                 7, 6, 7, 8, 2, 2, 4, 6, 6, 8, 3, 6, 5, 2, 6, 5,
                 4, 5, 1, 5, 3, 7, 4, 4, 7, 5, 8, 2, 4, 7, 1, 7,
                 8, 3, 2, 4, 3, 8, 1, 6, 9, 6, 3, 6, 4, 8, 7, 8};
+        } else if (N == 27 && M == 27) {
+            matrix = new T[N * N]{4.0, 2.0, 0.0, 7.0, 0.0, 0.0, 1.0, 5.0, 4.0, 6.0, 8.0, 7.0, 0.0, 4.0, 3.0, 5.0, 3.0, 4.0, 0.0, 1.0, 1.0, 6.0, 7.0, 1.0, 8.0, 2.0, 3.0,
+                                9.0, 0.0, 7.0, 2.0, 400.0, 3.0, 2.0, 8.0, 2.0, 9.0, 6.0, 3.0, 6.0, 6.0, 7.0, 9.0, 5.0, 2.0, 0.0, 7.0, 0.0, 2.0, 8.0, 8.0, 9.0, 4.0, 5.0,
+                                1.0, 5.0, 3.0, 7.0, 1.0, 7.0, 0.0, 5.0, 0.0, 1.0, 3.0, 6.0, 7.0, 7.0, 7.0, 6.0, 9.0, 7.0, 9.0, 7.0, 5.0, 6.0, 2.0, 3.0, 5.0, 4.0, 4.0,
+                                7.0, 7.0, 6.0, 9.0, 1.0, 6.0, 9.0, 3.0, 8.0, 9.0, 9.0, 3.0, 5.0, 5.0, 2.0, 1.0, 5.0, 8.0, 6.0, 8.0, 3.0, 0.0, 6.0, 2.0, 9.0, 9.0, 0.0,
+                                7.0, 6.0, 7.0, 8.0, 7.0, 1.0, 7.0, 2.0, 1.0, 7.0, 2.0, 6.0, 8.0, 5.0, 2.0, 3.0, 3.0, 2.0, 2.0, 5.0, 9.0, 4.0, 6.0, 3.0, 5.0, 6.0, 2.0,
+                                5.0, 0.0, 1.0, 0.0, 2.0, 1.0, 5.0, 4.0, 1.0, 5.0, 6.0, 0.0, 8.0, 5.0, 6.0, 0.0, 6.0, 7.0, 4.0, 0.0, 9.0, 6.0, 1.0, 3.0, 5.0, 6.0, 8.0,
+                                1.0, 0.0, 1.0, 3.0, 6.0, 0.0, 3.0, 4.0, 6.0, 4.0, 6.0, 9.0, 6.0, 5.0, 4.0, 5.0, 3.0, 1.0, 1.0, 9.0, 2.0, 9.0, 4.0, 5.0, 3.0, 7.0, 0.0,
+                                5.0, 7.0, 5.0, 3.0, 9.0, 0.0, 1.0, 3.0, 8.0, 2.0, 3.0, 8.0, 1.0, 0.0, 6.0, 4.0, 7.0, 8.0, 2.0, 8.0, 8.0, 8.0, 2.0, 5.0, 4.0, 3.0, 8.0,
+                                2.0, 9.0, 4.0, 6.0, 4.0, 4.0, 6.0, 5.0, 5.0, 7.0, 1.0, 7.0, 2.0, 7.0, 2.0, 9.0, 4.0, 1.0, 2.0, 2.0, 8.0, 4.0, 7.0, 3.0, 4.0, 5.0, 0.0,
+                                1.0, 5.0, 8.0, 5.0, 6.0, 6.0, 9.0, 7.0, 7.0, 2.0, 0.0, 8.0, 1.0, 9.0, 1.0, 8.0, 4.0, 5.0, 3.0, 5.0, 5.0, 7.0, 2.0, 3.0, 0.0, 5.0, 6.0,
+                                2.0, 1.0, 7.0, 7.0, 7.0, 7.0, 1.0, 4.0, 1.0, 0.0, 4.0, 3.0, 0.0, 3.0, 8.0, 4.0, 6.0, 3.0, 1.0, 9.0, 8.0, 4.0, 8.0, 5.0, 8.0, 1.0, 5.0,
+                                8.0, 8.0, 7.0, 3.0, 4.0, 5.0, 2.0, 4.0, 9.0, 7.0, 1.0, 6.0, 1.0, 9.0, 7.0, 8.0, 9.0, 8.0, 3.0, 7.0, 9.0, 9.0, 8.0, 6.0, 0.0, 5.0, 2.0,
+                                0.0, 3.0, 0.0, 2.0, 6.0, 1.0, 3.0, 1.0, 5.0, 6.0, 7.0, 5.0, 6.0, 3.0, 9.0, 1.0, 3.0, 5.0, 1.0, 8.0, 5.0, 9.0, 3.0, 9.0, 4.0, 6.0, 5.0,
+                                2.0, 2.0, 0.0, 0.0, 1.0, 6.0, 0.0, 0.0, 6.0, 7.0, 3.0, 5.0, 9.0, 8.0, 1.0, 3.0, 8.0, 4.0, 8.0, 4.0, 7.0, 8.0, 4.0, 7.0, 8.0, 4.0, 1.0,
+                                0.0, 7.0, 0.0, 7.0, 9.0, 1.0, 6.0, 2.0, 0.0, 6.0, 8.0, 2.0, 3.0, 4.0, 1.0, 9.0, 7.0, 8.0, 0.0, 4.0, 5.0, 3.0, 6.0, 4.0, 3.0, 8.0, 6.0,
+                                4.0, 0.0, 7.0, 2.0, 1.0, 1.0, 4.0, 3.0, 8.0, 4.0, 7.0, 2.0, 4.0, 4.0, 0.0, 9.0, 9.0, 3.0, 9.0, 5.0, 0.0, 4.0, 8.0, 8.0, 6.0, 7.0, 5.0,
+                                0.0, 0.0, 9.0, 3.0, 2.0, 0.0, 9.0, 6.0, 7.0, 3.0, 5.0, 4.0, 9.0, 2.0, 4.0, 7.0, 0.0, 4.0, 3.0, 2.0, 4.0, 2.0, 6.0, 1.0, 8.0, 3.0, 0.0,
+                                8.0, 6.0, 6.0, 5.0, 7.0, 1.0, 4.0, 9.0, 1.0, 8.0, 1.0, 2.0, 9.0, 1.0, 1.0, 6.0, 3.0, 9.0, 0.0, 7.0, 6.0, 7.0, 5.0, 0.0, 8.0, 4.0, 0.0,
+                                1.0, 6.0, 1.0, 2.0, 4.0, 1.0, 6.0, 9.0, 5.0, 3.0, 9.0, 8.0, 6.0, 3.0, 8.0, 3.0, 6.0, 0.0, 3.0, 5.0, 5.0, 8.0, 3.0, 0.0, 9.0, 3.0, 1.0,
+                                0.0, 5.0, 7.0, 6.0, 7.0, 1.0, 1.0, 4.0, 3.0, 8.0, 2.0, 9.0, 9.0, 7.0, 0.0, 9.0, 2.0, 9.0, 7.0, 6.0, 3.0, 9.0, 4.0, 1.0, 1.0, 7.0, 0.0,
+                                3.0, 7.0, 1.0, 4.0, 3.0, 3.0, 3.0, 2.0, 5.0, 7.0, 9.0, 0.0, 7.0, 7.0, 0.0, 1.0, 2.0, 1.0, 7.0, 3.0, 9.0, 5.0, 7.0, 3.0, 2.0, 7.0, 4.0,
+                                4.0, 7.0, 1.0, 1.0, 2.0, 3.0, 1.0, 7.0, 3.0, 8.0, 2.0, 5.0, 3.0, 6.0, 5.0, 7.0, 7.0, 6.0, 5.0, 1.0, 8.0, 5.0, 8.0, 3.0, 8.0, 4.0, 8.0,
+                                1.0, 7.0, 6.0, 7.0, 0.0, 2.0, 7.0, 7.0, 4.0, 5.0, 3.0, 0.0, 6.0, 0.0, 7.0, 6.0, 6.0, 5.0, 6.0, 4.0, 8.0, 1.0, 7.0, 0.0, 5.0, 6.0, 6.0,
+                                9.0, 2.0, 3.0, 1.0, 6.0, 2.0, 8.0, 7.0, 1.0, 6.0, 0.0, 8.0, 2.0, 8.0, 3.0, 8.0, 5.0, 6.0, 8.0, 3.0, 3.0, 8.0, 0.0, 5.0, 5.0, 9.0, 5.0,
+                                3.0, 6.0, 6.0, 2.0, 4.0, 8.0, 3.0, 7.0, 2.0, 9.0, 6.0, 9.0, 2.0, 9.0, 1.0, 3.0, 6.0, 3.0, 0.0, 7.0, 5.0, 4.0, 6.0, 0.0, 6.0, 7.0, 8.0,
+                                2.0, 5.0, 7.0, 2.0, 4.0, 7.0, 6.0, 1.0, 0.0, 4.0, 1.0, 0.0, 6.0, 7.0, 3.0, 7.0, 0.0, 6.0, 3.0, 7.0, 8.0, 2.0, 4.0, 1.0, 8.0, 7.0, 0.0,
+                                0.0, 3.0, 5.0, 5.0, 6.0, 5.0, 2.0, 6.0, 9.0, 0.0, 0.0, 9.0, 5.0, 0.0, 2.0, 8.0, 3.0, 8.0, 0.0, 6.0, 9.0, 8.0, 4.0, 6.0, 5.0, 1.0, 9.0};
         } else if (N == 32 && M == 32) {
             matrix = new T[M * N]{9.0, 4.0, 8.0, 8.0, 3.0, 8.0, 0.0, 5.0, 2.0, 1.0, 0.0, 6.0, 3.0, 7.0, 0.0, 3.0, 5.0, 7.0, 3.0, 6.0, 8.0, 6.0, 2.0, 0.0, 8.0, 0.0, 8.0, 5.0, 9.0, 7.0, 9.0, 3.0,
                                   7.0, 4.0, 4.0, 6.0, 8.0, 9.0, 7.0, 4.0, 4.0, 7.0, 2.0, 1.0, 3.0, 2.0, 2.0, 2.0, 0.0, 0.0, 9.0, 4.0, 3.0, 6.0, 2.0, 9.0, 7.0, 0.0, 4.0, 8.0, 9.0, 4.0, 6.0, 1.0,
@@ -228,9 +262,27 @@ class GlobalVars {
     }
 };
 
+
 int flipbit(int n, int k) {
     return n ^ (1ll << k);
 }
+
+
+int butterfly_pair(int pi, int r, int Px){
+    auto src_pi = flipbit(pi, r);
+    if (src_pi >= Px){
+        if (r == 0)
+            src_pi = pi;
+        else {
+            src_pi = flipbit(src_pi, r-1);
+            if (src_pi >= Px)
+                src_pi = Px - 1; 
+        }
+    }
+    return src_pi;
+    // return std::min(flipbit(pi, r), Px - 1);
+}
+
 
 // taken from COSMA
 template <typename T>
@@ -444,36 +496,58 @@ void tournament_rounds(
     std::tie(pi, pj, pk) = p2X(lu_comm, rank);
 
     for (int r = 0; r < n_rounds; ++r) {
-        auto src_pi = std::min(flipbit(pi, r), Px - 1);
+        // auto src_pi = std::min(flipbit(pi, r), Px - 1);
+        auto src_pi = butterfly_pair(pi, r, Px);
         auto p_rcv = X2p(lu_comm, src_pi, pj, pk);
 
-        // int req_id = 0;
-        // MPI_Request reqs[2];
+
+        int req_id = 0;
+        MPI_Request reqs[2];
 
         if (src_pi < pi) {
-            MPI_Send(&candidatePivotBuff[v * (v + 1)], v * (v + 1), MPI_DOUBLE,
-                     p_rcv, 1, lu_comm);
-            MPI_Recv(&candidatePivotBuff[0], v * (v + 1), MPI_DOUBLE,
-                     p_rcv, 1, lu_comm, MPI_STATUS_IGNORE);
-            /*
+            // MPI_Send(&candidatePivotBuff[v * (v + 1)], v * (v + 1), MPI_DOUBLE,
+            //          p_rcv, 1, lu_comm);
+            // MPI_Recv(&candidatePivotBuff[0], v * (v + 1), MPI_DOUBLE,
+            //          p_rcv, 1, lu_comm, MPI_STATUS_IGNORE);
+            
             MPI_Isend(&candidatePivotBuff[v*(v+1)], v*(v+1), MPI_DOUBLE,
                     p_rcv, 1, lu_comm, &reqs[req_id++]);
             MPI_Irecv(&candidatePivotBuff[0], v*(v+1), MPI_DOUBLE,
                     p_rcv, 1, lu_comm, &reqs[req_id++]);
-                    */
+                    
         } else {
-            MPI_Recv(&candidatePivotBuff[v * (v + 1)], v * (v + 1), MPI_DOUBLE,
-                     p_rcv, 1, lu_comm, MPI_STATUS_IGNORE);
-            MPI_Send(&candidatePivotBuff[0], v * (v + 1), MPI_DOUBLE,
-                     p_rcv, 1, lu_comm);
-            /*
+            // MPI_Recv(&candidatePivotBuff[v * (v + 1)], v * (v + 1), MPI_DOUBLE,
+            //          p_rcv, 1, lu_comm, MPI_STATUS_IGNORE);
+            // MPI_Send(&candidatePivotBuff[0], v * (v + 1), MPI_DOUBLE,
+            //          p_rcv, 1, lu_comm);
+            
             MPI_Isend(&candidatePivotBuff[0], v*(v+1), MPI_DOUBLE,
                     p_rcv, 1, lu_comm, &reqs[req_id++]);
             MPI_Irecv(&candidatePivotBuff[v*(v+1)], v*(v+1), MPI_DOUBLE,
                     p_rcv, 1, lu_comm, &reqs[req_id++]);
-                    */
+                    
         }
 
+        // we may also need to send more than one pair of messages in case of Px not a power of two.
+        // because src_pi = std::min(flipbit(pi, r), Px - 1), multiple ranks may need data from the last
+        // rank pi = Px - 1.
+        // first, check who wants something from us:
+        for (int ppi = 0; ppi < Px; ppi++){
+            //then it means that ppi wants something from us
+            if (butterfly_pair(ppi, r, Px) == pi && ppi != src_pi) {
+                p_rcv = X2p(lu_comm, ppi, pj, pk);
+                MPI_Isend(&candidatePivotBuff[v*(v+1)], v*(v+1), MPI_DOUBLE,
+                    p_rcv, 1, lu_comm, &reqs[0]);
+            }
+        }
+        MPI_Wait(&reqs[1], MPI_STATUS_IGNORE);
+
+
+        // if (pi == 1) {
+        //    std::cout << "pi: " << pi << ", src_pi: " << src_pi << ", tournament round " << r << "/" << n_rounds << ", before LUP. candidatePivBuff\n" << std::flush;
+        //    print_matrix(candidatePivotBuff.data(), 0, 2*v, 0, v+1, v+1);
+        //             std::cout << "\n\n" << std::flush;
+        // }
         // candidatePivotBuff := input
         LUP(2 * v, v, v + 1, &pivotBuff[0], &candidatePivotBuff[1], ipiv, perm);
 
@@ -498,6 +572,7 @@ void tournament_rounds(
                           &pivotBuff[0], v,
                           &A00Buff[0], v);
         } else {
+            src_pi = butterfly_pair(pi, r+1, Px); //std::min(flipbit(pi, r+1), Px - 1);
             if (src_pi < pi) {
                 inverse_permute_rows(&candidatePivotBuff[0],
                                      &candidatePivotBuffPerm[v * (v + 1)],
@@ -510,6 +585,15 @@ void tournament_rounds(
                 candidatePivotBuff.swap(candidatePivotBuffPerm);
             }
         }
+
+        // if (pi == 1) {
+        //    std::cout << "pi: " << pi << ", src_pi: " << src_pi << ", tournament round " << r << "/" << n_rounds << ", AFTER LUP. candidatePivBuff\n" << std::flush;
+        //    print_matrix(candidatePivotBuff.data(), 0, 2*v, 0, v+1, v+1);
+        //             std::cout << "\n\n" << std::flush;
+        //     std::cout << "pivotBuff\n" << std::flush;
+        //    print_matrix(pivotBuff.data(), 0, 2*v, 0, v, v);
+        //             std::cout << "\n\n" << std::flush;
+        // }
     }
 }
 
@@ -725,8 +809,10 @@ if (debug_level > 1) {
         for (auto k = 0; k < Nt; ++k) {
             bool last_step = k == Nt - 1;
 #ifdef DEBUG
+            if (debug_level > 1) {
             std::cout << "Iteration = " << k << std::endl;
             MPI_Barrier(lu_comm);
+            }
 #endif
             if (k == chosen_step + 1)
                 break;
