@@ -7,11 +7,6 @@ import csv
 import struct
 from numpy import genfromtxt
 
-def getMemSize(N):
-    memSize = (N * N * 8) / (1024 * 1024);
-
-    return int(2.5*memSize)
-
 def getGridLayout(gridString):
     grid = gridString.split("x")
 
@@ -23,11 +18,7 @@ def getGridLayout(gridString):
 def genereateRunCmd_cholesky25d(run,n,v,P,grid):
     #cmd = f"mpiexec -n {P} build/cholesky --dim={n} --tile={v} --grid={grid} --run={run} --expPath={expPath}"
     
-    if n > 8192:
-        memSize = getMemSize(n)
-        cmd = f"bsub -R \"rusage[mem={memSize}]\" -n {P} mpirun build/cholesky_benchmark --dim={n} --tile={v} --grid={grid} --run={run}"
-    else:
-        cmd = f"bsub -n {P} mpirun build/cholesky_benchmark --dim={n} --tile={v} --grid={grid} --run={run}"
+    cmd = f"bsub -n {P} mpirun build/cholesky_benchmark --dim={n} --tile={v} --grid={grid} --run={run}"
     
     return cmd
 
@@ -61,15 +52,8 @@ def generateRunBashScript(N, V, grids, reps, scalaPack = False):
 
                     f.write(cmd + "\n")
     f.close()
-"""
-def collectData():
-    for i in range(reps): # 10 Repetitions
-        for n in N: # Input size
-            for v in V: # Tile size
-                for grid in grids: # Grid layouts
-                    filename = f"../data/benchmarks//benchmark-{i}_{n}_{v}_{grid[1]}"
-                    print(filename)
-"""
+
+
 
 def parseBenchmark(filename):
     durations = []
