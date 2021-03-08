@@ -18,6 +18,10 @@ if(NOT TARGET conflux-cholesky)
         )
     target_compile_definitions(conflux-cholesky PRIVATE ${BLAS_DEF})
 
+    if (CONFLUX_WITH_BENCHMARKS)
+        target_compile_definitions(conflux-cholesky PUBLIC "BENCHMARK")
+    endif()
+
     list(APPEND INSTALLED_TARGETS_LIST "conflux-cholesky")
 endif()
 
