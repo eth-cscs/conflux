@@ -1119,7 +1119,7 @@ if (debug_level > 1) {
             PL();
 
             PE(step1_barrier);
-            MPI_Barrier(lu_comm);
+            // MPI_Barrier(lu_comm);
             PL();
 
 #ifdef DEBUG
@@ -1138,26 +1138,26 @@ if (debug_level > 1) {
 
             // # Sending A00Buff:
             PE(step1_A00Buff_bcast);
-            MPI_Bcast(&A00Buff[0], v * v, MPI_DOUBLE, root, jk_comm);
+            MPI_Request A00_bcast_req;
+            MPI_Ibcast(&A00Buff[0], v * v, MPI_DOUBLE, root, jk_comm, &A00_bcast_req);
             PL();
 
             // # Sending pivots:
             PE(step1_curPivots);
-            MPI_Bcast(&curPivots[0], 1, MPI_INT, root, jk_comm);
+            MPI_Request curPivots_bcast_req;
+            MPI_Ibcast(&curPivots[0], v+1, MPI_INT, root, jk_comm, &curPivots_bcast_req);
 
             assert(curPivots[0] <= v && curPivots[0] >= 0);
 
             // sending pivotIndsBuff
-            MPI_Bcast(&pivotIndsBuff[k * v], v, MPI_DOUBLE, root, jk_comm);
+            MPI_Request pivotIndsBuff_bcast_req;
+            MPI_Ibcast(&pivotIndsBuff[k * v], v, MPI_DOUBLE, root, jk_comm, &pivotIndsBuff_bcast_req);
 
-            MPI_Bcast(&curPivots[1], curPivots[0], MPI_INT, root, jk_comm);
+            // MPI_Bcast(&curPivots[1], curPivots[0], MPI_INT, root, jk_comm);
 
-            MPI_Bcast(&curPivOrder[0], curPivots[0], MPI_INT, root, jk_comm);  //  &reqs_pivots[3]);
+            MPI_Request curPivOrder_bcast_req;
+            MPI_Ibcast(&curPivOrder[0], v, MPI_INT, root, jk_comm, &curPivOrder_bcast_req);
             PL();
-
-            for (int i = 0; i < curPivots[0]; ++i) {
-                curPivots[i + 1] = igri[curPivots[i + 1]];
-            }
 
             // wait for both broadcasts
             // MPI_Waitall(4, reqs_pivots, MPI_STATUSES_IGNORE);
@@ -1197,6 +1197,11 @@ if (debug_level > 1) {
             }
             MPI_Barrier(lu_comm);
 #endif
+
+            MPI_Wait(&curPivots_bcast_req, MPI_STATUS_IGNORE);
+            for (int i = 0; i < curPivots[0]; ++i) {
+                curPivots[i + 1] = igri[curPivots[i + 1]];
+            }
 
             PE(step2_pushingpivots);
             push_pivots_up<T>(A11Buff, A11BuffTemp,
@@ -1274,7 +1279,7 @@ if (debug_level > 1) {
             //     std::cout << "A01Buff before reduce. Rank [" << pi << ", " << pj << ", " << pk << "]:" << std::endl << std::flush;
             //     print_matrix(A01Buff.data(), 0, v, 0, Nl, Nl);
             // }
-            MPI_Barrier(lu_comm);
+            // MPI_Barrier(lu_comm);
 
             PL();
 
@@ -1309,6 +1314,7 @@ if (debug_level > 1) {
             }
 #endif
 
+            MPI_Wait(&curPivOrder_bcast_req, MPI_STATUS_IGNORE);
             // # -------------------------------------------------- #
             // # 3. distribute v pivot rows from A11buff to A01Buff #
             // # here, only processors pk == layrK participate      #
@@ -1358,6 +1364,8 @@ if (debug_level > 1) {
             int req_id = 0;
 
             ts = te;
+
+            MPI_Wait(&A00_bcast_req, MPI_STATUS_IGNORE);
 
             // # ---------------------------------------------- #
             // # 4. compute A10 and broadcast it to A10BuffRecv #
@@ -1673,6 +1681,8 @@ if (debug_level > 1) {
             }
 #endif
 
+            // MPI_Wait(&pivotIndsBuff_bcast_req, MPI_STATUS_IGNORE);
+            MPI_Wait(&pivotIndsBuff_bcast_req, MPI_STATUS_IGNORE);
 #ifdef CONFLUX_WITH_VALIDATION
             // # ----------------------------------------------------------------- #
             // # ------------------------- DEBUG ONLY ---------------------------- #
