@@ -59,7 +59,7 @@ int main(int argc, char *argv[]) {
 
     for (int i = 0; i < n_rep; ++i) {
         PC();
-        conflux::LU_rep<dtype>(gv.matrix, 
+        conflux::LU_rep<dtype>(gv.matrix.data(), 
                                C.data(), 
                                Perm.data(), 
                                gv, 
@@ -108,9 +108,9 @@ int main(int argc, char *argv[]) {
                 conflux::print_matrix(C.data(), 0, M, 0, N, N);
             }
             dtype norm = 0;
-            for (auto i = 0; i < N; ++i) {
+            for (auto i = 0; i < M; ++i) {
                 for (auto j = 0; j < i; ++j) {
-                    norm += C.data()[i * N + j] * C.data()[i * N + j];
+                    norm += C[i * N + j] * C[i * N + j];
                 }
             }
             norm = std::sqrt(norm);
