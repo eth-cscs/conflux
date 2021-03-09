@@ -44,6 +44,23 @@ void mcopy(T *src, T *dst,
     }
 }
 
+template <class T>
+void parallel_mcopy(int n_rows, int n_cols,
+                    T* in, int in_stride,
+                    T* out, int out_stride) {
+    /*
+    mkl_domatcopy('R', 'N',
+            n_rows, n_cols,
+            1.0,
+            &in[0], in_stride,
+            &out[0], out_stride);
+            */
+#pragma omp parallel for
+    for (int i = 0; i < n_rows; ++i) {
+        std::copy_n(&in[i * in_stride], n_cols, &out[i * out_stride]);
+    }
+}
+
 int l2g(int pi, int ind, int sqrtp1) {
     return ind * sqrtp1 + pi;
 }
@@ -380,12 +397,17 @@ void LUP(int n_local_active_rows, int v, int stride,
         perm[i] = i;
     }
 
+    parallel_mcopy<T>(n_local_active_rows, v, 
+                      &candidatePivotBuff[0], stride,
+                      &pivotBuff[0], v);
 
+    /*
     mkl_domatcopy('R', 'N',
                   n_local_active_rows, v,
                   1.0,
                   &candidatePivotBuff[0], stride,
                   &pivotBuff[0], v);
+                  */
 
     LAPACKE_dgetrf(LAPACK_ROW_MAJOR, n_local_active_rows, v,
                    &pivotBuff[0], v, &ipiv[0]);
@@ -442,7 +464,7 @@ void push_pivots_up(std::vector<T> &in, std::vector<T> &temp,
     // std::cout << "early non pivots = " << early_non_pivots.size() << std::endl;
     assert(late_pivots.size() == early_non_pivots.size());
 
-#pragma omp parallel for
+#pragma omp parallel for shared(curPivots, in, n_cols, temp)
     // copy first v pivots to temporary buffer
     for (int i = 0; i < curPivots[0]; ++i) {
         int pivot_row = curPivots[i + 1];
@@ -452,7 +474,7 @@ void push_pivots_up(std::vector<T> &in, std::vector<T> &temp,
     }
 
     // copy early non_pivots to late pivots positions
-#pragma omp parallel for
+#pragma omp parallel for shared(late_pivots, early_non_pivots, in, n_cols)
     for (int i = 0; i < early_non_pivots.size(); ++i) {
         int row = early_non_pivots[i];
         std::copy_n(&in[row * n_cols],
@@ -460,7 +482,7 @@ void push_pivots_up(std::vector<T> &in, std::vector<T> &temp,
                     &in[late_pivots[i] * n_cols]);
     }
 
-#pragma omp parallel for
+#pragma omp parallel for shared(first_non_pivot_row, curPivots, temp, n_cols, in)
     // overwrites first v rows with pivots
     for (int i = 0; i < curPivots[0]; ++i) {
         int pivot_row = curPivots[i + 1];
@@ -560,11 +582,9 @@ void tournament_rounds(
             // }
 
             // just the top v rows
-            mkl_domatcopy('R', 'N',
-                          v, v,
-                          1.0,
-                          &pivotBuff[0], v,
-                          &A00Buff[0], v);
+            parallel_mcopy(v, v,
+                           &pivotBuff[0], v,
+                           &A00Buff[0], v);
         } else {
             src_pi = butterfly_pair(pi, r+1, Px); //std::min(flipbit(pi, r+1), Px - 1);
             if (src_pi < pi) {
@@ -862,11 +882,22 @@ if (debug_level > 1) {
             if (pj == k % Py) {
                 PE(step0_copy);
                 // int p_rcv = X2p(lu_comm, pi, pj, layrK);
+                /*
+#pragma omp parallel for
+                for (int i = 0; i < n_local_active_rows; ++i) {
+                    std::copy_n(&A11Buff[(first_non_pivot_row + i) * Nl + loff], v, &A10Buff[(first_non_pivot_row + i) * v]);
+                }
+                */
+                parallel_mcopy<T>(n_local_active_rows, v, 
+                                  &A11Buff[first_non_pivot_row*Nl + loff], Nl,
+                                  &A10Buff[first_non_pivot_row*v], v);
+                /*
                 mkl_domatcopy('R', 'N',
                         n_local_active_rows, v,
                         1.0,
                         &A11Buff[first_non_pivot_row * Nl + loff], Nl,
                         &A10Buff[first_non_pivot_row * v], v);
+                        */
                 PL();
 
                 PE(step0_reduce);
@@ -929,11 +960,9 @@ if (debug_level > 1) {
                 auto max_perm_size = std::max(n_local_active_rows, v);
 
                 PE(step1_A10copy);
-                mkl_domatcopy('R', 'N',
-                        n_local_active_rows, v,
-                        1.0,
-                        &A10Buff[first_non_pivot_row * v], v,
-                        &candidatePivotBuff[1], v + 1);
+                parallel_mcopy<T>(n_local_active_rows, v,
+                                  &A10Buff[first_non_pivot_row * v], v,
+                                  &candidatePivotBuff[1], v + 1);
                 assert(n_local_active_rows + first_non_pivot_row == Ml);
                 // glue the gri elements to the first column of candidatePivotBuff
                 prepend_column(matrix_view<T>(&candidatePivotBuff[0],
