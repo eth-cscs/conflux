@@ -69,6 +69,8 @@ extern conflux::CholeskyProperties *prop;
 extern std::string pathToMatrix;
 #endif // DEBUG
 
+#define RUNS 5
+
 /**
  * @brief prints help for command line arguments of this program
  */
@@ -238,6 +240,11 @@ int main(int argc, char *argv[])
         exit(-1);
     }
 
+    // run the code 6 times, once before the loop, and 5 times within it
+    // the one run before the loop warms up the system, allocates nodes
+    // and threads, etc.
+
+
     // if both tile size and grid were provided, use these values, otherwise
     // compute optimal parameters
     if (tileSize > 0 && grid[0] > 0 && grid[1] > 0 && grid[2] > 0) {
@@ -257,7 +264,20 @@ int main(int argc, char *argv[])
     #ifdef BENCHMARK
     proc->benchmark->timer_stop();
     #endif 
-
     conflux::finalize(true);
+
+    for (size_t i = 0; i < RUNS; ++i) {
+        conflux::initialize(argc, argv, matrixDim, tileSize, grid);
+        #ifdef BENCHMARK
+        proc->benchmark->set_props("data/benchmarks/cholesky25d/output", i,
+            matrixDim, tileSize, grid[0], grid[1], grid[2]);
+        proc->benchmark->timer_start();
+        #endif
+        conflux::parallelCholesky();
+        #ifdef BENCHMARK
+        proc->benchmark->timer_stop();
+        #endif 
+        conflux::finalize(true);
+    }
     return 0;
 }
