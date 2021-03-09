@@ -541,7 +541,7 @@ void tournament_rounds(
             }
         }
         MPI_Wait(&reqs[1], MPI_STATUS_IGNORE);
-
+        MPI_Request_free(&reqs[0]);
 
         // if (pi == 1) {
         //    std::cout << "pi: " << pi << ", src_pi: " << src_pi << ", tournament round " << r << "/" << n_rounds << ", before LUP. candidatePivBuff\n" << std::flush;
@@ -1029,7 +1029,6 @@ if (debug_level > 1) {
                         lu_comm,
                         k);
 
-
 #ifdef DEBUG
                 if (k == chosen_step && debug_level > 1) {
                     std::cout << "Rank [" << pi << ", " << pj << ", " << pk << "], n_local_active_rows: "
@@ -1118,10 +1117,6 @@ if (debug_level > 1) {
             }
             PL();
 
-            PE(step1_barrier);
-            // MPI_Barrier(lu_comm);
-            PL();
-
 #ifdef DEBUG
             if (debug_level > 1) {
                 if (k == chosen_step) {
@@ -1152,8 +1147,6 @@ if (debug_level > 1) {
             // sending pivotIndsBuff
             MPI_Request pivotIndsBuff_bcast_req;
             MPI_Ibcast(&pivotIndsBuff[k * v], v, MPI_DOUBLE, root, jk_comm, &pivotIndsBuff_bcast_req);
-
-            // MPI_Bcast(&curPivots[1], curPivots[0], MPI_INT, root, jk_comm);
 
             MPI_Request curPivOrder_bcast_req;
             MPI_Ibcast(&curPivOrder[0], v, MPI_INT, root, jk_comm, &curPivOrder_bcast_req);
@@ -1265,6 +1258,7 @@ if (debug_level > 1) {
             // HOWEVER. To coalesce the reduction operation, and make A01Buff for reduction dense and not sparse,
             // we put them in top curPivots[0] of A01BuffTemp. And then, only after the reduction took place, we 
             // use MPI_Put to properly distribute in correct order pivot rows from A01BuffTemp to A01Buff
+#pragma omp parallel for
             for (int i = 0; i < curPivots[0]; ++i) {                
                 // if (pi == 0 && pj == 1 && pk == 0 && (k % Px) == 0){
                 //     std::cout << "Rank [" << pi << ", " << pj << ", " << pk << "]. curPivOrder: \n";
@@ -1641,6 +1635,7 @@ if (debug_level > 1) {
             // are the one participating in dtrsm(A01Buff)
 
 
+#ifdef CONFLUX_WITH_VALIDATION
             PE(storingresults)
             if (pj == k % Py && pk == layrK) {
                 // condensed A10 to non-condensed result buff
@@ -1683,7 +1678,6 @@ if (debug_level > 1) {
 
             // MPI_Wait(&pivotIndsBuff_bcast_req, MPI_STATUS_IGNORE);
             MPI_Wait(&pivotIndsBuff_bcast_req, MPI_STATUS_IGNORE);
-#ifdef CONFLUX_WITH_VALIDATION
             // # ----------------------------------------------------------------- #
             // # ------------------------- DEBUG ONLY ---------------------------- #
             // # ----------- STORING BACK RESULTS FOR VERIFICATION --------------- #
