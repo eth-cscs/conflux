@@ -48,14 +48,7 @@ template <class T>
 void parallel_mcopy(int n_rows, int n_cols,
                     T* in, int in_stride,
                     T* out, int out_stride) {
-    /*
-    mkl_domatcopy('R', 'N',
-            n_rows, n_cols,
-            1.0,
-            &in[0], in_stride,
-            &out[0], out_stride);
-            */
-#pragma omp parallel for
+#pragma omp parallel for shared(in_stride, out_stride, n_rows, in, out)
     for (int i = 0; i < n_rows; ++i) {
         std::copy_n(&in[i * in_stride], n_cols, &out[i * out_stride]);
     }
@@ -400,14 +393,6 @@ void LUP(int n_local_active_rows, int v, int stride,
     parallel_mcopy<T>(n_local_active_rows, v, 
                       &candidatePivotBuff[0], stride,
                       &pivotBuff[0], v);
-
-    /*
-    mkl_domatcopy('R', 'N',
-                  n_local_active_rows, v,
-                  1.0,
-                  &candidatePivotBuff[0], stride,
-                  &pivotBuff[0], v);
-                  */
 
     LAPACKE_dgetrf(LAPACK_ROW_MAJOR, n_local_active_rows, v,
                    &pivotBuff[0], v, &ipiv[0]);
@@ -837,7 +822,7 @@ if (debug_level > 1) {
             auto loff = (k / Py) * v;  // sqrtp1 = 2, k = 157
 
             // # in this step, layrK is the "lucky" one to receive all reduces
-            auto layrK = 0;  // dist(eng);
+            auto layrK = 0; // dist(eng);
 
             // layrK = 0;
             // if (k == 0) layrK = 0;
@@ -881,23 +866,9 @@ if (debug_level > 1) {
 
             if (pj == k % Py) {
                 PE(step0_copy);
-                // int p_rcv = X2p(lu_comm, pi, pj, layrK);
-                /*
-#pragma omp parallel for
-                for (int i = 0; i < n_local_active_rows; ++i) {
-                    std::copy_n(&A11Buff[(first_non_pivot_row + i) * Nl + loff], v, &A10Buff[(first_non_pivot_row + i) * v]);
-                }
-                */
                 parallel_mcopy<T>(n_local_active_rows, v, 
                                   &A11Buff[first_non_pivot_row*Nl + loff], Nl,
                                   &A10Buff[first_non_pivot_row*v], v);
-                /*
-                mkl_domatcopy('R', 'N',
-                        n_local_active_rows, v,
-                        1.0,
-                        &A11Buff[first_non_pivot_row * Nl + loff], Nl,
-                        &A10Buff[first_non_pivot_row * v], v);
-                        */
                 PL();
 
                 PE(step0_reduce);
@@ -1092,9 +1063,9 @@ if (debug_level > 1) {
                  So other ranks produced A00, gpivots, etc. and this information has to be propagated further
                  */
                 curPivots[0] = lpivots[pi].size();
-                std::copy_n(&lpivots[pi][0], curPivots[0], &curPivots[1]);                    
+                std::copy_n(&lpivots[pi][0], curPivots[0], &curPivots[1]);
                 curPivOrder = loffsets[pi];
-                std::copy_n(&gpivots[0], v, &pivotIndsBuff[k * v]);                    
+                std::copy_n(&gpivots[0], v, &pivotIndsBuff[k * v]);
                 // } else {
                 //    curPivots[0] = 0;
                 // }
@@ -1283,7 +1254,7 @@ if (debug_level > 1) {
             // HOWEVER. To coalesce the reduction operation, and make A01Buff for reduction dense and not sparse,
             // we put them in top curPivots[0] of A01BuffTemp. And then, only after the reduction took place, we 
             // use MPI_Put to properly distribute in correct order pivot rows from A01BuffTemp to A01Buff
-#pragma omp parallel for
+#pragma omp parallel for shared(curPivots, first_non_pivot_row, A11Buff, Nl, loff, A01BuffTemp)
             for (int i = 0; i < curPivots[0]; ++i) {                
                 // if (pi == 0 && pj == 1 && pk == 0 && (k % Px) == 0){
                 //     std::cout << "Rank [" << pi << ", " << pj << ", " << pk << "]. curPivOrder: \n";
@@ -1436,7 +1407,7 @@ if (debug_level > 1) {
                 PE(step4_reshuffling);
                 // # -- BROADCAST -- #
                 // # after compute, send it to sqrt(p1) * c processors
-#pragma omp parallel for
+#pragma omp parallel for shared(A10Buff, A10BuffTemp, first_non_pivot_row, Ml, v, n_local_active_rows, nlayr)
                 for (int pk_rcv = 0; pk_rcv < Pz; ++pk_rcv) {
                     // # for the receive layer pk_rcv, its A10BuffRcv is formed by the following columns of A11Buff[p]
                     auto colStart = pk_rcv * nlayr;
@@ -1658,14 +1629,12 @@ if (debug_level > 1) {
             //
             // the only ranks that need to receive A00 buffer
             // are the one participating in dtrsm(A01Buff)
-
-
 #ifdef CONFLUX_WITH_VALIDATION
             PE(storingresults)
             if (pj == k % Py && pk == layrK) {
                 // condensed A10 to non-condensed result buff
                 // n_local_active_rows already reduced beforehand
-#pragma omp parallel for
+#pragma omp parallel for shared(first_non_pivot_row, curPivots, Ml, A10Buff, A10resultBuff, Nl, loff, v)
                 for (int i = first_non_pivot_row - curPivots[0]; i < Ml; ++i) {
                     std::copy_n(&A10Buff[i * v], v, &A10resultBuff[i * Nl + loff]);
                 }
@@ -1880,8 +1849,6 @@ if (debug_level > 1) {
 #endif
         }
 
-        MPI_Win_free(&A01Win);
-
         MPI_Barrier(lu_comm);
         if (rank == print_rank) {
             auto t2 = std::chrono::high_resolution_clock::now();
@@ -1903,6 +1870,7 @@ if (debug_level > 1) {
             PP[i * N + idx] = 1;
         }
 #endif
+        MPI_Win_free(&A01Win);
         MPI_Comm_free(&k_comm);
         MPI_Comm_free(&jk_comm);
         MPI_Comm_free(&lu_comm);
