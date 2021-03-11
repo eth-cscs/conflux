@@ -1,5 +1,9 @@
 #pragma once
 #include <omp.h>
+#include <mpi.h>
+#include <iostream>
+#include <stdio.h>
+#include <iomanip>
 #include <conflux/lu/matrix_view.hpp>
 
 namespace conflux {
