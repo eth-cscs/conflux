@@ -1,0 +1,19 @@
+srun: Job 29886457 step creation temporarily disabled, retrying (Requested nodes are busy)
+srun: Step created for job 29886457
+
+
+Batch Job Summary Report (version 21.01) for Job "cholesky-matrix-run-64-psychol" (29886457) on daint
+
+Job information (1/2)
+-----------------------------------------------------------------------------------------------------
+             Submit            Eligible               Start                 End    Elapsed Time limit
+------------------- ------------------- ------------------- ------------------- ---------- ----------
+2021-03-11T17:30:25 2021-03-11T17:30:25 2021-03-11T17:31:43 2021-03-11T17:56:50   00:25:07   02:00:00
+-----------------------------------------------------------------------------------------------------
+
+Job information (2/2)
+-------------------------------------------------------------
+    Username      Account    Partition   NNodes        Energy
+------------ ------------ ------------ -------- -------------
+    jsaethre          g34       normal       32   8158.992 kJ
+
