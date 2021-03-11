@@ -15,8 +15,14 @@
 #include <tuple>
 #include <unordered_map>
 // blas backend
-// #include <conflux/blas.hpp>
+#ifdef __USE_MKL
+#include <mkl_cblas.h>
+#include <mkl_lapacke.h>
 #include <mkl.h>
+#else
+#include <cblas.h>
+#include <lapacke.h>
+#endif
 
 #include "profiler.hpp"
 #include "utils.hpp"
@@ -236,7 +242,8 @@ class GlobalVars {
 
             std::mt19937_64 eng(seed);
             std::uniform_real_distribution<T> dist;
-            std::generate(matrix.begin(), matrix.end(), std::bind(dist, eng));
+            auto generator = std::bind(dist, eng);
+            std::generate(matrix.begin(), matrix.end(), generator);
         }
     }
 
@@ -247,7 +254,7 @@ class GlobalVars {
     // Pz refers to height
     int Px, Py, Pz;
     int v, nlayr, Mt, Nt, t, tA11x, tA11y;
-    int seed;
+    int seed = 42;
     std::vector<T> matrix;
 
     GlobalVars(int inpM, int inpN, int v, int inpP, int inpSeed = 42) {
