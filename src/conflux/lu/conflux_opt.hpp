@@ -476,6 +476,9 @@ void LU_rep(T *A,
     int keep_dims_jk[] = {0, 1, 1};
     MPI_Cart_sub(lu_comm, keep_dims_jk, &jk_comm);
 
+    MPI_Comm jk_comm_dup;
+    MPI_Comm_dup(jk_comm, &jk_comm_dup);
+
     // # get 3d processor decomposition coordinates
     int pi, pj, pk;
     std::tie(pi, pj, pk) = p2X(lu_comm, rank);
@@ -861,7 +864,6 @@ if (debug_level > 1) {
                 std::tie(lpivots, loffsets) = g2lnoTile(gpivots, Px, v);
 
                 // locally set curPivots
-                // if (n_local_active_rows > 0) {
                 /*
                  because the thing is that n_local_active_rows is BEFORE tournament pivoting
                  so you entered the tournnament with empty hands but at least 
@@ -872,52 +874,8 @@ if (debug_level > 1) {
                 std::copy_n(&lpivots[pi][0], curPivots[0], &curPivots[1]);
                 curPivOrder = loffsets[pi];
                 std::copy_n(&gpivots[0], v, &pivotIndsBuff[k * v]);
-                // } else {
-                //    curPivots[0] = 0;
-                // }
-                PL();
-
-                PE(step1_A00Buff_isend);
-
-                // send A00 to pi = k % sqrtp1 && pk = layrK
-                // pj = k % sqrtp1; pk = layrK
-                if (pi < Py) {
-#ifdef DEBUG
-                    if (debug_level > 1) {
-                        if (k == chosen_step) {                    
-                            std::cout << "Isend: (" << pi << ", " << pj << ", " << pk << ")->(" << k % Px << ", " << pi << ", " << layrK << ")" << std::endl;
-                            std::cout << "k = " << k << ", A00Buff = " << std::endl;
-                            print_matrix(A00Buff.data(), 0, v, 0, v, v);
-                        }
-                    }
-#endif
-                    auto p_rcv = X2p(lu_comm, k % Px, pi, layrK);
-                    if (p_rcv != rank) {
-                        MPI_Isend(&A00Buff[0], v * v, MPI_DOUBLE,
-                                p_rcv, 50, lu_comm, &A00_req[n_A00_reqs++]);
-                    }
-                }
                 PL();
             }
-
-            // (pi, k % sqrtp1, layrK) -> (k % sqrtp1, pi, layrK)
-            // # Receiving A00Buff:
-            PE(step1_A00Buff_irecv);
-            if (pj < Px && pi == k % Px && pi < Py && pk == layrK) {
-                // std::cout << "Irecv: (" << pj << ", " << pi << ", " << layrK << ")->(" << pi << ", " << pj << ", " << pk << ")" << std::endl;
-                auto p_send = X2p(lu_comm, pj, pi, layrK);
-                if (p_send != rank) {
-                    MPI_Irecv(&A00Buff[0], v * v, MPI_DOUBLE,
-                            p_send, 50, lu_comm, &A00_req[n_A00_reqs++]);
-                }
-            }
-            PL();
-
-            PE(step1_A00Buff_waitall);
-            if (n_A00_reqs > 0) {
-                MPI_Waitall(n_A00_reqs, &A00_req[0], MPI_STATUSES_IGNORE);
-            }
-            PL();
 
 #ifdef DEBUG
             if (debug_level > 1) {
@@ -993,10 +951,12 @@ if (debug_level > 1) {
             MPI_Barrier(lu_comm);
 #endif
 
+            PE(step1_curPivots);
             MPI_Wait(&curPivots_bcast_req, MPI_STATUS_IGNORE);
             for (int i = 0; i < curPivots[0]; ++i) {
                 curPivots[i + 1] = igri[curPivots[i + 1]];
             }
+            PL();
 
             PE(step2_pushingpivots);
             push_pivots_up<T>(A11Buff, A11BuffTemp,
@@ -1113,7 +1073,9 @@ if (debug_level > 1) {
             }
 #endif
 
+            PE(step1_curPivots);
             MPI_Wait(&curPivOrder_bcast_req, MPI_STATUS_IGNORE);
+            PL();
             // # -------------------------------------------------- #
             // # 3. distribute v pivot rows from A11buff to A01Buff #
             // # here, only processors pk == layrK participate      #
@@ -1164,7 +1126,9 @@ if (debug_level > 1) {
 
             ts = te;
 
+            PE(step1_A00Buff_bcast);
             MPI_Wait(&A00_bcast_req, MPI_STATUS_IGNORE);
+            PL();
 
             // # ---------------------------------------------- #
             // # 4. compute A10 and broadcast it to A10BuffRecv #
@@ -1342,23 +1306,41 @@ if (debug_level > 1) {
                         auto p_rcv = X2p(lu_comm, pi_rcv, pj, pk_rcv);
                         PL();
                         PE(step5_isend);
-                        MPI_Isend(&A01Buff[rowStart * n_cols],
-                                nlayr * n_cols, MPI_DOUBLE,
-                                p_rcv, 6, lu_comm, &reqs[req_id]);
+                        if (rank != p_rcv) {
+                            MPI_Isend(&A01Buff[rowStart * n_cols],
+                                    nlayr * n_cols, MPI_DOUBLE,
+                                    p_rcv, 6, lu_comm, &reqs[req_id]);
+                            ++req_id;
+                        }
                         PL();
                         PE(step5_reshuffling);
-                        ++req_id;
                     }
                 }
+                // perform the local copy outside of MPI
+                PL();
+                PE(step5_localreshuffling)
+                const int row_start = pk * nlayr;
+                const int n_cols = Nl - loff;
+                parallel_mcopy(nlayr, n_cols,
+                               &A01Buff[row_start * n_cols], n_cols,
+                               &A01BuffRcv[0], n_cols);
+                /*
+                std::copy_n(&A01Buff[row_start*n_cols],
+                            nlayr*n_cols,
+                            &A01BuffRcv[0]);
+                            */
                 PL();
             }
 
             PE(step5_irecv);
             p_send = X2p(lu_comm, k % Px, pj, layrK);
             size = nlayr * (Nl - loff);  // nlayr = v / c
-            MPI_Irecv(&A01BuffRcv[0], size, MPI_DOUBLE,
-                    p_send, 6, lu_comm, &reqs[req_id]);
-            ++req_id;
+            // if non-local, receive it
+            if (p_send != rank) {
+                MPI_Irecv(&A01BuffRcv[0], size, MPI_DOUBLE,
+                        p_send, 6, lu_comm, &reqs[req_id]);
+                ++req_id;
+            }
             PL();
 
             PE(step5_waitall);
@@ -1477,7 +1459,10 @@ if (debug_level > 1) {
 #endif
 
             // MPI_Wait(&pivotIndsBuff_bcast_req, MPI_STATUS_IGNORE);
+
+            PE(step1_curPivots);
             MPI_Wait(&pivotIndsBuff_bcast_req, MPI_STATUS_IGNORE);
+            PL();
             // # ----------------------------------------------------------------- #
             // # ------------------------- DEBUG ONLY ---------------------------- #
             // # ----------- STORING BACK RESULTS FOR VERIFICATION --------------- #
