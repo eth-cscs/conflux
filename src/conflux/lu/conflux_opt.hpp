@@ -1050,6 +1050,9 @@ if (debug_level > 1) {
             first_non_pivot_row += curPivots[0];
             n_local_active_rows -= curPivots[0];
 
+            if (n_local_active_rows < 0)
+                break;
+
             // for A01Buff
             // TODO: NOW: reduce pivot rows: curPivots[0] x (Nl-loff)
             //
@@ -1220,9 +1223,6 @@ if (debug_level > 1) {
                     auto colEnd = (pk_rcv + 1) * nlayr;
 
                     int offset = colStart * n_local_active_rows;
-                    // int size = nlayr * n_local_active_rows; // nlayr = v / c
-
-                    // copy [colStart, colEnd) columns of A10Buff -> A10BuffTemp densely
                     mcopy(A10Buff.data(), &A10BuffTemp[offset],
                             first_non_pivot_row, Ml, colStart, colEnd, v,
                             0, n_local_active_rows, 0, nlayr, nlayr);
@@ -1666,6 +1666,7 @@ if (debug_level > 1) {
             }
         }
 
+        MPI_Win_free(&A01Win);
 #ifdef CONFLUX_WITH_VALIDATION
         MPI_Win_free(&B_Win);
         std::copy(B.begin(), B.end(), C);
@@ -1676,7 +1677,6 @@ if (debug_level > 1) {
             PP[i * N + idx] = 1;
         }
 #endif
-        MPI_Win_free(&A01Win);
         MPI_Comm_free(&k_comm);
         MPI_Comm_free(&jk_comm);
         MPI_Comm_free(&lu_comm);
