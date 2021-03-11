@@ -43,6 +43,8 @@
 #include <unistd.h>
 #include <getopt.h>
 
+#include <mpi.h>
+
 // only include Processor in debug or benchmarking mode
 #if defined(DEBUG) || defined(BENCHMARK)
 #include <conflux/cholesky/Processor.h>
@@ -232,6 +234,7 @@ int main(int argc, char *argv[])
     parseArgs(argc, argv, matrixDim, tileSize, grid, storeMatrix, run);
     #else
     parseArgs(argc, argv, matrixDim, tileSize, grid, storeMatrix);
+    uint32_t run = RUNS;
     #endif
 
     // if matrix dimension is zero, we cannot proceed
@@ -240,32 +243,16 @@ int main(int argc, char *argv[])
         exit(-1);
     }
 
-    // run the code 6 times, once before the loop, and 5 times within it
-    // the one run before the loop warms up the system, allocates nodes
-    // and threads, etc.
+    // initialize the MPI environment
+    MPI_Init(&argc, &argv);
 
-
-    // if both tile size and grid were provided, use these values, otherwise
-    // compute optimal parameters
-    if (tileSize > 0 && grid[0] > 0 && grid[1] > 0 && grid[2] > 0) {
-        conflux::initialize(argc, argv, matrixDim, tileSize, grid);
-    } else {
-        conflux::initialize(argc, argv, matrixDim);
-    }
-
-    #ifdef BENCHMARK
-    proc->benchmark->set_props("data/benchmarks/cholesky25d/output", run,
-            matrixDim, tileSize, grid[0], grid[1], grid[2]);
-    proc->benchmark->timer_start();
-    #endif
-
+    // run the factorization once before benchmarking to make sure that the nodes
+    // and threads per rank are already allocated when benchmarking
+    conflux::initialize(argc, argv, matrixDim, tileSize, grid);
     conflux::parallelCholesky();
-    
-    #ifdef BENCHMARK
-    proc->benchmark->timer_stop();
-    #endif 
     conflux::finalize(true);
 
+    // run the code N times
     for (size_t i = 0; i < RUNS; ++i) {
         conflux::initialize(argc, argv, matrixDim, tileSize, grid);
         #ifdef BENCHMARK
@@ -279,5 +266,7 @@ int main(int argc, char *argv[])
         #endif 
         conflux::finalize(true);
     }
+
+    MPI_Finalize();
     return 0;
 }

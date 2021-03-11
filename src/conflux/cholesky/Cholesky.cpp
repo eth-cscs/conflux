@@ -80,8 +80,13 @@ MPI_Datatype MPI_SUBTILE;
  */
 void conflux::initialize(int argc, char *argv[], uint32_t N)
 {
-    // initialize the MPI environment
-    MPI_Init(&argc, &argv);
+    // throw an exception if MPI was not initialized
+    int isInitialized;
+    MPI_Initialized(&isInitialized);
+    if (!isInitialized) {
+        throw CholeskyException(CholeskyException::errorCode::FailedMPIInit);
+    }
+    
     int numProc;
     MPI_Comm_size(MPI_COMM_WORLD, &numProc);
 
@@ -126,11 +131,18 @@ void conflux::initialize(int argc, char *argv[], uint32_t N)
  * @param N the dimension of the matrix
  * @param v the tile size
  * @param grid pointer to the grid dimensions
+ * 
+ * @throws CholeskyException if MPI environment was not initialized
  */
 void conflux::initialize(int argc, char *argv[], uint32_t N, uint32_t v, ProcCoord *grid)
 {
-    // initialize the MPI environment
-    MPI_Init(&argc, &argv);
+    // throw an exception if MPI was not initialized
+    int isInitialized;
+    MPI_Initialized(&isInitialized);
+    if (!isInitialized) {
+        throw CholeskyException(CholeskyException::errorCode::FailedMPIInit);
+    }
+
     int numProc;
     MPI_Comm_size(MPI_COMM_WORLD, &numProc);
 
@@ -163,8 +175,7 @@ void conflux::initialize(int argc, char *argv[], uint32_t N, uint32_t v, ProcCoo
 }
 
 /**
- * @brief finalizes the computation, closes MPI enviroment and frees allocated
- * memory if this is desired
+ * @brief finalizes the computation and frees allocated if desired
  * 
  * @param clean flag indicating whether data buffers are to be freed
  */
@@ -175,10 +186,10 @@ void conflux::finalize(bool clean)
 
     // as the processor owns MPI communicators
     // we need to clean it before finalizing
-    if (clean) delete proc;
-  
-    // close MPI environment
-    MPI_Finalize();
+    if (clean) {
+        delete proc;
+        delete prop;
+    }
 }
 
 /** 
