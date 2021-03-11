@@ -22,7 +22,7 @@ def createBashPreface(P, algorithm):
 #SBATCH --job-name=cholesky-matrix-run-%d-%s \n\
 #SBATCH --time=00:10:00 \n\
 #SBATCH --nodes=%d \n\
-#SBATCH --output=cholesky-matrix-run-%d-%s \n\
+#SBATCH --output=cholesky-matrix-run-%d-%s.txt \n\
 #SBATCH --constraint=mc \n\
 #SBATCH --account=g34 \n\n\
 export OMP_NUM_THREADS=18 \n\n' % (P, algorithm, numNodes, P, algorithm)
