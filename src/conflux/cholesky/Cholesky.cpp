@@ -265,6 +265,40 @@ void updateA10(const conflux::TileIndex k, const MPI_Comm &world)
         proc->reqUpdateA10[proc->cntUpdateA10++] = req;        
     }
 
+    // 2.) find the range of local tiles for the TRSM call, i.e. minimal and
+    // maximal local tile index
+    conflux::TileIndex iLocMin, iLocMax;
+    bool reachedMin = false;
+    for (conflux::TileIndex iLoc = k / prop->P; iLoc < proc->maxIndexA10; ++iLoc) {
+        conflux::TileIndex iGlob = prop->localToGlobal(proc->rank, iLoc);
+        // next local tile index if tile already handled and break if out-of-bounds
+        if (iGlob <= k) continue;
+        if (iGlob >= prop->Kappa) break;
+        if (!reachedMin) {
+            iLocMin = iLoc;
+            iLocMax = iLoc;
+            reachedMin = true;
+        }
+        iLocMax = iLoc;
+    }
+
+    // if the minimum was not reached, there is no operation to be performed.
+    // wait for completion of requests and return early
+    if (!reachedMin) {
+        if (proc->cntUpdateA10 > 0) {
+            MPI_Waitall(proc->cntUpdateA10, &(proc->reqUpdateA10[0]), MPI_STATUSES_IGNORE);
+        }
+        return;
+    }
+
+    // update the entire local A10 from iLocMin to iLocMax by sovling a system
+    // X*A=B for X, where A=A00 is upper triangular and B=A10. The result is
+    // written back to B, i.e. into the A10 tile
+    double *tile = proc->A10->get(iLocMin);
+    uint16_t numTiles = iLocMax - iLocMin + 1;
+    cblas_dtrsm(CblasRowMajor, CblasRight, CblasLower, CblasTrans, CblasNonUnit,
+                numTiles * prop->v, prop->v, 1.0, proc->A00, prop->v, tile, prop->v);
+
     // 2-3.) update local tiles, split them into sub-tiles and distribute
     // them among z-layers
 
@@ -284,8 +318,6 @@ void updateA10(const conflux::TileIndex k, const MPI_Comm &world)
         // is an upper triangular matrix and B = A10. Result is written
         // back to B, i.e. into the A10 tile.
         double *tile = proc->A10->get(iLoc);
-        cblas_dtrsm(CblasRowMajor, CblasRight, CblasLower, CblasTrans, CblasNonUnit,
-                    prop->v, prop->v, 1.0, proc->A00, prop->v, tile, prop->v);
 
         // determine processors that own tile-rows or -cols with index iGlob
         conflux::ProcIndexPair2D tileOwners = prop->globalToLocal(iGlob, iGlob);
