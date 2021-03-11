@@ -20,7 +20,7 @@ def createBashPreface(P, algorithm):
     numNodes = math.ceil(P/2)
     return '#!/bin/bash -l \n\
 #SBATCH --job-name=cholesky-matrix-run-%d-%s \n\
-#SBATCH --time=00:10:00 \n\
+#SBATCH --time=01:00:00 \n\
 #SBATCH --nodes=%d \n\
 #SBATCH --output=cholesky-matrix-run-%d-%s.txt \n\
 #SBATCH --constraint=mc \n\
