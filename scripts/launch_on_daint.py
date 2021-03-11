@@ -1,3 +1,5 @@
+# This script launches all files lying around with daint srun commands
+
 import os
 import subprocess
 

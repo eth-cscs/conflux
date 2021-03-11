@@ -1,3 +1,5 @@
+# This files generates bash scripts that launch jobs on piz daint according to params.ini format.
+
 import os
 import configparser
 import ast
@@ -25,8 +27,7 @@ def createBashPreface(P, algorithm):
 #SBATCH --account=g34 \n\n\
 export OMP_NUM_THREADS=18 \n\n' % (P, algorithm, numNodes, P, algorithm)
 
-
-
+# parse params.ini
 def readConfig(section):
     config = configparser.ConfigParser()
     config.read(path_to_params)
@@ -85,20 +86,6 @@ def generateLaunchFile(N, V, grids, reps, algorithm):
                         f.write(cmd)
     return
 
-
-
-
-
-    
-    
-    
-    
-    
-
-
-
-
-
 # We use the convention that we ALWAYS use n nodes and 2n ranks
 # We might want to change that in future use
 if __name__ == "__main__":
@@ -106,16 +93,15 @@ if __name__ == "__main__":
     # grids is a dict since for each processor size, we have to create a new launch file
     try:
         Ns, V, grids, reps = readConfig(cholesky_section)
+        generateLaunchFile(Ns, V, grids, reps, 'psychol')
     except:
-        raise
+        pass
     
-    generateLaunchFile(Ns, V, grids, reps, 'psychol')
-
     try:
         Ns, V, grids, reps = readConfig(scalapack_section)
+        generateLaunchFile(Ns, V, grids, reps, 'scalapack')
     except:
-        raise
-    generateLaunchFile(Ns, V, grids, reps, 'scalapack')
+        pass
     
 
     
