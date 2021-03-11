@@ -71,6 +71,8 @@ conflux::Benchmark::Benchmark()
 
     MPI_Type_create_struct(4, blocklen, disp, type, &TIMEDATA);
     MPI_Type_commit(&TIMEDATA);    
+    current_tm = new time_measurement();
+
 }
 
 /**
