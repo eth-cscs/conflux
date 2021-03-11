@@ -13,4 +13,5 @@ if __name__ == "__main__":
             os.system('source scripts/piz_daint_cpu.sh')
             os.system('chmod +x %s' %(path + launch_file))
             os.system("sbatch " + path + launch_file)
+            os.system("rm " + path + launch_file)
         
