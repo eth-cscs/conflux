@@ -136,7 +136,12 @@ class lu_params {
             std::mt19937_64 eng(seed);
             std::uniform_real_distribution<T> dist;
             auto generator = std::bind(dist, eng);
+            for (int i = 0; i < matrix.size(); ++i) {
+                matrix[i] = generator();
+            }
+            /*
             std::generate(matrix.begin(), matrix.end(), generator);
+            */
         }
     }
 

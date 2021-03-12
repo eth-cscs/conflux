@@ -309,7 +309,7 @@ void tournament_rounds(
 
 
         int req_id = 0;
-        MPI_Request reqs[2];
+        MPI_Request reqs[Px+1];
 
         if (src_pi < pi) {
             // MPI_Send(&candidatePivotBuff[v * (v + 1)], v * (v + 1), MPI_DOUBLE,
@@ -344,11 +344,11 @@ void tournament_rounds(
             if (butterfly_pair(ppi, r, Px) == pi && ppi != src_pi) {
                 p_rcv = X2p(lu_comm, ppi, pj, pk);
                 MPI_Isend(&candidatePivotBuff[v*(v+1)], v*(v+1), MPI_DOUBLE,
-                    p_rcv, 1, lu_comm, &reqs[0]);
+                    p_rcv, 1, lu_comm, &reqs[req_id++]);
             }
         }
-        MPI_Wait(&reqs[1], MPI_STATUS_IGNORE);
-        MPI_Request_free(&reqs[0]);
+        MPI_Waitall(req_id, &reqs[0], MPI_STATUSES_IGNORE);
+        // MPI_Request_free(&reqs[0]);
 
         // if (pi == 1) {
         //    std::cout << "pi: " << pi << ", src_pi: " << src_pi << ", tournament round " << r << "/" << n_rounds << ", before LUP. candidatePivBuff\n" << std::flush;
@@ -476,8 +476,10 @@ void LU_rep(T *A,
     int keep_dims_jk[] = {0, 1, 1};
     MPI_Cart_sub(lu_comm, keep_dims_jk, &jk_comm);
 
+    /*
     MPI_Comm jk_comm_dup;
     MPI_Comm_dup(jk_comm, &jk_comm_dup);
+    */
 
     // # get 3d processor decomposition coordinates
     int pi, pj, pk;
@@ -1205,25 +1207,40 @@ if (debug_level > 1) {
                     // # all pjs receive the same data A11Buff[p, rows, colStart : colEnd]
                     for (int pj_rcv = 0; pj_rcv < Py; ++pj_rcv) {
                         auto p_rcv = X2p(lu_comm, pi, pj_rcv, pk_rcv);
-                        MPI_Isend(&A10BuffTemp[offset], size, MPI_DOUBLE,
-                                p_rcv, 5, lu_comm, &reqs[req_id]);
-                        ++req_id;
+                        if (rank != p_rcv) {
+                            MPI_Isend(&A10BuffTemp[offset], size, MPI_DOUBLE,
+                                    p_rcv, 5, lu_comm, &reqs[req_id]);
+                            ++req_id;
+                        }
                     }
                 }
+                auto colStart = pk * nlayr;
+                int offset = colStart * n_local_active_rows;
+                /*
+                parallel_mcopy(n_local_active_rows, nlayr,
+                              &A10BuffTemp[offset], v,
+                              &A10BuffRcv[0], nlayr);
+                              */
+                std::copy_n(&A10BuffTemp[offset], nlayr * n_local_active_rows, &A10BuffRcv[0]);
                 PL();
+
             }
 
-            PE(step4_comm);
             auto p_send = X2p(lu_comm, pi, k % Py, layrK);
             int size = nlayr * n_local_active_rows;  // nlayr = v / c
+            /*
             if (size < 0) {
                 std::cout << "weird size = " << size << ", nlayr = " << nlayr << ", active rowws = " << n_local_active_rows << std::endl;
             }
+            */
 
-            MPI_Irecv(&A10BuffRcv[0], size, MPI_DOUBLE,
-                    p_send, 5, lu_comm, &reqs[req_id]);
-            ++req_id;
-            PL();
+            if (p_send != rank) {
+                PE(step4_comm);
+                MPI_Irecv(&A10BuffRcv[0], size, MPI_DOUBLE,
+                        p_send, 5, lu_comm, &reqs[req_id]);
+                ++req_id;
+                PL();
+            }
 
             te = std::chrono::high_resolution_clock::now();
             timers[4] += std::chrono::duration_cast<std::chrono::microseconds>(te - ts).count();
@@ -1301,19 +1318,19 @@ if (debug_level > 1) {
                     auto rowStart = pk_rcv * nlayr;
                     // auto rowEnd = (pk_rcv + 1) * nlayr;
                     // # all pjs receive the same data A11Buff[p, rows, colStart : colEnd]
+                    const int n_cols = Nl - loff;
                     for (int pi_rcv = 0; pi_rcv < Px; ++pi_rcv) {
-                        const int n_cols = Nl - loff;
                         auto p_rcv = X2p(lu_comm, pi_rcv, pj, pk_rcv);
-                        PL();
-                        PE(step5_isend);
                         if (rank != p_rcv) {
+                            PL();
+                            PE(step5_isend);
                             MPI_Isend(&A01Buff[rowStart * n_cols],
                                     nlayr * n_cols, MPI_DOUBLE,
                                     p_rcv, 6, lu_comm, &reqs[req_id]);
                             ++req_id;
+                            PL();
+                            PE(step5_reshuffling);
                         }
-                        PL();
-                        PE(step5_reshuffling);
                     }
                 }
                 // perform the local copy outside of MPI
@@ -1332,16 +1349,16 @@ if (debug_level > 1) {
                 PL();
             }
 
-            PE(step5_irecv);
             p_send = X2p(lu_comm, k % Px, pj, layrK);
             size = nlayr * (Nl - loff);  // nlayr = v / c
             // if non-local, receive it
             if (p_send != rank) {
+                PE(step5_irecv);
                 MPI_Irecv(&A01BuffRcv[0], size, MPI_DOUBLE,
                         p_send, 6, lu_comm, &reqs[req_id]);
                 ++req_id;
+                PL();
             }
-            PL();
 
             PE(step5_waitall);
             MPI_Waitall(req_id, reqs, MPI_STATUSES_IGNORE);
@@ -1663,6 +1680,7 @@ if (debug_level > 1) {
         }
 #endif
         MPI_Comm_free(&k_comm);
+        // MPI_Comm_free(&jk_comm_dup);
         MPI_Comm_free(&jk_comm);
         MPI_Comm_free(&lu_comm);
     }
