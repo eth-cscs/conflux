@@ -309,42 +309,35 @@ void tournament_rounds(
 
 
         int req_id = 0;
-        MPI_Request reqs[Px+1];
+        int n_reqs = (Px & (Px-1) == 0) ? 2 : (Px+2);
+        // int n_reqs = Px+2;
+        MPI_Request reqs[n_reqs];
 
         if (src_pi < pi) {
-            // MPI_Send(&candidatePivotBuff[v * (v + 1)], v * (v + 1), MPI_DOUBLE,
-            //          p_rcv, 1, lu_comm);
-            // MPI_Recv(&candidatePivotBuff[0], v * (v + 1), MPI_DOUBLE,
-            //          p_rcv, 1, lu_comm, MPI_STATUS_IGNORE);
-            
             MPI_Isend(&candidatePivotBuff[v*(v+1)], v*(v+1), MPI_DOUBLE,
                     p_rcv, 1, lu_comm, &reqs[req_id++]);
             MPI_Irecv(&candidatePivotBuff[0], v*(v+1), MPI_DOUBLE,
                     p_rcv, 1, lu_comm, &reqs[req_id++]);
-                    
         } else {
-            // MPI_Recv(&candidatePivotBuff[v * (v + 1)], v * (v + 1), MPI_DOUBLE,
-            //          p_rcv, 1, lu_comm, MPI_STATUS_IGNORE);
-            // MPI_Send(&candidatePivotBuff[0], v * (v + 1), MPI_DOUBLE,
-            //          p_rcv, 1, lu_comm);
-            
             MPI_Isend(&candidatePivotBuff[0], v*(v+1), MPI_DOUBLE,
                     p_rcv, 1, lu_comm, &reqs[req_id++]);
             MPI_Irecv(&candidatePivotBuff[v*(v+1)], v*(v+1), MPI_DOUBLE,
                     p_rcv, 1, lu_comm, &reqs[req_id++]);
-                    
         }
 
         // we may also need to send more than one pair of messages in case of Px not a power of two.
         // because src_pi = std::min(flipbit(pi, r), Px - 1), multiple ranks may need data from the last
         // rank pi = Px - 1.
         // first, check who wants something from us:
-        for (int ppi = 0; ppi < Px; ppi++){
-            //then it means that ppi wants something from us
-            if (butterfly_pair(ppi, r, Px) == pi && ppi != src_pi) {
-                p_rcv = X2p(lu_comm, ppi, pj, pk);
-                MPI_Isend(&candidatePivotBuff[v*(v+1)], v*(v+1), MPI_DOUBLE,
-                    p_rcv, 1, lu_comm, &reqs[req_id++]);
+        // if Px not a power of 2
+        if(Px & (Px-1) != 0) {
+            for (int ppi = 0; ppi < Px; ppi++){
+                //then it means that ppi wants something from us
+                if (butterfly_pair(ppi, r, Px) == pi && ppi != src_pi) {
+                    p_rcv = X2p(lu_comm, ppi, pj, pk);
+                    MPI_Isend(&candidatePivotBuff[v*(v+1)], v*(v+1), MPI_DOUBLE,
+                        p_rcv, 1, lu_comm, &reqs[req_id++]);
+                }
             }
         }
         MPI_Waitall(req_id, &reqs[0], MPI_STATUSES_IGNORE);
@@ -476,10 +469,8 @@ void LU_rep(T *A,
     int keep_dims_jk[] = {0, 1, 1};
     MPI_Cart_sub(lu_comm, keep_dims_jk, &jk_comm);
 
-    /*
     MPI_Comm jk_comm_dup;
     MPI_Comm_dup(jk_comm, &jk_comm_dup);
-    */
 
     // # get 3d processor decomposition coordinates
     int pi, pj, pk;
@@ -899,20 +890,20 @@ if (debug_level > 1) {
             MPI_Ibcast(&A00Buff[0], v * v, MPI_DOUBLE, root, jk_comm, &A00_bcast_req);
             PL();
 
+            // sending pivotIndsBuff
+            MPI_Request pivotIndsBuff_bcast_req;
+            MPI_Ibcast(&pivotIndsBuff[k * v], v, MPI_DOUBLE, root, jk_comm, &pivotIndsBuff_bcast_req);
+
             // # Sending pivots:
             PE(step1_curPivots);
             MPI_Request curPivots_bcast_req;
             MPI_Ibcast(&curPivots[0], v+1, MPI_INT, root, jk_comm, &curPivots_bcast_req);
 
-            assert(curPivots[0] <= v && curPivots[0] >= 0);
-
-            // sending pivotIndsBuff
-            MPI_Request pivotIndsBuff_bcast_req;
-            MPI_Ibcast(&pivotIndsBuff[k * v], v, MPI_DOUBLE, root, jk_comm, &pivotIndsBuff_bcast_req);
-
             MPI_Request curPivOrder_bcast_req;
             MPI_Ibcast(&curPivOrder[0], v, MPI_INT, root, jk_comm, &curPivOrder_bcast_req);
             PL();
+
+            // assert(curPivots[0] <= v && curPivots[0] >= 0);
 
             // wait for both broadcasts
             // MPI_Waitall(4, reqs_pivots, MPI_STATUSES_IGNORE);
@@ -1680,7 +1671,7 @@ if (debug_level > 1) {
         }
 #endif
         MPI_Comm_free(&k_comm);
-        // MPI_Comm_free(&jk_comm_dup);
+        MPI_Comm_free(&jk_comm_dup);
         MPI_Comm_free(&jk_comm);
         MPI_Comm_free(&lu_comm);
     }
