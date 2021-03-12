@@ -21,7 +21,7 @@ set_property(CACHE CONFLUX_SCALAPACK PROPERTY STRINGS
 
 option(CONFLUX_WITH_TESTS "Generate the test target." ${MASTER_PROJECT})
 option(CONFLUX_WITH_APPS "Generate the miniapp targets." ${MASTER_PROJECT})
-option(CONFLUX_WITH_BENCHMARKS "Generate the benchmark targets." ${MASTER_PROJECT})
+option(CONFLUX_WITH_BENCHMARKS "Generate the benchmark targets." OFF)
 option(CONFLUX_WITH_INSTALL "Enable installation." ${MASTER_PROJECT})
 option(CONFLUX_WITH_PROFILING "Enable profiling." OFF)
 option(CONFLUX_WITH_VALIDATION "Enable results validation." OFF)

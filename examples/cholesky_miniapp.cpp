@@ -253,8 +253,10 @@ int main(int argc, char *argv[])
     conflux::finalize(true);
 
     // run the code N times
+    #ifndef DEBUG
     for (size_t i = 0; i < RUNS; ++i) {
         conflux::initialize(argc, argv, matrixDim, tileSize, grid);
+        MPI_Barrier(MPI_COMM_WORLD);
         #ifdef BENCHMARK
         proc->benchmark->set_props("data/benchmarks/cholesky25d/output", i,
             matrixDim, tileSize, grid[0], grid[1], grid[2]);
@@ -266,7 +268,7 @@ int main(int argc, char *argv[])
         #endif 
         conflux::finalize(true);
     }
-
+    #endif //debug
     MPI_Finalize();
     return 0;
 }

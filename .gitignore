@@ -8,3 +8,4 @@ doc
 CMakeLists.txt.user
 .vscode*
 *.bin
+./cholesky-*.txt
