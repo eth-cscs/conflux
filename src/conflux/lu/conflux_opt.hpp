@@ -556,6 +556,51 @@ void LU_rep(T *A,
 
     // # we distribute only A11, as anything else depends on the first pivots
 
+    // Keeping some notes for COSTA
+    // Assuming that we distribute only A11 (A00, A10, A01 belong to rank 0),
+    // the total size is (M-v)x(N-v), while each block is vxv
+    // Starting location is not &A[0], but &A[v * N + v]
+    // rowblocks = ceiling(M/v) - 1
+    // colblocks = ceiling(N/v) - 1
+    int rowblocks = int(ceil(double(M) / v)) - 1;
+    int colblocks = int(ceil(double(N) / v)) - 1;
+    // rowsplit is {0, v, 2v, ..., M - v}
+    // colsplit is {0, v, 2v, ..., N - v}
+    std::vector<int> rowsplit(rowblocks + 1);
+    rowsplit[rowblocks] = M - v;
+    for (int i = 0; i < rowblocks; ++i)
+        rowsplit[i] = i * v;
+    std::vector<int> colsplit(colblocks + 1);
+    colsplit[colblocks] = N - v;
+    for (int i = 0; i < colblocks; ++i)
+        colsplit[i] = i * v;
+    // We just iterate over the tiles and fill owners, nlocalblocks and
+    // localblocks
+    std::vector<int> owners(rowblocks * colblocks);
+    int nlocalblocks = 0;
+    // std::vector<costa::block_t> localblocks;
+    for (int brow = 0; brow < rowblocks; ++brow) {
+        for (int bcol = 0; bcol < colblocks; ++bcol) {
+            int bindex = brow * colblocks + bcol;
+            int pi = brow % Px;
+            int pj = bcol % Py;
+            int owner = X2p(lu_comm, pi, pj, 0);
+            owners[bindex] = owner;
+            if (rank == owner) {
+                int lrow = brow / Px;
+                int lcol = bcol / Py;
+                // localblocks.push_back(
+                //     (void *)(&A11Buff[lrow*v*Nl + lcol*v]),
+                //     Nl,
+                //     brow,
+                //     bcol
+                // )
+                nlocalblocks++;
+            }
+
+        }
+    }
+
     // # ----- A11 ------ #
     // # only layer pk == 0 owns initial data
     PL();
