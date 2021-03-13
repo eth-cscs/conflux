@@ -82,16 +82,13 @@ int main(int argc, char *argv[]) {
 
     for (int i = 0; i < n_rep; ++i) {
         PC();
+        // reinitialize the matrix
+        params.InitMatrix();
         conflux::LU_rep<double>(params.matrix.data(), 
                                C.data(), 
                                Perm.data(), 
                                params, 
                                MPI_COMM_WORLD);  
-        // print the profiler data
-        if (rank == 0) {
-            PP();
-        }
-
 #ifdef CONFLUX_WITH_VALIDATION
         if (rank == 0) {
             auto M = params.M;
@@ -141,6 +138,11 @@ int main(int argc, char *argv[]) {
         }
 #endif
     }
+    // print the profiler data
+    if (rank == 0) {
+        PP();
+    }
+
 
     // if not MPI_COMM_WORLD, deallocate it
     if (newP < P) {

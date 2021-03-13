@@ -481,7 +481,7 @@ void LU_rep(T *A,
     std::tie(pi, pj, pk) = p2X(lu_comm, rank);
 
     // Create buffers
-    std::vector<T> A00Buff(v * v + v);
+    std::vector<T> A00Buff(v * v);
 
     // A10 => M
     // A01 => N
@@ -732,7 +732,7 @@ if (debug_level > 1) {
                 }
             }
 #endif
-            MPI_Request A00_req[6];
+            MPI_Request A00_req[2];
             int n_A00_reqs = 0;
             if (pj == k % Py && pk == layrK) {
                 auto min_perm_size = std::min(N - k*v, v);
@@ -925,18 +925,6 @@ if (debug_level > 1) {
             // the one who entered this is the root
             auto root = X2p(jk_comm, k % Py, layrK);
 
-            /*
-            PE(step1_A00Buff_bcast);
-            if (rank == root) {
-                std::copy_n(&pivotIndsBuff[k*v], v, &A00Buff[v*v]);
-            }
-            MPI_Bcast(&A00Buff[0], v*v+v, MPI_DOUBLE, root, jk_comm);
-            if (rank != root) {
-                std::copy_n(&A00Buff[v*v], v, &pivotIndsBuff[k*v]);
-            }
-            PL();
-            */
-
             // # Sending A00Buff:
             /*
             PE(step1_A00Buff_bcast);
@@ -951,16 +939,11 @@ if (debug_level > 1) {
             MPI_Ibcast(&pivotIndsBuff[k * v], v, MPI_DOUBLE, root, jk_comm, &pivotIndsBuff_bcast_req);
             PL();
 
-            // # Sending pivots:
+            // PE(step1_barrier);
+            // MPI_Barrier(lu_comm);
+            // PL();
+
             PE(step1_curPivots);
-            /*
-            if (raNK !=
-            for (int pj_rcv = 0; pj_rcv < Py; ++pj_rcv) {
-                for (int pk_rcv = 0; pk_rcv < Pz; ++pk_rcv) {
-                    MPI_Irecv
-                }
-            }
-            */
             MPI_Bcast(&curPivots[0], 2*v+1, MPI_INT, root, jk_comm);
             PL();
 
