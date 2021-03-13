@@ -50,6 +50,8 @@ class lu_params {
         tA11y = (int)(std::ceil((double)Nt / Py));
     }
 
+public:
+
     void InitMatrix() {
         if (N == 16 && M == 16) {
             matrix = {
@@ -136,11 +138,15 @@ class lu_params {
             std::mt19937_64 eng(seed);
             std::uniform_real_distribution<T> dist;
             auto generator = std::bind(dist, eng);
+            for (int i = 0; i < matrix.size(); ++i) {
+                matrix[i] = generator();
+            }
+            /*
             std::generate(matrix.begin(), matrix.end(), generator);
+            */
         }
     }
 
-   public:
     int M, N, P;
     // Px refers to rows
     // Py refers to cols

@@ -82,22 +82,19 @@ int main(int argc, char *argv[]) {
 
     for (int i = 0; i < n_rep; ++i) {
         PC();
+        // reinitialize the matrix
+        params.InitMatrix();
         conflux::LU_rep<double>(params.matrix.data(), 
                                C.data(), 
                                Perm.data(), 
                                params, 
                                MPI_COMM_WORLD);  
-        // print the profiler data
-        if (rank == 0) {
-            PP();
-        }
-
 #ifdef CONFLUX_WITH_VALIDATION
         if (rank == 0) {
             auto M = params.M;
             auto N = params.N;
-            std::vector<dtype> L(N*N);
-            std::vector<dtype> U(N*N);
+            std::vector<double> L(N*N);
+            std::vector<double> U(N*N);
             for (auto i = 0; i < N; ++i) {
                 for (auto j = 0; j < i; ++j) {
                     L[i * N + j] = C.data()[i * N + j];
@@ -130,7 +127,7 @@ int main(int argc, char *argv[]) {
                 std::cout << "\nL*U - P*A:\n";
                 conflux::print_matrix(C.data(), 0, M, 0, N, N);
             }
-            dtype norm = 0;
+            double norm = 0;
             for (auto i = 0; i < M; ++i) {
                 for (auto j = 0; j < i; ++j) {
                     norm += C[i * N + j] * C[i * N + j];
@@ -141,6 +138,11 @@ int main(int argc, char *argv[]) {
         }
 #endif
     }
+    // print the profiler data
+    if (rank == 0) {
+        PP();
+    }
+
 
     // if not MPI_COMM_WORLD, deallocate it
     if (newP < P) {
