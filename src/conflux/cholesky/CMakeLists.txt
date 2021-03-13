@@ -5,7 +5,6 @@ if(NOT TARGET conflux-cholesky)
                                    CholeskyProperties.cpp
                                    Processor.cpp
                                    TileMatrix.cpp
-                                   benchmark/Benchmark.cpp
                                )
 
     add_library(conflux-cholesky ${conflux_cholesky_src_files})
