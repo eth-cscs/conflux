@@ -13,19 +13,18 @@ import math
 
 path_to_launch = './launch/'
 path_to_params = './scripts/params.ini'
-cholesky_section = 'Cholesky25d'
-scalapack_section = 'Scalapack'
+cholesky_section = 'psyCHOL'
 
 def createBashPreface(P, algorithm):
     numNodes = math.ceil(P/2)
     return '#!/bin/bash -l \n\
-#SBATCH --job-name=cholesky-matrix-run-%d-%s \n\
+#SBATCH --job-name=psychol-p%d \n\
 #SBATCH --time=01:00:00 \n\
 #SBATCH --nodes=%d \n\
-#SBATCH --output=cholesky-matrix-run-%d-%s.txt \n\
+#SBATCH --output=data/benchmarks/psychol-p%d.txt \n\
 #SBATCH --constraint=mc \n\
 #SBATCH --account=g34 \n\n\
-export OMP_NUM_THREADS=18 \n\n' % (P, algorithm, numNodes, P, algorithm)
+export OMP_NUM_THREADS=18 \n\n' % (P, numNodes, P)
 
 # parse params.ini
 def readConfig(section):
@@ -90,18 +89,17 @@ def generateLaunchFile(N, V, grids, reps, algorithm):
 # We might want to change that in future use
 if __name__ == "__main__":
 
+    # create a launch directory if it doesn't exist yet
+    os.makedirs("launch", exist_ok=True)
+
     # grids is a dict since for each processor size, we have to create a new launch file
     try:
         Ns, V, grids, reps = readConfig(cholesky_section)
         generateLaunchFile(Ns, V, grids, reps, 'psychol')
+        print("successfully generated launch files")
     except:
         pass
-    
-    try:
-        Ns, V, grids, reps = readConfig(scalapack_section)
-        generateLaunchFile(Ns, V, grids, reps, 'scalapack')
-    except:
-        pass
+
     
 
     
