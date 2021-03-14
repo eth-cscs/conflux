@@ -43,16 +43,6 @@
 #include "CholeskyTypes.h"
 #include "TileMatrix.h"
 
-#ifdef BENCHMARK
-#include "benchmark/Benchmark.h"
-#endif
-
-
-// forward declare MPI_Comm to avoid having to include mpi.h here
-// this is OpenMPI specific.
-// struct ompi_communicator_t;
-// typedef ompi_communicator_t *MPI_Comm;
-
 namespace conflux {
     
 /**
@@ -99,11 +89,6 @@ public:
     // upper bounds for requests in sub-tile handling in update A10
     int sndBound; //!< upper bound for number of requests due to sending subtiles
     int rcvBound; //!< upper bound for number of requests due to receiving subtiles
-    
-    // Benchmark
-    #ifdef BENCHMARK
-    Benchmark *benchmark;
-    #endif
 };
 
 } // namespace conflux

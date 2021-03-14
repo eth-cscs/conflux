@@ -295,12 +295,7 @@ void updateA10(const conflux::TileIndex k, const MPI_Comm &world)
         for (conflux::ProcCoord pyRcv = 0; pyRcv < prop->PY; ++pyRcv) {
             for (conflux::ProcCoord pzRcv = 0; pzRcv < prop->PZ; ++pzRcv) {
                 conflux::ProcRank pRcv = prop->gridToGlobal(tileOwners.px, pyRcv, pzRcv);
-
                 MPI_Ssend(tile + pzRcv * prop->l, 1, MPI_SUBTILE, pRcv, iGlob, world);
-
-                #ifdef BENCHMARK
-                proc->benchmark->add(sizeof(double) * prop->v * prop->l);    
-                #endif
             }
         }
 
@@ -309,13 +304,7 @@ void updateA10(const conflux::TileIndex k, const MPI_Comm &world)
         for (conflux::ProcCoord pxRcv = 0; pxRcv < prop->PX; ++pxRcv) {
             for (conflux::ProcCoord pzRcv = 0; pzRcv < prop->PZ; ++pzRcv) {
                 conflux::ProcRank pRcv = prop->gridToGlobal(pxRcv, tileOwners.py, pzRcv);
-
-                MPI_Ssend(tile + pzRcv * prop->l, 1, MPI_SUBTILE, pRcv, iGlob, world);
-
-                // we use synchronous send here because the receive was already posted
-                #ifdef BENCHMARK
-                proc->benchmark->add(prop->v * prop->l * sizeof(double));    
-                #endif            
+                MPI_Ssend(tile + pzRcv * prop->l, 1, MPI_SUBTILE, pRcv, iGlob, world);          
             }
         }
     }
@@ -399,21 +388,11 @@ void reduceA11(const conflux::TileIndex k, const MPI_Comm &world)
 
             // this process actually performs the reduction (and thus in place)
             if (proc->rank == recvProcessorRank) {
-                #ifdef BENCHMARK
-                uint32_t num_of_bytes = prop->vSquare;
-                num_of_bytes *= sizeof(double);
-                proc->benchmark->add(num_of_bytes);    
-                #endif
                 MPI_Reduce(MPI_IN_PLACE, proc->A11->get(iLoc, jLoc), prop->vSquare,
                        MPI_DOUBLE, MPI_SUM, (k+1) % prop->PZ, proc->zAxisComm);//, &req);
 
             // all other processes only send data    
             } else {
-                #ifdef BENCHMARK
-                uint32_t num_of_bytes = prop->vSquare;
-                num_of_bytes *= sizeof(double);
-                proc->benchmark->add(num_of_bytes);    
-                #endif
                 MPI_Reduce(proc->A11->get(iLoc, jLoc), proc->A11->get(iLoc, jLoc), prop->vSquare,
                        MPI_DOUBLE, MPI_SUM, (k+1) % prop->PZ, proc->zAxisComm);//, &req);
             }
@@ -488,12 +467,6 @@ void scatterA11(const conflux::TileIndex k, const MPI_Comm &world)
 
             // send the A11 tiles that become A10 tiles in the next round
             conflux::ProcIndexPair1D A10pair = prop->globalToLocal(globalTile.i);
-
-            #ifdef BENCHMARK
-            uint32_t num_of_bytes = prop->vSquare;
-            num_of_bytes *= sizeof(double);
-            proc->benchmark->add(num_of_bytes);    
-            #endif
             MPI_Ssend(proc->A11->get(iLoc, jLoc), prop->vSquare, MPI_DOUBLE,
                      A10pair.p, A10pair.i, world);
         }
@@ -501,14 +474,6 @@ void scatterA11(const conflux::TileIndex k, const MPI_Comm &world)
 
     // brodcast and receive A00 tile for next iteration
     MPI_Request req;
-
-    #ifdef BENCHMARK
-    if ( proc->rank == rootProcessorRank ) { 
-        uint32_t num_of_bytes = prop->vSquare;
-        num_of_bytes *= sizeof(double);
-        proc->benchmark->add(num_of_bytes);
-    }
-    #endif
     MPI_Ibcast(proc->A00, prop->vSquare, MPI_DOUBLE, rootProcessorRank, world, &req);
     proc->reqScatterA11[proc->cntScatterA11++] = req;
 

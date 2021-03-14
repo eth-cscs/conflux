@@ -102,23 +102,7 @@ conflux::Processor::Processor(CholeskyProperties *prop)
     // the current processor, i.e. processors that share (px,py) coordinates
     // we define color = px * PY + py, i.e. rank on XY-plane in row-major order
     // and rank as the pz coordinate.
-    MPI_Comm_split(MPI_COMM_WORLD, this->px * prop->PY + this->py, this->pz, &this->zAxisComm);   
-
-
-    #ifdef BENCHMARK
-    // Create filename
-/*    std::stringstream ss;
-    ss << "src/Benchmark/Output/benchmark_"
-       << prop->N << "-"
-       << prop->v << "-"
-       << prop->PX << "-"
-       << prop->PY << "-"
-       << prop->PZ << ".bin";
-*/    
-    // Set up benchmark object
-    //this->benchmark = new Benchmark(ss.str().data());
-    this->benchmark = new Benchmark();
-    #endif
+    MPI_Comm_split(MPI_COMM_WORLD, this->px * prop->PY + this->py, this->pz, &this->zAxisComm);
 }
 
 /**
@@ -140,14 +124,5 @@ conflux::Processor::~Processor()
     // execution.
     if (this->pz == 0) {
         MPI_Comm_free(&this->zAxisComm);
-    }  
-
-    // Clean up benchmark
-    #ifdef BENCHMARK
-    // Clean the state i.e. write all buffers to file and close it.
-    this->benchmark->finish();
-    
-    // Delete object
-    delete this->benchmark;
-    #endif
+    }
 }
