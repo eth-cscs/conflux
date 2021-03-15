@@ -11,7 +11,10 @@ if(NOT TARGET conflux-lu)
         OpenMP::OpenMP_CXX
         ${BLAS_TARGET}
         )
-    target_compile_definitions(conflux-lu PRIVATE ${BLAS_DEF})
+
+    if(BLAS_DEF)
+        target_compile_definitions(conflux-lu PUBLIC ${BLAS_DEF})
+    endif()
 
     if(CONFLUX_WITH_VALIDATION)
         target_compile_definitions(conflux-lu PUBLIC CONFLUX_WITH_VALIDATION)
