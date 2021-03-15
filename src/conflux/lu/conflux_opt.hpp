@@ -533,16 +533,6 @@ void LU_rep(T *A,
     for (int i = v+1; i < curPivots.size(); ++i) {
         curPivots[i] = i;
     }
-    // std::vector<int> curPivots(Nl + 1);
-    // std::vector<int> curPivOrder(v);
-    // OLD WRITE_BACK_CODE
-    // std::vector<int> curPivotsResultBuff(Nt * (Nl + 1));
-    // std::unordered_map<int, std::vector<int>> curPivOrderResultBuff;
-    // for (int i = 0; i < v; ++i) {
-    //     curPivOrder[i] = i;
-    // for (int i = 0; i < Nt; ++i) {
-    //     curPivOrderResultBuff[i] = curPivOrder;
-    // }
     std::vector<std::vector<int>> curPivotsResultBuff(Nt);
     for (int i = 0; i < Nt; ++i) {
         A00resultBuff[i].resize(v*v);
@@ -699,10 +689,6 @@ if (debug_level > 1) {
             auto layrK = 0; // dist(eng);
 
             if (k > 0) {
-                // OLD WRITE_BACK_CODE
-                // std::copy_n(&curPivotsResultBuff[(k - 1) * (Nl + 1)], (Nl + 1),
-                //             &curPivotsResultBuff[k * (Nl + 1)]);
-                // curPivOrderResultBuff[k] = curPivOrderResultBuff[k-1];
                 curPivotsResultBuff[k] = curPivotsResultBuff[k-1];
             }
 
@@ -720,9 +706,6 @@ if (debug_level > 1) {
             // # note that processors in layer pk == 0 locally copy their data from A11buff to PivotA11ReductionBuff
 
             // flush the buffer
-            // curPivots[0] = 0;
-            // OLD WRITE_BACK_CODE
-            // curPivotsResultBuff[k * (Nl + 1)] = 0;
             curPivotsResultBuff[k][0] = 0;
 
             PE(step0_padding);
@@ -947,25 +930,9 @@ if (debug_level > 1) {
                  you should tell others what was the outcome of the tournament. 
                  So other ranks produced A00, gpivots, etc. and this information has to be propagated further
                  */
-                // OLD WRITE_BACK_CODE
-                // // curPivots[0] = lpivots[pi].size();
-                // curPivotsResultBuff[k * (Nl + 1)] = lpivots[pi].size();
-                // // std::copy_n(&lpivots[pi][0], curPivots[0], &curPivots[1]);   
-                // std::copy_n(&lpivots[pi][0], curPivotsResultBuff[k * (Nl + 1)], &curPivotsResultBuff[k * (Nl + 1) + 1]);                    
-                // // curPivOrder = loffsets[pi];
-                // curPivOrderResultBuff[k] = loffsets[pi];
-                // std::copy_n(&gpivots[0], v, &pivotIndsBuff[k * v]);                    
-                // // } else {
-                // //    curPivots[0] = 0;
-                // // }
-                // NEW WRITE_BACK_CODE
                 curPivotsResultBuff[k][0] = lpivots[pi].size();
                 std::copy_n(&lpivots[pi][0], curPivotsResultBuff[k][0], &curPivotsResultBuff[k][1]);
                 std::copy_n(&loffsets[pi][0], curPivotsResultBuff[k][0], &curPivotsResultBuff[k][v+1]);
-                // curPivots[0] = lpivots[pi].size();
-                // std::copy_n(&lpivots[pi][0], curPivots[0], &curPivots[1]);
-                // std::copy_n(&loffsets[pi][0], curPivots[0], &curPivots[v+1]);
-                // curPivOrder = loffsets[pi];
                 std::copy_n(&gpivots[0], v, &pivotIndsBuff[k * v]);
                 PL();
 
@@ -1020,49 +987,15 @@ if (debug_level > 1) {
             // the one who entered this is the root
             auto root = X2p(jk_comm, k % Py, layrK);
 
-            // # Sending A00Buff:
-            /*
-            PE(step1_A00Buff_bcast);
-            MPI_Request A00_bcast_req;
-            MPI_Ibcast(&A00Buff[0], v * v, MPI_DOUBLE, root, jk_comm, &A00_bcast_req);
-            PL();
-            */
-
             // sending pivotIndsBuff
             PE(step1_pivotIndsBuff);
             MPI_Request pivotIndsBuff_bcast_req;
             MPI_Ibcast(&pivotIndsBuff[k * v], v, MPI_DOUBLE, root, jk_comm, &pivotIndsBuff_bcast_req);
             PL();
 
-            // OLD WRITE_BACK_CODE
-            // // MPI_Bcast(&curPivots[1], curPivots[0], MPI_INT, root, jk_comm);
-            // MPI_Bcast(&curPivotsResultBuff[k * (Nl + 1) + 1], curPivotsResultBuff[k * (Nl + 1)], MPI_INT, root, jk_comm);
-
-            // // MPI_Bcast(&curPivOrder[0], curPivots[0], MPI_INT, root, jk_comm);  //  &reqs_pivots[3]);
-            // MPI_Bcast(&(curPivOrderResultBuff[k][0]), curPivotsResultBuff[k * (Nl + 1)], MPI_INT, root, jk_comm);  //  &reqs_pivots[3]);
-            // PL();
-
-            // // for (int i = 0; i < curPivots[0]; ++i) {
-            // //     curPivots[i + 1] = igri[curPivots[i + 1]];
-            // // }
-            // for (int i = 0; i < curPivotsResultBuff[k * (Nl + 1)]; ++i) {
-            //     curPivotsResultBuff[k * (Nl + 1) + i + 1] = igri[curPivotsResultBuff[k * (Nl + 1) + i + 1]];
-            // }
-            // PE(step1_barrier);
-            // MPI_Barrier(lu_comm);
-            // PL();
-
             PE(step1_curPivots);
-            // NEW WRITE_BACK_CODE
             MPI_Bcast(&curPivotsResultBuff[k][0], 2*v+1, MPI_INT, root, jk_comm);
-            // MPI_Bcast(&curPivots[0], 2*v+1, MPI_INT, root, jk_comm);
             PL();
-
-            /*
-            MPI_Request curPivOrder_bcast_req;
-            MPI_Ibcast(&curPivOrder[0], v, MPI_INT, root, jk_comm, &curPivOrder_bcast_req);
-            */
-            // PL();
 
             // assert(curPivots[0] <= v && curPivots[0] >= 0);
 
@@ -1106,70 +1039,33 @@ if (debug_level > 1) {
 #endif
 
             PE(step1_curPivots);
-            // MPI_Wait(&curPivots_bcast_req, MPI_STATUS_IGNORE);
-            // NEW WRITE_BACK_CODE
             for (int i = 0; i < curPivotsResultBuff[k][0]; ++i) {
                 curPivotsResultBuff[k][i + 1] = igri[curPivotsResultBuff[k][i + 1]];
             }
-            // for (int i = 0; i < curPivots[0]; ++i) {
-            //     curPivots[i + 1] = igri[curPivots[i + 1]];
-            // }
             PL();
 
             PE(step2_pushingpivots);
-            // push_pivots_up<T>(A11Buff, A11BuffTemp,
-            //         Ml, Nl,
-            //         layout, curPivots,
-            //         first_non_pivot_row);
             push_pivots_up<T>(A11Buff, A11BuffTemp,
                     Ml, Nl,
                     layout, curPivotsResultBuff[k],
                     first_non_pivot_row);
-            // push_pivots_up<T>(A11Buff.data(), A11BuffTemp,
-            //         Ml, Nl,
-            //         layout, &curPivotsResultBuff[k * (Nl + 1)],
-            //         first_non_pivot_row);
 
 #ifdef CONFLUX_WITH_VALIDATION
-            // push_pivots_up<T>(A10resultBuff, A11BuffTemp,
-            //         Ml, Nl,
-            //         layout, curPivots,
-            //         first_non_pivot_row);
             push_pivots_up<T>(A10resultBuff, A11BuffTemp,
                     Ml, Nl,
                     layout, curPivotsResultBuff[k],
                     first_non_pivot_row);
-            // push_pivots_up<T>(A10resultBuff.data(), A11BuffTemp,
-            //         Ml, Nl,
-            //         layout, &curPivotsResultBuff[k * (Nl + 1)],
-            //         first_non_pivot_row);
 #endif
 
-            // push_pivots_up<T>(A10Buff, A10BuffTemp,
-            //         Ml, v,
-            //         layout, curPivots,
-            //         first_non_pivot_row);
             push_pivots_up<T>(A10Buff, A10BuffTemp,
                     Ml, v,
                     layout, curPivotsResultBuff[k],
                     first_non_pivot_row);
-            // push_pivots_up<T>(A10Buff.data(), A10BuffTemp,
-            //         Ml, v,
-            //         layout, &curPivotsResultBuff[k * (Nl + 1)],
-            //         first_non_pivot_row);
 
-            // push_pivots_up<int>(gri, griTemp,
-            //         Ml, 1,
-            //         layout, curPivots,
-            //         first_non_pivot_row);
             push_pivots_up<int>(gri, griTemp,
                     Ml, 1,
                     layout, curPivotsResultBuff[k],
                     first_non_pivot_row);
-            // push_pivots_up<int>(gri.data(), griTemp,
-            //         Ml, 1,
-            //         layout, &curPivotsResultBuff[k * (Nl + 1)],
-            //         first_non_pivot_row);
             PL();
 
             igri.clear();
@@ -1197,8 +1093,6 @@ if (debug_level > 1) {
             MPI_Barrier(lu_comm);
 #endif
 
-            // first_non_pivot_row += curPivots[0];
-            // n_local_active_rows -= curPivots[0];
             first_non_pivot_row += curPivotsResultBuff[k][0];
             n_local_active_rows -= curPivotsResultBuff[k][0];
 
@@ -1215,20 +1109,8 @@ if (debug_level > 1) {
             // HOWEVER. To coalesce the reduction operation, and make A01Buff for reduction dense and not sparse,
             // we put them in top curPivots[0] of A01BuffTemp. And then, only after the reduction took place, we 
             // use MPI_Put to properly distribute in correct order pivot rows from A01BuffTemp to A01Buff
-            // OLD WRITE_BACK_CODE
-            // // for (int i = 0; i < curPivots[0]; ++i) {
-            // for (int i = 0; i < curPivotsResultBuff[k * (Nl + 1)]; ++i) { 
-            // NEW WRITE_BACK_CODE
             #pragma omp parallel for shared(curPivotsResultBuff, first_non_pivot_row, A11Buff, Nl, loff, A01BuffTemp)
             for (int i = 0; i < curPivotsResultBuff[k][0]; ++i) {               
-// #pragma omp parallel for shared(curPivots, first_non_pivot_row, A11Buff, Nl, loff, A01BuffTemp)
-//             for (int i = 0; i < curPivots[0]; ++i) {                
-                // if (pi == 0 && pj == 1 && pk == 0 && (k % Px) == 0){
-                //     std::cout << "Rank [" << pi << ", " << pj << ", " << pk << "]. curPivOrder: \n";
-                //             print_matrix(curPivOrder.data(), 0, 1,
-                //                         0, v, v);
-                // }
-                // int pivot_row = first_non_pivot_row - curPivots[0] + i;  
                 int pivot_row = first_non_pivot_row - curPivotsResultBuff[k][0] + i;            
                 std::copy_n(&A11Buff[pivot_row * Nl + loff], Nl - loff, &A01BuffTemp[i * (Nl - loff)]);
             }
@@ -1242,15 +1124,6 @@ if (debug_level > 1) {
             PL();
 
             PE(step2_reduce);
-            // if (pk == layrK) {
-            //     MPI_Reduce(MPI_IN_PLACE, &A01BuffTemp[0],
-            //                curPivots[0] * (Nl - loff),
-            //                MPI_DOUBLE, MPI_SUM, layrK, k_comm);
-            // } else {
-            //     MPI_Reduce(&A01BuffTemp[0], &A01BuffTemp[0],
-            //             curPivots[0] * (Nl - loff),
-            //             MPI_DOUBLE, MPI_SUM, layrK, k_comm);
-            // }
             if (pk == layrK) {
                 MPI_Reduce(MPI_IN_PLACE, &A01BuffTemp[0],
                            curPivotsResultBuff[k][0] * (Nl - loff),
@@ -1302,28 +1175,12 @@ if (debug_level > 1) {
 
                 //     }
 
-                // OLD WRITE_BACK_CODE
-                // // for (int i = 0; i < curPivots[0]; ++i) {
-                // //     auto dest_dspls = curPivOrder[i] * (Nl - loff);
-                // //     MPI_Put(&A01BuffTemp[i * (Nl - loff)], Nl - loff, MPI_DOUBLE,
-                // //             p_rcv, dest_dspls, Nl - loff, MPI_DOUBLE,
-                // //             A01Win);
-                // // }
-                // for (int i = 0; i < curPivotsResultBuff[k * (Nl + 1)]; ++i) {
-                //     auto dest_dspls = curPivOrderResultBuff[k][i] * (Nl - loff);
-                // NEW WRITE_BACK_CODE
                 for (int i = 0; i < curPivotsResultBuff[k][0]; ++i) {
                     auto dest_dspls = curPivotsResultBuff[k][v+1+i] * (Nl - loff);
                     MPI_Put(&A01BuffTemp[i * (Nl - loff)], Nl - loff, MPI_DOUBLE,
                             p_rcv, dest_dspls, Nl - loff, MPI_DOUBLE,
                             A01Win);
                 }
-                // for (int i = 0; i < curPivots[0]; ++i) {
-                //     auto dest_dspls = curPivots[v+1+i] * (Nl - loff);
-                //     MPI_Put(&A01BuffTemp[i * (Nl - loff)], Nl - loff, MPI_DOUBLE,
-                //             p_rcv, dest_dspls, Nl - loff, MPI_DOUBLE,
-                //             A01Win);
-                // }
             }
             MPI_Win_fence(0, A01Win);
 
@@ -1672,15 +1529,8 @@ if (debug_level > 1) {
             if (pj == k % Py && pk == layrK) {
                 // condensed A10 to non-condensed result buff
                 // n_local_active_rows already reduced beforehand
-// OLD WRITE_BACK_CODE
-// #pragma omp parallel for
-//                 // for (int i = first_non_pivot_row - curPivots[0]; i < Ml; ++i) {
-//                 for (int i = first_non_pivot_row - curPivotsResultBuff[k * (Nl + 1)]; i < Ml; ++i) {
-                // NEW WRITE_BACK_CODE
                 #pragma omp parallel for shared(first_non_pivot_row, curPivotsResultBuff, Ml, A10Buff, A10resultBuff, Nl, loff, v)
                 for (int i = first_non_pivot_row - curPivotsResultBuff[k][0]; i < Ml; ++i) {
-// #pragma omp parallel for shared(first_non_pivot_row, curPivots, Ml, A10Buff, A10resultBuff, Nl, loff, v)
-//                 for (int i = first_non_pivot_row - curPivots[0]; i < Ml; ++i) {
                     std::copy_n(&A10Buff[i * v], v, &A10resultBuff[i * Nl + loff]);
                 }
             }
@@ -1721,8 +1571,6 @@ if (debug_level > 1) {
         }
 
 #ifdef CONFLUX_WITH_VALIDATION
-// 
-// OLD WRITE_BACK_CODE
         first_non_pivot_row = 0;
         n_local_active_rows = Ml;
 
@@ -1746,11 +1594,6 @@ if (debug_level > 1) {
             first_non_pivot_row += curPivotsResultBuff[k][0];
             n_local_active_rows -= curPivotsResultBuff[k][0];
 
-            // MPI_Wait(&pivotIndsBuff_bcast_req, MPI_STATUS_IGNORE);
-
-            // PE(step1_pivotIndsBuff);
-            // MPI_Wait(&pivotIndsBuff_bcast_req, MPI_STATUS_IGNORE);
-            // PL();
             // # ----------------------------------------------------------------- #
             // # ------------------------- DEBUG ONLY ---------------------------- #
             // # ----------- STORING BACK RESULTS FOR VERIFICATION --------------- #
@@ -1799,20 +1642,9 @@ if (debug_level > 1) {
                     // again, we will put it row by row
                     // our rank pi has curPivots[0] pivots in this round. Therefore, it has to store curPivots[0] rows from A10Buff
                     // from previous iteration. 
-                    // OLD WRITE_BACK_CODE
-                    // // for (int ii = 0; ii < curPivots[0]; ii++) {
-                    // for (int ii = 0; ii < curPivotsResultBuff[k * (Nl + 1)]; ii++) {
-                    //     // int i = curPivOrder[ii]; // ii is the ii'th pivot in this round. i is its row location
-                    //     int i = curPivOrderResultBuff[k][ii]; // ii is the ii'th pivot in this round. i is its row location
-                    //     // int A10_row_offset = (ii + first_non_pivot_row - curPivots[0]) * Nl;
-                    //     int A10_row_offset = (ii + first_non_pivot_row - curPivotsResultBuff[k * (Nl + 1)]) * Nl;
-                    // NEW WRITE_BACK_CODE
                     for (int ii = 0; ii < curPivotsResultBuff[k][0]; ii++) {
                         int i = curPivotsResultBuff[k][v+1+ii]; // ii is the ii'th pivot in this round. i is its row location
                         int A10_row_offset = (ii + first_non_pivot_row - curPivotsResultBuff[k][0]) * Nl;
-                    // for (int ii = 0; ii < curPivots[0]; ii++) {
-                    //     int i = curPivots[v+1+ii]; // ii is the ii'th pivot in this round. i is its row location
-                    //     int A10_row_offset = (ii + first_non_pivot_row - curPivots[0]) * Nl;
                         int B_row_offset = N * (i + k * v);
                         // we now loop over all tiles (going horizontally)
                         for (int j = 0; j < local_tile_end + 1; j++) {
@@ -1827,13 +1659,6 @@ if (debug_level > 1) {
                                             << B_row_offset << ", B_col_offset: " << B_col_offset 
                                             << ", A10_row_offset: " << A10_row_offset + j * v << "\n" << std::flush;
                             }
-                            // if (k == chosen_step && debug_level > 1){ // pi == 0 && pj == 0 && pk == 0 && 
-                            //     std::cout << "\n\nRank [" << pi << ", " << pj << ", " << pk << "]. "
-                            //                 << "curPivots[0]: " << curPivots[0] << ", curPivOrder[ii]: " << curPivots[v+1+ii]
-                            //                 << ", local_tile_end: " << local_tile_end << ", B_row_offset: " 
-                            //                 << B_row_offset << ", B_col_offset: " << B_col_offset 
-                            //                 << ", A10_row_offset: " << A10_row_offset + j * v << "\n" << std::flush;
-                            // }
 #endif
                             MPI_Put(&A10resultBuff[A10_row_offset + j * v], v, MPI_DOUBLE,
                                     0, B_row_offset + B_col_offset, v, MPI_DOUBLE,
@@ -1885,7 +1710,6 @@ if (debug_level > 1) {
                                             << B_row_offset << ", B_col_offset: " << B_col_offset << "\n" << std::flush;
                             }
 #endif
-                            // MPI_Put(&A01Buff[i * A01cols + (j- k/Py) * v], v, MPI_DOUBLE,
                             MPI_Put(&A01resultBuff[k][i * A01cols + (j- k/Py) * v], v, MPI_DOUBLE,
                                     0, B_row_offset + B_col_offset, v, MPI_DOUBLE,
                                     B_Win);
@@ -1913,7 +1737,6 @@ if (debug_level > 1) {
                     }
 #endif
 
-                    // MPI_Put(&A00Buff[i * v], v, MPI_DOUBLE,
                     MPI_Put(&A00resultBuff[k][i * v], v, MPI_DOUBLE,
                             0, B_row_offset + B_col_offset, v, MPI_DOUBLE,
                             B_Win);
