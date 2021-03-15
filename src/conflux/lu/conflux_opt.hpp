@@ -482,7 +482,7 @@ void LU_rep(T *A,
 
     // Create buffers
     std::vector<T> A00Buff(v * v);
-    std::vector<std::vector<T>> A00resultBuff(Nt);
+    std::vector<std::vector<T>> A00resultBuff(Nt, std::vector<T>(v*v));
 
     // A10 => M
     // A01 => N
@@ -494,7 +494,7 @@ void LU_rep(T *A,
     std::vector<T> A01Buff(v * Nl);
     std::vector<T> A01BuffTemp(v * Nl);
     std::vector<T> A01BuffRcv(nlayr * Nl);
-    std::vector<std::vector<T>> A01resultBuff(Nt);
+    std::vector<std::vector<T>> A01resultBuff(Nt, std::vector<T>(v*Nl));
 
     std::vector<T> A11Buff(Ml * Nl);
     std::vector<T> A10resultBuff(Ml * Nl);
@@ -533,11 +533,11 @@ void LU_rep(T *A,
     for (int i = v+1; i < curPivots.size(); ++i) {
         curPivots[i] = i;
     }
-    std::vector<std::vector<int>> curPivotsResultBuff(Nt);
+    std::vector<std::vector<int>> curPivotsResultBuff(Nt, std::vector<int>(2*v+1));
     for (int i = 0; i < Nt; ++i) {
-        A00resultBuff[i].resize(v*v);
-        A01resultBuff[i].resize(v*Nl);
-        curPivotsResultBuff[i].resize(2*v + 1);
+        // A00resultBuff[i].resize(v*v);
+        // A01resultBuff[i].resize(v*Nl);
+        // curPivotsResultBuff[i].resize(2*v + 1);
         for (int j = v+1; j < 2*v+1; ++j) {
             curPivotsResultBuff[i][j] = j;
         }
