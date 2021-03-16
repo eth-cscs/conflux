@@ -129,7 +129,7 @@ int main(int argc, char *argv[]) {
             }
             double norm = 0;
             for (auto i = 0; i < M; ++i) {
-                for (auto j = 0; j < i; ++j) {
+                for (auto j = 0; j < N; ++j) {
                     norm += C[i * N + j] * C[i * N + j];
                 }
             }

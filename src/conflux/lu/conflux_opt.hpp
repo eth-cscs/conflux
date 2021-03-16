@@ -448,9 +448,9 @@ void LU_rep(T *A,
     auto Nl = tA11y * v;
 
     auto chosen_step = Nt - 1;
-    auto debug_level = 0;
+    // auto debug_level = 0;
     // auto chosen_step = 0;
-    // auto debug_level = 3;
+    auto debug_level = 3;
 
     MPI_Comm lu_comm;
     int dim[] = {Px, Py, Pz};  // 3D processor grid
@@ -687,6 +687,7 @@ if (debug_level > 1) {
 
             if (k > 0) {
                 curPivotsResultBuff[k] = curPivotsResultBuff[k-1];
+                A01resultBuff[k] = A01resultBuff[k-1];
             }
 
             // layrK = 0;
@@ -1161,6 +1162,7 @@ if (debug_level > 1) {
             // # here, only processors pk == layrK participate      #
             // # -------------------------------------------------- #
             PE(step3_put);
+            MPI_Win_fence(0, A01Win);
             if (pk == layrK) {
                 // curPivOrder[i] refers to the target
                 auto p_rcv = X2p(lu_comm, k % Px, pj, layrK);
@@ -1180,6 +1182,19 @@ if (debug_level > 1) {
                 }
             }
             MPI_Win_fence(0, A01Win);
+            // FAILED ATTEMPT TO COPY SELECTIVELY
+            // for (int jcoord = 0; jcoord < Py; ++jcoord) {
+            //     auto p_rcv = X2p(lu_comm, k % Px, jcoord, layrK);
+            //     if (rank == p_rcv) {
+            //         for (int i = 0; i < curPivotsResultBuff[k][0]; ++i) {
+            //             auto dest_dspls = curPivotsResultBuff[k][v+1+i] * (Nl - loff);
+            //             std::copy_n(&A01Buff[dest_dspls], Nl - loff, &A01resultBuff[k % Px][dest_dspls]);
+            //         }
+            //     }
+            // }
+            std::copy_n(A01Buff.data(), A01Buff.size(), A01resultBuff[k].data());
+            // MPI_Win_fence(0, A01Win);
+            MPI_Barrier(lu_comm);
 
             PL();
 
