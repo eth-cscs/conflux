@@ -697,7 +697,7 @@ if (debug_level > 1) {
             // # ----------------------------------------------------------------- #
             // # 0. reduce first tile column from A11buff to PivotA11ReductionBuff #
             // # ----------------------------------------------------------------- #
-            MPI_Barrier(lu_comm);
+            // MPI_Barrier(lu_comm);
             auto ts = std::chrono::high_resolution_clock::now();
             // # Currently, we dump everything to processors in layer pk == 0, and only this layer choose pivots
             // # that is, each processor [pi, pj, pk] sends to [pi, pj, layK]
@@ -764,7 +764,7 @@ if (debug_level > 1) {
             }
 #endif
 
-            MPI_Barrier(lu_comm);
+            // MPI_Barrier(lu_comm);
             auto te = std::chrono::high_resolution_clock::now();
             timers[0] += std::chrono::duration_cast<std::chrono::microseconds>(te - ts).count();
 

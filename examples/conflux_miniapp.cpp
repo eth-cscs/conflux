@@ -130,11 +130,12 @@ int main(int argc, char *argv[]) {
             double norm = 0;
             for (auto i = 0; i < M; ++i) {
                 for (auto j = 0; j < N; ++j) {
-                    norm += C[i * N + j] * C[i * N + j];
+                    auto value = C[i*N + j];
+                    norm += value * value;
                 }
             }
             norm = std::sqrt(norm);
-            std::cout << "residual: " << norm << std::endl << std::flush;\
+            std::cout << "residual: " << norm << std::endl;
         }
 #endif
     }
