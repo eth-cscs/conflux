@@ -10,21 +10,23 @@ import struct
 from numpy import genfromtxt
 import configparser
 import math
+from datetime import datetime
 
 path_to_launch = './launch/'
 path_to_params = './scripts/params.ini'
 cholesky_section = 'psyCHOL'
 
 def createBashPreface(P, algorithm):
+    time = datetime.now().time()
     numNodes = math.ceil(P/2)
     return '#!/bin/bash -l \n\
 #SBATCH --job-name=psychol-p%d \n\
 #SBATCH --time=01:00:00 \n\
 #SBATCH --nodes=%d \n\
-#SBATCH --output=data/benchmarks/psychol-p%d.txt \n\
+#SBATCH --output=data/benchmarks/psychol-p%d-%s.txt \n\
 #SBATCH --constraint=mc \n\
 #SBATCH --account=g34 \n\n\
-export OMP_NUM_THREADS=18 \n\n' % (P, numNodes, P)
+export OMP_NUM_THREADS=18 \n\n' % (P, numNodes, P, time)
 
 # parse params.ini
 def readConfig(section):
