@@ -110,6 +110,8 @@ class lu_params {
         for (int i = 0; i < Mt; ++i) {
             for (int j = 0; j < Nt; ++j) {
                 int ij = i * Nt + j;
+                int pi = i % Px;
+                int pj = j % Py;
                 owners[ij] = X2p(lu_comm, pi, pj, 0);
             }
         }
@@ -124,6 +126,20 @@ class lu_params {
                 );
 
         InitMatrix();
+
+        for (int p = 0; p < P; ++p) {
+            if (p == rank) {
+                std::cout << "Rank (" << pi << ", " << pj << ", " << pk << "), data: " << std::endl;
+                for (int i = 0; i < Ml; ++i) {
+                    for (int j = 0; j < Nl; ++j) {
+                        std::cout << data[i * Nl + j] << ", ";
+                    }
+                    std::cout << std::endl;
+                }
+                std::cout << "=====================================" << std::endl;
+            }
+            MPI_Barrier(lu_comm);
+        }
     }
 
 public:
@@ -277,7 +293,6 @@ public:
     lu_params() = default;
 
     lu_params(int inpM, int inpN, int v, MPI_Comm comm) {
-        int P;
         MPI_Comm_size(comm, &P);
         std::tie(Px, Py, Pz) = get_p_grid(inpM, inpN, P);
         initialize(inpM, inpN, v, Px, Py, Pz, comm);
