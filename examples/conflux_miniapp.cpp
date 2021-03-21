@@ -87,7 +87,6 @@ int main(int argc, char *argv[]) {
                                Perm.data(), 
                                params);
 #ifdef CONFLUX_WITH_VALIDATION
-
 #ifdef FINAL_SCALAPACK_LAYOUT
     MPI_Barrier(MPI_COMM_WORLD);    
     for (int p = 0; p < P; p++) {
@@ -106,18 +105,18 @@ int main(int argc, char *argv[]) {
             std::vector<double> U(N*N);
             for (auto i = 0; i < N; ++i) {
                 for (auto j = 0; j < i; ++j) {
-                    L[i * N + j] = C.data()[i * N + j];
+                    L[i * N + j] = C[i * N + j];
                 }
                 L[i * N + i] = 1;
                 for (auto j = i; j < N; ++j) {
-                    U[i * N + j] = C.data()[i * N + j];
+                    U[i * N + j] = C[i * N + j];
                 }
             }
 
             // mm<dtype>(L, U, C, N, N, N);
             // gemm<dtype>(PP, params.matrix, C, -1.0, 1.0, N, N, N);
             cblas_dgemm(CblasRowMajor, CblasNoTrans, CblasNoTrans, N, N, N,
-                        1.0, &L[0], N, &U[0], N, 0.0, C.data(), N);
+                        1.0, &L[0], N, &U[0], N, 0.0, &C[0], N);
 
             if (rank == 0 && std::max(M, N) < print_limit) {
                 std::cout << "L:\n";
@@ -131,7 +130,7 @@ int main(int argc, char *argv[]) {
             }
 
             cblas_dgemm(CblasRowMajor, CblasNoTrans, CblasNoTrans, N, N, N,
-                        -1.0, Perm.data(), N, params.data.data(), N, 1.0, C.data(), N);
+                        -1.0, Perm.data(), N, &params.full_matrix[0], N, 1.0, &C[0], N);
             if (rank == 0 && std::max(M, N) < print_limit){ 
                 std::cout << "\nL*U - P*A:\n";
                 conflux::print_matrix(C.data(), 0, M, 0, N, N);

@@ -472,7 +472,6 @@ std::vector<T> LU_rep(T* C, // C is only used when CONFLUX_WITH_VALIDATION
     std::vector<T> A01BuffTemp(v * Nl);
     std::vector<T> A01BuffRcv(nlayr * Nl);
 
-    // std::vector<T> A11Buff(Ml * Nl);
     std::vector<T>& A11Buff = gv.data;
     std::vector<T> A10resultBuff(Ml * Nl);
     std::vector<T> A11BuffTemp(Ml * Nl);
@@ -530,8 +529,7 @@ std::vector<T> LU_rep(T* C, // C is only used when CONFLUX_WITH_VALIDATION
                                   M * N,
                                   true);
 #endif
-    //MPI_Win_create(B.data(), B.size() * sizeof(double), sizeof(double),)
-    //MPI_Win_fence(MPI_MODE_NOPRECEDE, B_Win);
+    MPI_Win_fence(MPI_MODE_NOPRECEDE, B_Win);
 
     // RNG
     std::mt19937_64 eng(gv.seed);
