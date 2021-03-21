@@ -82,9 +82,27 @@ class lu_params {
         MPI_Comm_rank(lu_comm, &rank);
         std::tie(pi, pj, pk) = p2X(lu_comm, rank);
 
+        get_costa_layout();
+
+        InitMatrix();
+    }
+
+public:
+    std::vector<int> line_split(int N, int v) {
+        std::vector<int> splits;
+        splits.reserve(N/v + 1);
+        for (int i = 0; i < N/v; ++i) {
+            splits.push_back(i * v);
+        }
+        splits.push_back(N);
+        return splits;
+    }
+
+    void get_costa_layout() {
         // create COSTA layout descriptor
         data = std::vector<T>(Ml * Nl);
 
+        // local blocks
         std::vector<costa::block_t> local_blocks;
         int n_local_blocks = tA11x * tA11y;
         local_blocks.reserve(n_local_blocks);
@@ -94,8 +112,11 @@ class lu_params {
             for (int ltj = 0; ltj < tA11y; ++ltj) {
                 auto gtj = ltj * Py + pj;
                 costa::block_t block;
+                // pointer to the data of this tile
                 block.data = &data[lti * v * Nl + ltj * v];
+                // leading dimension
                 block.ld = Nl;
+                // global coordinates of this block
                 block.row = gti;
                 block.col = gtj;
                 local_blocks.push_back(block);
@@ -125,32 +146,6 @@ class lu_params {
                 'R' // row-major ordering within blocks
                 );
 
-        InitMatrix();
-
-        for (int p = 0; p < P; ++p) {
-            if (p == rank) {
-                std::cout << "Rank (" << pi << ", " << pj << ", " << pk << "), data: " << std::endl;
-                for (int i = 0; i < Ml; ++i) {
-                    for (int j = 0; j < Nl; ++j) {
-                        std::cout << data[i * Nl + j] << ", ";
-                    }
-                    std::cout << std::endl;
-                }
-                std::cout << "=====================================" << std::endl;
-            }
-            MPI_Barrier(lu_comm);
-        }
-    }
-
-public:
-    std::vector<int> line_split(int N, int v) {
-        std::vector<int> splits;
-        splits.reserve(N/v + 1);
-        for (int i = 0; i < N/v; ++i) {
-            splits.push_back(i * v);
-        }
-        splits.push_back(N);
-        return splits;
     }
 
     void InitMatrix() {
@@ -161,6 +156,12 @@ public:
 
         matrix.initialize(f);
 
+        // ranks that are not on layer 0 must have all 0s,
+        // because A10Buff is extracted from A11Buff and 
+        // MPI_Reduce is being called on A10Buff. 
+        // If ranks for which pk!=0 don't have 0s
+        // MPI_Reduce would sum all these non-zero values
+        // into A10Buff, causing wrong results
         if (pk != 0) return;
 
         if (N == 16 && M == 16) {

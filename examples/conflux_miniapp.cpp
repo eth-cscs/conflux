@@ -47,6 +47,14 @@ int main(int argc, char *argv[]) {
     auto p_grid = result["p_grid"].as<std::vector<int>>();
 
     MPI_Init(&argc, &argv);
+    if (p_grid[0] <= 0 || p_grid[1] <= 0 || p_grid[2] <= 0) {
+        int rank;
+        MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+        if (rank == 0) {
+            std::cout << "[ERROR] Use --p_grid=Px,Py,Pz to specify the process grid!" << std::endl;
+            MPI_Abort(MPI_COMM_WORLD, 0);
+        }
+    }
     conflux::lu_params<double> params(M, N, b, 
                                       p_grid[0], p_grid[1], p_grid[2], 
                                       MPI_COMM_WORLD);

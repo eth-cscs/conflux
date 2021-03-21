@@ -528,8 +528,8 @@ std::vector<T> LU_rep(T* C, // C is only used when CONFLUX_WITH_VALIDATION
                                   &C[0],
                                   M * N,
                                   true);
-#endif
     MPI_Win_fence(MPI_MODE_NOPRECEDE, B_Win);
+#endif
 
     // RNG
     std::mt19937_64 eng(gv.seed);
