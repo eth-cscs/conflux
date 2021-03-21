@@ -518,34 +518,43 @@ void scatterA11(const conflux::TileIndex k, const MPI_Comm &world)
     }
     */
 
-    //std::stringstream tmp;
-    //conflux::GridProc grid = prop->globalToGrid(proc->rank);
-    //tmp << "It " << k << ", Rank " << proc->rank << " (" << grid.px << "," << grid.py << "," 
-    //   << grid.pz <<  ") has flag = " << proc->inBcastComm << std::endl;
-    //std::cout << tmp.str() << std::flush;
+    std::stringstream tmp;
+    conflux::GridProc grid = prop->globalToGrid(proc->rank);
+    tmp << "It " << k << ", Rank " << proc->rank << " (" << grid.px << "," << grid.py << "," 
+       << grid.pz <<  ") has flag = " << proc->inBcastComm << std::endl;
+    std::cout << tmp.str() << std::flush;
     PE(scattera11_bcast);
+    MPI_Request req;
     if (proc->inBcastComm) {
         // compute new rank of root processor
         conflux::GridProc rootCord = prop->globalToGrid(rootProcessorRank);
         int newRoot = rootCord.px + rootCord.pz * prop->PX;
 
         // broadcast in the new communicator
-        MPI_Bcast(proc->A00, prop->vSquare, MPI_DOUBLE, newRoot, proc->bcastComm); //, &req);
+        MPI_Bcast(proc->A00, prop->vSquare, MPI_DOUBLE, newRoot, proc->bcastComm);//, &req);
     }
     PL();
     //MPI_Bcast(proc->A00, prop->vSquare, MPI_DOUBLE, rootProcessorRank, world); //, &req);
     //proc->reqScatterA11[proc->cntScatterA11++] = req;
+
+    std::stringstream tmp2;
+    tmp2 << "It " << k << ", Rank " << proc->rank << " (" << grid.px << "," << grid.py << "," 
+       << grid.pz <<  ") is after Bcast, did it participate? " << proc->inBcastComm << std::endl;
+    std::cout << tmp2.str() << std::flush;
 
 
     // wait for the scattering to be completed
     // @TODO investigate if this still needed (maybe blocking broadcast)
     PE(scattera11_waitall);
     MPI_Waitall(proc->cntScatterA11, &(proc->reqScatterA11[0]), MPI_STATUSES_IGNORE);
+    //if (proc->inBcastComm) {
+    //    MPI_Wait(&req, MPI_STATUS_IGNORE);
+    //}
     PL();
     
     // currently we need a barrier here for some reason
     PE(scattera11_barrier);
-    MPI_Barrier(world);
+    //MPI_Barrier(world);
     PL();
 }
 
@@ -627,7 +636,7 @@ void conflux::parallelCholesky()
         // update the broadcast communicator if possible. In iteration k, there are
         // Kappa - k - 1 tiles in the current A10, an thus Kappa - k - 2 in the next
         // iteration for brodcasting
-        if (prop->Kappa - k > 8) {
+        if (prop->Kappa - k > 2) {
             proc->updateBroadcastCommunicator(prop->Kappa - k - 2);
         }
         scatterA11(k, world);
