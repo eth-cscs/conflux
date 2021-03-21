@@ -125,7 +125,6 @@ class lu_params {
                 'R' // row-major ordering within blocks
                 );
 
-        if (pk == 0)
         InitMatrix();
 
         for (int p = 0; p < P; ++p) {
@@ -155,6 +154,15 @@ public:
     }
 
     void InitMatrix() {
+        // put all 0s
+        auto f = [](int i, int j) -> T {
+            return T{0};
+        };
+
+        matrix.initialize(f);
+
+        if (pk != 0) return;
+
         if (N == 16 && M == 16) {
             std::vector<T> generator = {
                 1, 8, 2, 7, 3, 8, 2, 4, 8, 7, 5, 5, 1, 4, 4, 9,
