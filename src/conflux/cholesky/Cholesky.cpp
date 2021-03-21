@@ -64,7 +64,7 @@ conflux::Processor *proc;
 conflux::CholeskyProperties *prop;
 conflux::CholeskyIO *io;
 std::string pathToMatrix;
-MPI_Datatype MPI_SUBTILE;
+MPI_Datatype MPI_SUBTILE, MPI_SUBTILE_RECV;
 
 /**
  * @brief initializes environment and allocates local buffers for all processes
@@ -472,10 +472,44 @@ void scatterA11(const conflux::TileIndex k, const MPI_Comm &world)
         }
     }
 
-    // brodcast and receive A00 tile for next iteration
-    MPI_Request req;
-    MPI_Ibcast(proc->A00, prop->vSquare, MPI_DOUBLE, rootProcessorRank, world, &req);
-    proc->reqScatterA11[proc->cntScatterA11++] = req;
+    // compute how many tiles remain, and create a communicator that only broadcasts
+    // the new A00 to the processors that actually need it.
+    /*
+    conflux::ProcRank maxProc = prop->Kappa - k - 1;
+    int color = proc->rank < maxProc || proc->rank == rootProcessorRank ? 1 : 0;
+
+    MPI_Comm bcastComm;
+    // make sure the root processor rank has the largest id for easy identification
+    if (proc->rank == rootProcessorRank) {
+        MPI_Comm_split(world, color, maxProc+5, &bcastComm);
+    } else {
+        MPI_Comm_split(world, color, proc->rank, &bcastComm);
+    }
+
+    // only let processors whose color is 1 participate in the broadcast
+    if (color == 1) {
+        int newRootRank;
+        MPI_Comm_size(bcastComm, &newRootRank);
+        MPI_Bcast(proc->A00, prop->vSquare, MPI_DOUBLE, newRootRank-1, bcastComm);
+    }
+    */
+
+    //std::stringstream tmp;
+    //conflux::GridProc grid = prop->globalToGrid(proc->rank);
+    //tmp << "It " << k << ", Rank " << proc->rank << " (" << grid.px << "," << grid.py << "," 
+    //   << grid.pz <<  ") has flag = " << proc->inBcastComm << std::endl;
+    //std::cout << tmp.str() << std::flush;
+    
+    if (proc->inBcastComm) {
+        // compute new rank of root processor
+        conflux::GridProc rootCord = prop->globalToGrid(rootProcessorRank);
+        int newRoot = rootCord.px + rootCord.pz * prop->PX;
+
+        // broadcast in the new communicator
+        MPI_Bcast(proc->A00, prop->vSquare, MPI_DOUBLE, newRoot, proc->bcastComm); //, &req);
+    }
+    //MPI_Bcast(proc->A00, prop->vSquare, MPI_DOUBLE, rootProcessorRank, world); //, &req);
+    //proc->reqScatterA11[proc->cntScatterA11++] = req;
 
     // wait for the scattering to be completed
     // @TODO investigate if this still needed (maybe blocking broadcast)
@@ -522,7 +556,7 @@ void conflux::parallelCholesky()
         proc->cntScatterA11 = 0;
 
         /************************ (1) CHOLESKY OF A00 ************************/
-        //std::cout << "Rank " << proc->rank << " started cholesky A00 in round " << k << std::endl;
+        //std::cout << tmp.str() << std::endl;
         choleskyA00(k, world);
 
         // return if this was the last iteration
@@ -538,6 +572,7 @@ void conflux::parallelCholesky()
         }
 
         /************************ (2) UPDATE A10 *****************************/
+        //std::cout << "Rank " << proc->rank << " started updateA10 in round " << k << std::endl;
         updateA10(k, world);
 
         // dump current tile column in DEBUG mode
@@ -546,12 +581,23 @@ void conflux::parallelCholesky()
         #endif // DEBUG
 
         /************************ (3) COMPUTE A11 ****************************/
+        //std::cout << "Rank " << proc->rank << " started computeA11 in round " << k << std::endl;
         computeA11(k, world);
 
         /************************ (4) REDUCE A11 *****************************/
+        //std::cout << "Rank " << proc->rank << " started reduceA11 in round " << k << std::endl;
         reduceA11(k, world);
 
         /************************ (5) SCATTER A10, A00 ***********************/
+
+
+        // update the broadcast communicator if possible. In iteration k, there are
+        // Kappa - k - 1 tiles in the current A10, an thus Kappa - k - 2 in the next
+        // iteration for brodcasting
+        if (prop->Kappa - k > 8) {
+            proc->updateBroadcastCommunicator(prop->Kappa - k - 2);
+        }
         scatterA11(k, world);
+        MPI_Barrier(world);
     }
 }

@@ -56,6 +56,9 @@ public:
     Processor(CholeskyProperties *prop);
     ~Processor();
 
+    // function to change to a new broadcast communicator
+    void updateBroadcastCommunicator(TileIndex tilesRemaining);
+
     // basic processor information
     ProcRank rank; //!< global rank within MPI_COMM_WORLD
     GridProc grid; //!< grid coordinates as a struct
@@ -77,6 +80,8 @@ public:
 
     // More specific communicators (e.g. for reduction)
     MPI_Comm zAxisComm; //!< communicator for reduction along z-Axis
+    MPI_Comm bcastComm; //!< current broadcast communicator
+    bool inBcastComm; //!< flag indicating whether this rank is in current bcast comm
 
     // vectors to store the request objects during an iteration
     std::vector<MPI_Request> reqUpdateA10;  //!< requests during the updateA10 operation
@@ -89,6 +94,14 @@ public:
     // upper bounds for requests in sub-tile handling in update A10
     int sndBound; //!< upper bound for number of requests due to sending subtiles
     int rcvBound; //!< upper bound for number of requests due to receiving subtiles
+
+private:
+    // communicator handling for the broadcast
+    ProcRank _numProc; //!< number of processors in the global communicator
+    ProcCoord _PX; //!< the number of processors in x direction
+    std::vector<MPI_Comm> _bcastComms; //!< vector of all broadcasts
+    std::vector<uint32_t> _bcastSizes; //!< vector of sizes of bcasts
+    uint32_t _curBcastIdx; //!< index of the current broadcast comm
 };
 
 } // namespace conflux
