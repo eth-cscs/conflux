@@ -21,6 +21,11 @@ if(NOT TARGET conflux-cholesky)
         target_compile_definitions(conflux-cholesky PUBLIC "BENCHMARK")
     endif()
 
+    if (CONFLUX_WITH_PROFILING)
+        target_link_libraries(conflux-cholesky PUBLIC semiprof)
+        target_compile_definitions(conflux-cholesky PUBLIC CONFLUX_WITH_PROFILING)
+    endif()
+
     list(APPEND INSTALLED_TARGETS_LIST "conflux-cholesky")
 endif()
 

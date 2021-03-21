@@ -52,6 +52,8 @@
 #include <cblas.h>
 #endif
 
+#include <semiprof/semiprof.hpp>
+
 #include "CholeskyTypes.h"
 #include "CholeskyProperties.h"
 #include "CholeskyIO.h"
@@ -201,8 +203,10 @@ void conflux::finalize(bool clean)
  */
 void choleskyA00(const conflux::TileIndex k, const MPI_Comm &world)
 {
+    PE(choleskya00_dpotrf);
     // compute Cholesky factorization of A00 tile
     LAPACKE_dpotrf(LAPACK_ROW_MAJOR, 'L', prop->v, proc->A00, prop->v);
+    PL();
 }
 
 /**
@@ -241,11 +245,13 @@ void updateA10(const conflux::TileIndex k, const MPI_Comm &world)
         // because in this case the tile is irrelevant (above the diagonal)
         if (glob.i <= k) continue;
 
+        PE(updatea10_postIRecvA10);
         // receive the tile and store it in A10 receive buffer
         MPI_Request req;
         MPI_Irecv(proc->A10rcv->get(iLoc), prop->v * prop->l, MPI_DOUBLE, pSnd, glob.i,
                  world, &req);
-        proc->reqUpdateA10[proc->cntUpdateA10++] = req;        
+        proc->reqUpdateA10[proc->cntUpdateA10++] = req;  
+        PL();      
     }
 
     // post to later receive representatives of A01
@@ -258,11 +264,13 @@ void updateA10(const conflux::TileIndex k, const MPI_Comm &world)
         // because in this case the tile has already been handled.
         if (glob.j <= k) continue;
 
+        PE(updatea10_postIrecvA01);
         // receive the tile and store it in A01 receive buffer
         MPI_Request req;
         MPI_Irecv(proc->A01rcv->get(jLoc), prop->v * prop->l, MPI_DOUBLE, pSnd, glob.j,
                  world, &req);
-        proc->reqUpdateA10[proc->cntUpdateA10++] = req;        
+        proc->reqUpdateA10[proc->cntUpdateA10++] = req; 
+        PL();       
     }
 
     // 2-3.) update local tiles, split them into sub-tiles and distribute
@@ -284,8 +292,10 @@ void updateA10(const conflux::TileIndex k, const MPI_Comm &world)
         // is an upper triangular matrix and B = A10. Result is written
         // back to B, i.e. into the A10 tile.
         double *tile = proc->A10->get(iLoc);
+        PE(updatea10_dtrsm);
         cblas_dtrsm(CblasRowMajor, CblasRight, CblasLower, CblasTrans, CblasNonUnit,
                     prop->v, prop->v, 1.0, proc->A00, prop->v, tile, prop->v);
+        PL();
 
         // determine processors that own tile-rows or -cols with index iGlob
         conflux::ProcIndexPair2D tileOwners = prop->globalToLocal(iGlob, iGlob);
@@ -294,8 +304,10 @@ void updateA10(const conflux::TileIndex k, const MPI_Comm &world)
         // that own tile-rows with index iGlob, split into subtiles among Z-layer
         for (conflux::ProcCoord pyRcv = 0; pyRcv < prop->PY; ++pyRcv) {
             for (conflux::ProcCoord pzRcv = 0; pzRcv < prop->PZ; ++pzRcv) {
+                PE(updatea10_sendA10);
                 conflux::ProcRank pRcv = prop->gridToGlobal(tileOwners.px, pyRcv, pzRcv);
                 MPI_Ssend(tile + pzRcv * prop->l, 1, MPI_SUBTILE, pRcv, iGlob, world);
+                PL();
             }
         }
 
@@ -303,17 +315,21 @@ void updateA10(const conflux::TileIndex k, const MPI_Comm &world)
         // that own tile-cols with index iGlob, split into subtiles along Z-layer
         for (conflux::ProcCoord pxRcv = 0; pxRcv < prop->PX; ++pxRcv) {
             for (conflux::ProcCoord pzRcv = 0; pzRcv < prop->PZ; ++pzRcv) {
+                PE(updatea10_sendA01);
                 conflux::ProcRank pRcv = prop->gridToGlobal(pxRcv, tileOwners.py, pzRcv);
-                MPI_Ssend(tile + pzRcv * prop->l, 1, MPI_SUBTILE, pRcv, iGlob, world);          
+                MPI_Ssend(tile + pzRcv * prop->l, 1, MPI_SUBTILE, pRcv, iGlob, world);
+                PL();        
             }
         }
     }
 
     // wait until all the data transfers have been completed
     // @ TODO: investigate if this wait all is still necessary
+    PE(updatea10_waitall);
     if (proc->cntUpdateA10 > 0) {
         MPI_Waitall(proc->cntUpdateA10, &(proc->reqUpdateA10[0]), MPI_STATUSES_IGNORE);
     }
+    PL();
 }
 
 /**
@@ -340,6 +356,7 @@ void computeA11(const conflux::TileIndex k, const MPI_Comm &world)
             if (glob.i <= k || glob.j > glob.i || glob.j <= k) continue;
 
             // perform "low-rank" update (A11 <- A11 - A10 * A01^T)
+            PE(computea10_dgemm);
             cblas_dgemm(
                 CblasRowMajor, CblasNoTrans, CblasTrans,  // DGEMM information
                 prop->v, prop->v, prop->l,                // dimension information
@@ -347,6 +364,7 @@ void computeA11(const conflux::TileIndex k, const MPI_Comm &world)
                 proc->A01rcv->get(jLoc), prop->l,         // information about A01 rep
                 1.0, proc->A11->get(iLoc, jLoc), prop->v  // information about A11 tile to be updated
             );  
+            PL();
         }
     }       
 }
@@ -387,6 +405,7 @@ void reduceA11(const conflux::TileIndex k, const MPI_Comm &world)
             if (globalIndices.i <= k)  continue;
 
             // this process actually performs the reduction (and thus in place)
+            PE(reducea11_reduction);
             if (proc->rank == recvProcessorRank) {
                 MPI_Reduce(MPI_IN_PLACE, proc->A11->get(iLoc, jLoc), prop->vSquare,
                        MPI_DOUBLE, MPI_SUM, (k+1) % prop->PZ, proc->zAxisComm);//, &req);
@@ -396,6 +415,7 @@ void reduceA11(const conflux::TileIndex k, const MPI_Comm &world)
                 MPI_Reduce(proc->A11->get(iLoc, jLoc), proc->A11->get(iLoc, jLoc), prop->vSquare,
                        MPI_DOUBLE, MPI_SUM, (k+1) % prop->PZ, proc->zAxisComm);//, &req);
             }
+            PL();
         }
     }
 
@@ -429,6 +449,7 @@ void scatterA11(const conflux::TileIndex k, const MPI_Comm &world)
         if (iGlobRecv >= prop->Kappa) break;
          // receive tile from A10 from scattering procedure
         // the indices match the sends postet in the same round 
+        PE(scattera11_postIrecv);
         conflux::ProcIndexPair2D owners = prop->globalToLocal(iGlobRecv, k+1);
         conflux::ProcCoord zOwner = static_cast<conflux::ProcCoord>((k + 1) % prop->PZ);
         conflux::ProcRank senderProc = prop->gridToGlobal(owners.px, owners.py, zOwner);
@@ -436,6 +457,7 @@ void scatterA11(const conflux::TileIndex k, const MPI_Comm &world)
         MPI_Irecv(proc->A10->get(iLocRecv), prop->vSquare, MPI_DOUBLE, senderProc,
                     iLocRecv, world, &req);
         proc->reqScatterA11[proc->cntScatterA11++] = req;
+        PL();
     }
 
     // we need to extract which processor owns the A00 tile of this round
@@ -465,10 +487,12 @@ void scatterA11(const conflux::TileIndex k, const MPI_Comm &world)
             if (globalTile.i >= prop->Kappa) break; 
             if ((globalTile.i == k + 1 && globalTile.j == k + 1) || globalTile.i < k + 1 ) continue;
 
+            PE(scattera11_senda10);
             // send the A11 tiles that become A10 tiles in the next round
             conflux::ProcIndexPair1D A10pair = prop->globalToLocal(globalTile.i);
             MPI_Ssend(proc->A11->get(iLoc, jLoc), prop->vSquare, MPI_DOUBLE,
                      A10pair.p, A10pair.i, world);
+            PL();
         }
     }
 
@@ -499,7 +523,7 @@ void scatterA11(const conflux::TileIndex k, const MPI_Comm &world)
     //tmp << "It " << k << ", Rank " << proc->rank << " (" << grid.px << "," << grid.py << "," 
     //   << grid.pz <<  ") has flag = " << proc->inBcastComm << std::endl;
     //std::cout << tmp.str() << std::flush;
-    
+    PE(scattera11_bcast);
     if (proc->inBcastComm) {
         // compute new rank of root processor
         conflux::GridProc rootCord = prop->globalToGrid(rootProcessorRank);
@@ -508,14 +532,21 @@ void scatterA11(const conflux::TileIndex k, const MPI_Comm &world)
         // broadcast in the new communicator
         MPI_Bcast(proc->A00, prop->vSquare, MPI_DOUBLE, newRoot, proc->bcastComm); //, &req);
     }
+    PL();
     //MPI_Bcast(proc->A00, prop->vSquare, MPI_DOUBLE, rootProcessorRank, world); //, &req);
     //proc->reqScatterA11[proc->cntScatterA11++] = req;
 
+
     // wait for the scattering to be completed
     // @TODO investigate if this still needed (maybe blocking broadcast)
+    PE(scattera11_waitall);
     MPI_Waitall(proc->cntScatterA11, &(proc->reqScatterA11[0]), MPI_STATUSES_IGNORE);
-
+    PL();
+    
+    // currently we need a barrier here for some reason
+    PE(scattera11_barrier);
     MPI_Barrier(world);
+    PL();
 }
 
 /** 
