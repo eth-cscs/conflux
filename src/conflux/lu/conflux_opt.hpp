@@ -421,11 +421,9 @@ g2lnoTile(std::vector<int> &grows, int Px, int v) {
 }
 
 template <class T>
-std::vector<T> LU_rep(T *A,
-                      T *C,
+std::vector<T> LU_rep(T* C, // C is only used when CONFLUX_WITH_VALIDATION
                       T *PP,
-                      lu_params<T> &gv,
-                      MPI_Comm comm) {
+                      lu_params<T> &gv) {
     PC();
     PE(init);
     int M, N, P, Px, Py, Pz, v, nlayr, Mt, Nt, tA11x, tA11y;
@@ -441,41 +439,24 @@ std::vector<T> LU_rep(T *A,
     tA11x = gv.tA11x;
     tA11y = gv.tA11y;
     // local n
-    auto Ml = tA11x * v;
-    auto Nl = tA11y * v;
+    int Ml = gv.Ml;
+    int Nl = gv.Nl;
+
+    int pi = gv.pi;
+    int pj = gv.pj;
+    int pk = gv.pk;
+    int rank = gv.rank;
+
+    MPI_Comm lu_comm = gv.lu_comm;
+    MPI_Comm jk_comm = gv.jk_comm;
+    MPI_Comm k_comm = gv.k_comm;
 
     auto chosen_step = Nt - 1;
     auto debug_level = 0;
     // auto chosen_step = 0;
     // auto debug_level = 3;
 
-    MPI_Comm lu_comm;
-    int dim[] = {Px, Py, Pz};  // 3D processor grid
-    int period[] = {0, 0, 0};
-    int reorder = 1;
-    MPI_Cart_create(comm, 3, dim, period, reorder, &lu_comm);
-
-    int rank;
-    MPI_Comm_rank(lu_comm, &rank);
-
     int print_rank = X2p(lu_comm, 0, 1, 0);
-
-    MPI_Comm k_comm;
-    int keep_dims_k[] = {0, 0, 1};
-    MPI_Cart_sub(lu_comm, keep_dims_k, &k_comm);
-
-    MPI_Comm jk_comm;
-    int keep_dims_jk[] = {0, 1, 1};
-    MPI_Cart_sub(lu_comm, keep_dims_jk, &jk_comm);
-
-    /*
-    MPI_Comm jk_comm_dup;
-    MPI_Comm_dup(jk_comm, &jk_comm_dup);
-    */
-
-    // # get 3d processor decomposition coordinates
-    int pi, pj, pk;
-    std::tie(pi, pj, pk) = p2X(lu_comm, rank);
 
     // Create buffers
     std::vector<T> A00Buff(v * v);
@@ -491,7 +472,8 @@ std::vector<T> LU_rep(T *A,
     std::vector<T> A01BuffTemp(v * Nl);
     std::vector<T> A01BuffRcv(nlayr * Nl);
 
-    std::vector<T> A11Buff(Ml * Nl);
+    // std::vector<T> A11Buff(Ml * Nl);
+    std::vector<T>& A11Buff = gv.data;
     std::vector<T> A10resultBuff(Ml * Nl);
     std::vector<T> A11BuffTemp(Ml * Nl);
 
@@ -543,10 +525,9 @@ std::vector<T> LU_rep(T *A,
     std::cout << std::setprecision(3);
 
 #ifdef CONFLUX_WITH_VALIDATION
-    std::vector<T> B(M * N);
     MPI_Win B_Win = create_window(lu_comm,
-                                  B.data(),
-                                  B.size(),
+                                  &C[0],
+                                  M * N,
                                   true);
 #endif
     //MPI_Win_create(B.data(), B.size() * sizeof(double), sizeof(double),)
@@ -605,32 +586,6 @@ std::vector<T> LU_rep(T *A,
             }
         }
     }
-
-    // # ----- A11 ------ #
-    // # only layer pk == 0 owns initial data
-    PL();
-    PE(init_A11copy);
-    if (pk == 0) {
-        for (auto lti = 0; lti < tA11x; ++lti) {
-            auto gti = l2g(pi, lti, Px);
-            for (auto ltj = 0; ltj < tA11y; ++ltj) {
-                auto gtj = l2g(pj, ltj, Py);
-                mcopy(&A[0], &A11Buff[0],
-                      gti * v, (gti + 1) * v, gtj * v, (gtj + 1) * v, N,
-                      lti * v, (lti + 1) * v, ltj * v, (ltj + 1) * v, Nl);
-            }
-        }
-    }
-    PL();
-#ifdef DEBUG
-    if (debug_level > 1) {
-        if (rank == print_rank) {
-            print_matrix(A11Buff.data(), 0, Ml, 0, Nl, Nl);
-        }
-        //std::cout << "Allocated." << std::endl;
-        MPI_Barrier(lu_comm);
-    }
-#endif
 
     PE(fence_create);
     MPI_Win A01Win = create_window(lu_comm,
@@ -1807,7 +1762,7 @@ std::vector<T> LU_rep(T *A,
                 }
                 MPI_Barrier(lu_comm);
                 if (rank == 0) {
-                    print_matrix(B.data(), 0, M,
+                    print_matrix(&C[0], 0, M,
                                  0, N, N);
                 }
             }
@@ -1838,7 +1793,7 @@ std::vector<T> LU_rep(T *A,
     MPI_Win_free(&A01Win);
 #ifdef CONFLUX_WITH_VALIDATION
     MPI_Win_free(&B_Win);
-    std::copy(B.begin(), B.end(), C);
+    // std::copy(B.begin(), B.end(), C);
     MPI_Barrier(lu_comm);
     for (auto i = 0; i < N; ++i) {
         int idx = int(pivotIndsBuff[i]);
@@ -1849,12 +1804,11 @@ std::vector<T> LU_rep(T *A,
 
 #ifdef FINAL_SCALAPACK_LAYOUT
     MPI_Win_fence(0, res_Win);
-#endif
-    MPI_Comm_free(&k_comm);
-    // MPI_Comm_free(&jk_comm_dup);
-    MPI_Comm_free(&jk_comm);
-    MPI_Comm_free(&lu_comm);
     return ScaLAPACKResultBuff;
+#else
+    return {};
+#endif
+
 }
 }  // namespace conflux
 
