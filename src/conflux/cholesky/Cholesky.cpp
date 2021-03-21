@@ -524,14 +524,18 @@ void scatterA11(const conflux::TileIndex k, const MPI_Comm &world)
        << grid.pz <<  ") has flag = " << proc->inBcastComm << std::endl;
     std::cout << tmp.str() << std::flush;
     PE(scattera11_bcast);
-    MPI_Request req;
-    if (proc->inBcastComm) {
+    //MPI_Request req;
+    if (prop->smallerBroadcast && proc->inBcastComm) {
         // compute new rank of root processor
         conflux::GridProc rootCord = prop->globalToGrid(rootProcessorRank);
         int newRoot = rootCord.px + rootCord.pz * prop->PX;
 
         // broadcast in the new communicator
         MPI_Bcast(proc->A00, prop->vSquare, MPI_DOUBLE, newRoot, proc->bcastComm);//, &req);
+    }
+
+    else if(!prop->smallerBroadcast) {
+        MPI_Bcast(proc->A00, prop->vSquare, MPI_DOUBLE, rootProcessorRank, world);//, &req);
     }
     PL();
     //MPI_Bcast(proc->A00, prop->vSquare, MPI_DOUBLE, rootProcessorRank, world); //, &req);
@@ -636,7 +640,7 @@ void conflux::parallelCholesky()
         // update the broadcast communicator if possible. In iteration k, there are
         // Kappa - k - 1 tiles in the current A10, an thus Kappa - k - 2 in the next
         // iteration for brodcasting
-        if (prop->Kappa - k > 2) {
+        if (prop->smallerBroadcast && prop->Kappa - k > 2) {
             proc->updateBroadcastCommunicator(prop->Kappa - k - 2);
         }
         scatterA11(k, world);

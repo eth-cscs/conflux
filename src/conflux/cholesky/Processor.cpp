@@ -70,6 +70,7 @@ conflux::Processor::Processor(CholeskyProperties *prop)
     this->pz = this->grid.pz;
     this->_numProc = prop->P;
     this->_PX = prop->PX;
+    this->inBcastComm = false;
 
     // compute maximal local tile indices for this processor
     this->maxIndexA10 = (prop->Kappa - 1) / prop->P
@@ -107,54 +108,58 @@ conflux::Processor::Processor(CholeskyProperties *prop)
     // we define color = px * PY + py, i.e. rank on XY-plane in row-major order
     // and rank as the pz coordinate.
     MPI_Comm_split(MPI_COMM_WORLD, this->px * prop->PY + this->py, this->pz, &this->zAxisComm);
-
-    // generate the broadcast commnicators
-    uint32_t nextPowOf2 = 1 << (uint32_t) floor(log2(this->_numProc));
     uint32_t numTiles = prop->Kappa - 2;
+    if (numTiles == 0) {
+        prop->smallerBroadcast = false;
+    }
+    if (prop->smallerBroadcast){
 
-    // if there are less tiles than the remaining number of processors, only use
-    // at most twice as many processors for the broadcast as necessary
-    if (numTiles < nextPowOf2) {
-        while (numTiles <= nextPowOf2 / 2) {
+        // generate the broadcast commnicators
+        uint32_t nextPowOf2 = 1 << (uint32_t) floor(log2(this->_numProc));
+
+        // if there are less tiles than the remaining number of processors, only use
+        // at most twice as many processors for the broadcast as necessary
+        if (numTiles < nextPowOf2) {
+            while (numTiles <= nextPowOf2 / 2) {
+                nextPowOf2 /= 2;
+            }
+            _bcastSizes.push_back(nextPowOf2);
+            MPI_Comm first;
+            if (this->px == this->py) {
+                MPI_Comm_split(MPI_COMM_WORLD, 1, this->px + (this->pz*this->_PX), &first);
+                this->inBcastComm = true;
+            } else {
+                int color = this->rank < nextPowOf2 ? 1 : 0;
+                this->inBcastComm = color ? true : false;
+                MPI_Comm_split(MPI_COMM_WORLD, color, this->_numProc + this->rank, &first);
+            }
+            this->_bcastComms.push_back(first);
+            nextPowOf2 /= 2;
+        // otherwise we start with MPI_COMM_WORLD
+        } else {
+            MPI_Comm first = MPI_COMM_WORLD;
+            this->inBcastComm = true;
+            this->_bcastComms.push_back(first);
+        }
+
+        // generate all communicators as long as the size is at least 4
+        while (nextPowOf2 >= 4) {
+            this->_bcastSizes.push_back(nextPowOf2);
+            MPI_Comm cur;
+            if (this->px == this->py) {
+                MPI_Comm_split(MPI_COMM_WORLD, 1, this->px + (this->pz*this->_PX), &cur);
+            } else {
+                int color = this->rank < nextPowOf2 ? 1 : 0;
+                MPI_Comm_split(MPI_COMM_WORLD, color, this->_numProc + this->rank, &cur);
+            }
+            this->_bcastComms.push_back(cur);
             nextPowOf2 /= 2;
         }
-        _bcastSizes.push_back(nextPowOf2);
-        MPI_Comm first;
-        if (this->px == this->py) {
-            MPI_Comm_split(MPI_COMM_WORLD, 1, this->px + (this->pz*this->_PX), &first);
-            this->inBcastComm = true;
-        } else {
-            int color = this->rank < nextPowOf2 ? 1 : 0;
-            this->inBcastComm = color ? true : false;
-            MPI_Comm_split(MPI_COMM_WORLD, color, this->_numProc + this->rank, &first);
-        }
-        this->_bcastComms.push_back(first);
-        nextPowOf2 /= 2;
 
-    // otherwise we start with MPI_COMM_WORLD
-    } else {
-        MPI_Comm first = MPI_COMM_WORLD;
-        this->inBcastComm = true;
-        this->_bcastComms.push_back(first);
+        // set the current broadcast communicator
+        this->bcastComm = this->_bcastComms[0];
+        this->_curBcastIdx = 0;
     }
-
-    // generate all communicators as long as the size is at least 4
-    while (nextPowOf2 >= 4) {
-        this->_bcastSizes.push_back(nextPowOf2);
-        MPI_Comm cur;
-        if (this->px == this->py) {
-            MPI_Comm_split(MPI_COMM_WORLD, 1, this->px + (this->pz*this->_PX), &cur);
-        } else {
-            int color = this->rank < nextPowOf2 ? 1 : 0;
-            MPI_Comm_split(MPI_COMM_WORLD, color, this->_numProc + this->rank, &cur);
-        }
-        this->_bcastComms.push_back(cur);
-        nextPowOf2 /= 2;
-    }
-
-    // set the current broadcast communicator
-    this->bcastComm = this->_bcastComms[0];
-    this->_curBcastIdx = 0;
 }
 
 /**

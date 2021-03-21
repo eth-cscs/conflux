@@ -103,6 +103,8 @@ conflux::CholeskyProperties::CholeskyProperties(ProcRank numProc, uint32_t dim, 
     this->vSquare = tileSize * tileSize;
     this->l = this->v / this->PZ;
     this->Kappa = static_cast<TileIndex>(ceil((double) this->N / this->v));
+    smallerBroadcast = Kappa <= P;
+
 }
 
 /**
