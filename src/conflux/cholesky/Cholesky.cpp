@@ -514,6 +514,8 @@ void scatterA11(const conflux::TileIndex k, const MPI_Comm &world)
     // wait for the scattering to be completed
     // @TODO investigate if this still needed (maybe blocking broadcast)
     MPI_Waitall(proc->cntScatterA11, &(proc->reqScatterA11[0]), MPI_STATUSES_IGNORE);
+
+    MPI_Barrier(world);
 }
 
 /** 
@@ -598,6 +600,6 @@ void conflux::parallelCholesky()
             proc->updateBroadcastCommunicator(prop->Kappa - k - 2);
         }
         scatterA11(k, world);
-        MPI_Barrier(world);
+        
     }
 }
