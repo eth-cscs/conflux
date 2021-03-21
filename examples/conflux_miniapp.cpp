@@ -84,12 +84,24 @@ int main(int argc, char *argv[]) {
         PC();
         // reinitialize the matrix
         params.InitMatrix();
-        conflux::LU_rep<double>(params.matrix.data(), 
+        auto resultBuff = conflux::LU_rep<double>(params.matrix.data(), 
                                C.data(), 
                                Perm.data(), 
                                params, 
                                MPI_COMM_WORLD);  
 #ifdef CONFLUX_WITH_VALIDATION
+
+#ifdef FINAL_SCALAPACK_LAYOUT
+    MPI_Barrier(MPI_COMM_WORLD);    
+    for (int p = 0; p < P; p++) {
+        if (rank == p){
+            std::cout << "Rank " << rank << "/" << P << ", local final result:\n";
+            conflux::print_matrix(resultBuff.data(), 0, M/params.Px, 0, N/params.Py, N/params.Py);
+            std::cout << std::flush;
+        }        
+        MPI_Barrier(MPI_COMM_WORLD);    
+    }
+#else
         if (rank == 0) {
             auto M = params.M;
             auto N = params.N;
@@ -137,6 +149,7 @@ int main(int argc, char *argv[]) {
             norm = std::sqrt(norm);
             std::cout << "residual: " << norm << std::endl;
         }
+#endif
 #endif
     }
     // print the profiler data
