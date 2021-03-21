@@ -1,10 +1,24 @@
+#pragma once
 #include <tuple>
 #include <vector>
+#include <mpi.h>
+#include <costa/layout.hpp>
 
 namespace conflux {
 template <typename T>
 class lu_params {
    private:
+       std::tuple<int, int, int> p2X(MPI_Comm comm3D, int rank) {
+           int coords[] = {-1, -1, -1};
+           MPI_Cart_coords(comm3D, rank, 3, coords);
+           return {coords[0], coords[1], coords[2]};
+       }
+       int X2p(MPI_Comm comm3D, int pi, int pj, int pk) {
+           int coords[] = {pi, pj, pk};
+           int rank;
+           MPI_Cart_rank(comm3D, coords, &rank);
+           return rank;
+       }
        std::tuple<int, int, int> get_p_grid(int M, int N, int P) {
         double ratio = 1.0 * std::max(M, N) / std::min(M, N);
         int p1 = (int)std::cbrt(P / ratio);
@@ -24,7 +38,7 @@ class lu_params {
         return {Px, Py, Pz};
     }
 
-    void initialize(int inpM, int inpN, int v, int Px, int Py, int Pz) {
+    void initialize(int inpM, int inpN, int v, int Px, int Py, int Pz, MPI_Comm comm) {
         this->Px = Px;
         this->Py = Py;
         this->Pz = Pz;
@@ -41,20 +55,117 @@ class lu_params {
 
         nlayr = (int)((v + Pz - 1) / Pz);
 
-        InitMatrix();
-
         Nt = (int)(std::ceil((double)N / v));
         Mt = (int)(std::ceil((double)M / v));
         t = (int)(std::ceil((double)Nt / Py)) + 1ll;
         tA11x = (int)(std::ceil((double)Mt / Px));
         tA11y = (int)(std::ceil((double)Nt / Py));
+
+        Ml = tA11x * v;
+        Nl = tA11y * v;
+
+        // the main 3D communicator
+        int dim[] = {Px, Py, Pz};  // 3D processor grid
+        int period[] = {0, 0, 0};
+        int reorder = 1;
+        MPI_Cart_create(comm, 3, dim, period, reorder, &lu_comm);
+
+        // jk communicator
+        int keep_dims_jk[] = {0, 1, 1};
+        MPI_Cart_sub(lu_comm, keep_dims_jk, &jk_comm);
+
+        // k-communicator
+        int keep_dims_k[] = {0, 0, 1};
+        MPI_Cart_sub(lu_comm, keep_dims_k, &k_comm);
+
+        // initialize coordinates
+        MPI_Comm_rank(lu_comm, &rank);
+        std::tie(pi, pj, pk) = p2X(lu_comm, rank);
+
+        get_costa_layout();
+
+        InitMatrix();
     }
 
 public:
+    std::vector<int> line_split(int N, int v) {
+        std::vector<int> splits;
+        splits.reserve(N/v + 1);
+        for (int i = 0; i < N/v; ++i) {
+            splits.push_back(i * v);
+        }
+        splits.push_back(N);
+        return splits;
+    }
+
+    void get_costa_layout() {
+        // create COSTA layout descriptor
+        data = std::vector<T>(Ml * Nl);
+
+        // local blocks
+        std::vector<costa::block_t> local_blocks;
+        int n_local_blocks = tA11x * tA11y;
+        local_blocks.reserve(n_local_blocks);
+
+        for (int lti = 0; lti < tA11x; ++lti) {
+            auto gti = lti * Px + pi;
+            for (int ltj = 0; ltj < tA11y; ++ltj) {
+                auto gtj = ltj * Py + pj;
+                costa::block_t block;
+                // pointer to the data of this tile
+                block.data = &data[lti * v * Nl + ltj * v];
+                // leading dimension
+                block.ld = Nl;
+                // global coordinates of this block
+                block.row = gti;
+                block.col = gtj;
+                local_blocks.push_back(block);
+            }
+        }
+
+        std::vector<int> row_splits = line_split(M, v);
+        std::vector<int> col_splits = line_split(N, v);
+
+        std::vector<int> owners(Mt*Nt);
+
+        for (int i = 0; i < Mt; ++i) {
+            for (int j = 0; j < Nt; ++j) {
+                int ij = i * Nt + j;
+                int pi = i % Px;
+                int pj = j % Py;
+                owners[ij] = X2p(lu_comm, pi, pj, 0);
+            }
+        }
+
+        matrix = costa::custom_layout<T>(
+                Mt, Nt, // num of global blocks
+                &row_splits[0], &col_splits[0], // splits in the global matrix
+                &owners[0], // ranks owning each tile
+                n_local_blocks, // num of local blocks
+                &local_blocks[0], // local blocks
+                'R' // row-major ordering within blocks
+                );
+
+    }
 
     void InitMatrix() {
+        // put all 0s
+        auto f = [](int i, int j) -> T {
+            return T{0};
+        };
+
+        matrix.initialize(f);
+
+        // ranks that are not on layer 0 must have all 0s,
+        // because A10Buff is extracted from A11Buff and 
+        // MPI_Reduce is being called on A10Buff. 
+        // If ranks for which pk!=0 don't have 0s
+        // MPI_Reduce would sum all these non-zero values
+        // into A10Buff, causing wrong results
+        if (pk != 0) return;
+
         if (N == 16 && M == 16) {
-            matrix = {
+            std::vector<T> generator = {
                 1, 8, 2, 7, 3, 8, 2, 4, 8, 7, 5, 5, 1, 4, 4, 9,
                 8, 4, 9, 2, 8, 6, 9, 9, 3, 7, 7, 7, 8, 7, 2, 8,
                 3, 5, 4, 8, 9, 2, 7, 1, 2, 2, 7, 9, 8, 2, 1, 3,
@@ -71,8 +182,20 @@ public:
                 7, 6, 7, 8, 2, 2, 4, 6, 6, 8, 3, 6, 5, 2, 6, 5,
                 4, 5, 1, 5, 3, 7, 4, 4, 7, 5, 8, 2, 4, 7, 1, 7,
                 8, 3, 2, 4, 3, 8, 1, 6, 9, 6, 3, 6, 4, 8, 7, 8};
+
+            full_matrix = generator;
+
+            // define lambda function for initialization
+            int lld = N;
+            auto f = [&generator, &lld](int i, int j) -> T {
+                auto value = generator[i * lld + j];
+                return value;
+            };
+
+            matrix.initialize(f);
+
         } else if (N == 27 && M == 27) {
-            matrix = {4.0, 2.0, 0.0, 7.0, 0.0, 0.0, 1.0, 5.0, 4.0, 6.0, 8.0, 7.0, 0.0, 4.0, 3.0, 5.0, 3.0, 4.0, 0.0, 1.0, 1.0, 6.0, 7.0, 1.0, 8.0, 2.0, 3.0,
+            std::vector<T> generator = {4.0, 2.0, 0.0, 7.0, 0.0, 0.0, 1.0, 5.0, 4.0, 6.0, 8.0, 7.0, 0.0, 4.0, 3.0, 5.0, 3.0, 4.0, 0.0, 1.0, 1.0, 6.0, 7.0, 1.0, 8.0, 2.0, 3.0,
                                 9.0, 0.0, 7.0, 2.0, 400.0, 3.0, 2.0, 8.0, 2.0, 9.0, 6.0, 3.0, 6.0, 6.0, 7.0, 9.0, 5.0, 2.0, 0.0, 7.0, 0.0, 2.0, 8.0, 8.0, 9.0, 4.0, 5.0,
                                 1.0, 5.0, 3.0, 7.0, 1.0, 7.0, 0.0, 5.0, 0.0, 1.0, 3.0, 6.0, 7.0, 7.0, 7.0, 6.0, 9.0, 7.0, 9.0, 7.0, 5.0, 6.0, 2.0, 3.0, 5.0, 4.0, 4.0,
                                 7.0, 7.0, 6.0, 9.0, 1.0, 6.0, 9.0, 3.0, 8.0, 9.0, 9.0, 3.0, 5.0, 5.0, 2.0, 1.0, 5.0, 8.0, 6.0, 8.0, 3.0, 0.0, 6.0, 2.0, 9.0, 9.0, 0.0,
@@ -99,8 +222,19 @@ public:
                                 3.0, 6.0, 6.0, 2.0, 4.0, 8.0, 3.0, 7.0, 2.0, 9.0, 6.0, 9.0, 2.0, 9.0, 1.0, 3.0, 6.0, 3.0, 0.0, 7.0, 5.0, 4.0, 6.0, 0.0, 6.0, 7.0, 8.0,
                                 2.0, 5.0, 7.0, 2.0, 4.0, 7.0, 6.0, 1.0, 0.0, 4.0, 1.0, 0.0, 6.0, 7.0, 3.0, 7.0, 0.0, 6.0, 3.0, 7.0, 8.0, 2.0, 4.0, 1.0, 8.0, 7.0, 0.0,
                                 0.0, 3.0, 5.0, 5.0, 6.0, 5.0, 2.0, 6.0, 9.0, 0.0, 0.0, 9.0, 5.0, 0.0, 2.0, 8.0, 3.0, 8.0, 0.0, 6.0, 9.0, 8.0, 4.0, 6.0, 5.0, 1.0, 9.0};
+
+            full_matrix = generator;
+
+            // define lambda function for initialization
+            int lld = N;
+            auto f = [&generator, &lld](int i, int j) -> T {
+                auto value = generator[i * lld + j];
+                return value;
+            };
+
+            matrix.initialize(f);
         } else if (N == 32 && M == 32) {
-            matrix = {9.0, 4.0, 8.0, 8.0, 3.0, 8.0, 0.0, 5.0, 2.0, 1.0, 0.0, 6.0, 3.0, 7.0, 0.0, 3.0, 5.0, 7.0, 3.0, 6.0, 8.0, 6.0, 2.0, 0.0, 8.0, 0.0, 8.0, 5.0, 9.0, 7.0, 9.0, 3.0,
+            std::vector<T> generator = {9.0, 4.0, 8.0, 8.0, 3.0, 8.0, 0.0, 5.0, 2.0, 1.0, 0.0, 6.0, 3.0, 7.0, 0.0, 3.0, 5.0, 7.0, 3.0, 6.0, 8.0, 6.0, 2.0, 0.0, 8.0, 0.0, 8.0, 5.0, 9.0, 7.0, 9.0, 3.0,
                                   7.0, 4.0, 4.0, 6.0, 8.0, 9.0, 7.0, 4.0, 4.0, 7.0, 2.0, 1.0, 3.0, 2.0, 2.0, 2.0, 0.0, 0.0, 9.0, 4.0, 3.0, 6.0, 2.0, 9.0, 7.0, 0.0, 4.0, 8.0, 9.0, 4.0, 6.0, 1.0,
                                   9.0, 2.0, 9.0, 6.0, 6.0, 5.0, 2.0, 1.0, 2.0, 1.0, 7.0, 3.0, 0.0, 9.0, 8.0, 9.0, 9.0, 1.0, 3.0, 7.0, 6.0, 1.0, 8.0, 2.0, 2.0, 5.0, 5.0, 5.0, 0.0, 8.0, 2.0, 1.0,
                                   8.0, 9.0, 8.0, 8.0, 6.0, 5.0, 0.0, 4.0, 3.0, 2.0, 7.0, 4.0, 0.0, 2.0, 6.0, 0.0, 8.0, 4.0, 4.0, 5.0, 8.0, 3.0, 6.0, 5.0, 2.0, 8.0, 7.0, 6.0, 8.0, 8.0, 7.0, 8.0,
@@ -132,39 +266,70 @@ public:
                                   5.0, 7.0, 9.0, 9.0, 6.0, 4.0, 6.0, 7.0, 1.0, 4.0, 8.0, 3.0, 5.0, 5.0, 1.0, 3.0, 3.0, 0.0, 0.0, 8.0, 2.0, 5.0, 2.0, 9.0, 2.0, 4.0, 8.0, 8.0, 1.0, 8.0, 4.0, 4.0,
                                   1.0, 0.0, 7.0, 4.0, 4.0, 7.0, 7.0, 1.0, 6.0, 1.0, 7.0, 6.0, 9.0, 0.0, 0.0, 2.0, 2.0, 2.0, 9.0, 2.0, 2.0, 7.0, 4.0, 7.0, 0.0, 4.0, 0.0, 0.0, 9.0, 1.0, 5.0, 4.0,
                                   3.0, 8.0, 0.0, 6.0, 9.0, 5.0, 9.0, 0.0, 4.0, 2.0, 7.0, 9.0, 2.0, 6.0, 1.0, 5.0, 4.0, 9.0, 6.0, 3.0, 1.0, 1.0, 2.0, 2.0, 8.0, 5.0, 5.0, 1.0, 8.0, 7.0, 0.0, 7.0};
-        } else {
-            matrix = std::vector<T>(M * N);
+            full_matrix = generator;
+            // define lambda function for initialization
+            int lld = N;
+            auto f = [&generator, &lld](int i, int j) -> T {
+                auto value = generator[i * lld + j];
+                return value;
+            };
 
+            matrix.initialize(f);
+        } else {
+            // randomly generate matrix
             std::mt19937_64 eng(seed);
             std::uniform_real_distribution<T> dist;
             auto generator = std::bind(dist, eng);
-            for (int i = 0; i < matrix.size(); ++i) {
-                matrix[i] = generator();
-            }
-            /*
-            std::generate(matrix.begin(), matrix.end(), generator);
-            */
+            // define lambda function for initialization
+            auto f = [&generator](int i, int j) -> T {
+                return generator();
+            };
+
+            matrix.initialize(f);
         }
     }
 
+    MPI_Comm lu_comm = MPI_COMM_NULL;
+    MPI_Comm jk_comm = MPI_COMM_NULL;
+    MPI_Comm k_comm = MPI_COMM_NULL;
+    int rank;
+    int pi, pj, pk;
     int M, N, P;
+    int Ml, Nl;
     // Px refers to rows
     // Py refers to cols
     // Pz refers to height
     int Px, Py, Pz;
     int v, nlayr, Mt, Nt, t, tA11x, tA11y;
     int seed = 42;
-    std::vector<T> matrix;
+    std::vector<T> data;
+    costa::grid_layout<T> matrix;
+
+    std::vector<T> full_matrix; // used only for validation
 
     lu_params() = default;
 
-    lu_params(int inpM, int inpN, int v, int inpP) {
-        std::tie(Px, Py, Pz) = get_p_grid(inpM, inpN, inpP);
-        initialize(inpM, inpN, v, Px, Py, Pz);
+    lu_params(int inpM, int inpN, int v, MPI_Comm comm) {
+        MPI_Comm_size(comm, &P);
+        std::tie(Px, Py, Pz) = get_p_grid(inpM, inpN, P);
+        initialize(inpM, inpN, v, Px, Py, Pz, comm);
     }
 
-    lu_params(int inpM, int inpN, int v, int Px, int Py, int Pz) {
-        initialize(inpM, inpN, v, Px, Py, Pz);
+    lu_params(int inpM, int inpN, int v, int Px, int Py, int Pz, MPI_Comm comm) {
+        initialize(inpM, inpN, v, Px, Py, Pz, comm);
+    }
+
+    ~lu_params() {
+        free_comms();
+    }
+
+    void free_comms() {
+        if (k_comm != MPI_COMM_NULL)
+            MPI_Comm_free(&k_comm);
+        if (jk_comm != MPI_COMM_NULL)
+            MPI_Comm_free(&jk_comm);
+        if (lu_comm != MPI_COMM_NULL)
+            MPI_Comm_free(&lu_comm);
     }
 };
 }

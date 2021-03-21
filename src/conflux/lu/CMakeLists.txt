@@ -9,6 +9,7 @@ if(NOT TARGET conflux-lu)
     target_compile_features(conflux-lu PUBLIC cxx_std_17)
     target_link_libraries(conflux-lu PUBLIC  MPI::MPI_CXX
         OpenMP::OpenMP_CXX
+        costa
         ${BLAS_TARGET}
         )
 

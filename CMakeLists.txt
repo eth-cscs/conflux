@@ -152,6 +152,11 @@ else  ()
     message(STATUS "Building with no SCALAPACK interface support.")
 endif ()
 
+option(COSTA_WITH_INSTALL "" ${CONFLUX_WITH_INSTALL})
+option(COSTA_WITH_PROFILING "" ${CONFLUX_WITH_PROFILING})
+set(COSTA_SCALAPACK ${CONFLUX_SCALAPACK} CACHE STRING "")
+add_subdirectory(libs/costa)
+
 # library
 # lu decomposition
 add_subdirectory(src/conflux/lu)

@@ -47,28 +47,31 @@ int main(int argc, char *argv[]) {
     auto p_grid = result["p_grid"].as<std::vector<int>>();
 
     MPI_Init(&argc, &argv);
-    int rank, P;
-    MPI_Comm comm = MPI_COMM_WORLD;
-    MPI_Comm_rank(comm, &rank);
-    MPI_Comm_size(comm, &P);
-    conflux::lu_params<double> params;
-
-    int newP = P;
-
     if (p_grid[0] <= 0 || p_grid[1] <= 0 || p_grid[2] <= 0) {
-        params = conflux::lu_params<double>(M, N, b, P);
-    } else {
-        params = conflux::lu_params<double>(M, N, b, p_grid[0], p_grid[1], p_grid[2]);
-        newP = p_grid[0] * p_grid[1] * p_grid[2];
-    }
-
-    if (newP < P) {
-        std::vector<int> ranks;
-        for (int i = 0; i < newP; ++i) {
-            ranks.push_back(i);
+        int rank;
+        MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+        if (rank == 0) {
+            std::cout << "[ERROR] Use --p_grid=Px,Py,Pz to specify the process grid!" << std::endl;
+            MPI_Abort(MPI_COMM_WORLD, 0);
         }
-        comm = conflux::create_comm(comm, ranks);
     }
+    conflux::lu_params<double> params(M, N, b, 
+                                      p_grid[0], p_grid[1], p_grid[2], 
+                                      MPI_COMM_WORLD);
+
+    /*
+    if (p_grid[0] <= 0 || p_grid[1] <= 0 || p_grid[2] <= 0) {
+        params = conflux::lu_params<double>(M, N, b, MPI_COMM_WORLD);
+    } else {
+        params = conflux::lu_params<double>(M, N, b, 
+                                            p_grid[0], p_grid[1], p_grid[2], 
+                                            MPI_COMM_WORLD);
+    }
+    */
+
+    int rank, P;
+    MPI_Comm_rank(params.lu_comm, &rank);
+    MPI_Comm_size(params.lu_comm, &P);
 
     if (rank == 0) {
         std::cout << "Rank: " << rank << ", M: " << params.M << ", N: " << params.N << ", P:" << params.P
@@ -77,20 +80,21 @@ int main(int argc, char *argv[]) {
                   << ", tA11x: " << params.tA11x << ", tA11y: " << params.tA11y << std::endl;
     }
 
-    std::vector<double> C(params.M * params.N);
+    std::vector<double> C;
+#ifdef CONFLUX_WITH_VALIDATION
+    C = std::vector<double>(params.M * params.N);
+#endif
     std::vector<double> Perm(params.M * params.M);
 
     for (int i = 0; i < n_rep; ++i) {
         PC();
         // reinitialize the matrix
         params.InitMatrix();
-        auto resultBuff = conflux::LU_rep<double>(params.matrix.data(), 
+        auto resultBuff = conflux::LU_rep<double>(
                                C.data(), 
                                Perm.data(), 
-                               params, 
-                               MPI_COMM_WORLD);  
+                               params);
 #ifdef CONFLUX_WITH_VALIDATION
-
 #ifdef FINAL_SCALAPACK_LAYOUT
     MPI_Barrier(MPI_COMM_WORLD);    
     for (int p = 0; p < P; p++) {
@@ -109,18 +113,18 @@ int main(int argc, char *argv[]) {
             std::vector<double> U(N*N);
             for (auto i = 0; i < N; ++i) {
                 for (auto j = 0; j < i; ++j) {
-                    L[i * N + j] = C.data()[i * N + j];
+                    L[i * N + j] = C[i * N + j];
                 }
                 L[i * N + i] = 1;
                 for (auto j = i; j < N; ++j) {
-                    U[i * N + j] = C.data()[i * N + j];
+                    U[i * N + j] = C[i * N + j];
                 }
             }
 
             // mm<dtype>(L, U, C, N, N, N);
             // gemm<dtype>(PP, params.matrix, C, -1.0, 1.0, N, N, N);
             cblas_dgemm(CblasRowMajor, CblasNoTrans, CblasNoTrans, N, N, N,
-                        1.0, &L[0], N, &U[0], N, 0.0, C.data(), N);
+                        1.0, &L[0], N, &U[0], N, 0.0, &C[0], N);
 
             if (rank == 0 && std::max(M, N) < print_limit) {
                 std::cout << "L:\n";
@@ -134,7 +138,7 @@ int main(int argc, char *argv[]) {
             }
 
             cblas_dgemm(CblasRowMajor, CblasNoTrans, CblasNoTrans, N, N, N,
-                        -1.0, Perm.data(), N, params.matrix.data(), N, 1.0, C.data(), N);
+                        -1.0, Perm.data(), N, &params.full_matrix[0], N, 1.0, &C[0], N);
             if (rank == 0 && std::max(M, N) < print_limit){ 
                 std::cout << "\nL*U - P*A:\n";
                 conflux::print_matrix(C.data(), 0, M, 0, N, N);
@@ -157,11 +161,9 @@ int main(int argc, char *argv[]) {
         PP();
     }
 
-
-    // if not MPI_COMM_WORLD, deallocate it
-    if (newP < P) {
-        MPI_Comm_free(&comm);
-    }
+    // free the communicators before finalize
+    // since no MPI routine can be called afterwards
+    params.free_comms();
     MPI_Finalize();
 
     return 0;
