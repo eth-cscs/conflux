@@ -209,31 +209,34 @@ void LUP(int n_local_active_rows, int v, int stride,
     }
 }
 
-template <typename T>
-void push_pivots_up(std::vector<T> &in, std::vector<T> &temp,
-                    int n_rows, int n_cols,
-                    order layout,
-                    std::vector<int> &curPivots,
-                    int first_non_pivot_row) {
-    if (n_rows == 0 || n_cols == 0)
-        return;
+void analyze_pivots(int first_non_pivot_row,
+                    int n_rows,
+                    std::vector<int>& curPivots,
+                    std::vector<bool>& pivots,
+                    std::vector<bool>& early_non_pivots,
+                    std::vector<bool>& late_pivots
+                    ) {
+    // clear up from previous step
+    early_non_pivots.clear();
+    late_pivots.clear();
 
-    std::vector<bool> pivots(n_rows, false);
+    for (int i = first_non_pivot_row; i < n_rows; ++i) {
+        pivots[i] = false;
+    }
 
     // map pivots to bottom rows (after non_pivot_rows)
     for (int i = 0; i < curPivots[0]; ++i) {
         int pivot_row = curPivots[i + 1];
+        assert(first_non_pivot_row <= pivot_row && pivot_row < n_rows);
         // pivot_row = curPivots[i+1] <= Nl
         pivots[pivot_row] = true;
     }
 
     // ----------------------
-    // v rows -> extract non pivots from first v rows
-    // // rest of column:
+    // extract non pivots from first v rows -> early non pivots
     // extract pivots from the rest of rows -> late pivots
 
     // extract from first pivot-rows those which are non-pivots
-    std::vector<int> early_non_pivots;
     for (int i = first_non_pivot_row;
          i < std::min(first_non_pivot_row + curPivots[0], n_rows); ++i) {
         if (!pivots[i]) {
@@ -242,7 +245,6 @@ void push_pivots_up(std::vector<T> &in, std::vector<T> &temp,
     }
 
     // extract from the rest, those which are pivots
-    std::vector<int> late_pivots;
     for (int i = first_non_pivot_row + curPivots[0];
          i < n_rows; ++i) {
         if (pivots[i]) {
@@ -253,6 +255,20 @@ void push_pivots_up(std::vector<T> &in, std::vector<T> &temp,
     // std::cout << "late pivots = " << late_pivots.size() << std::endl;
     // std::cout << "early non pivots = " << early_non_pivots.size() << std::endl;
     assert(late_pivots.size() == early_non_pivots.size());
+}
+
+template <typename T>
+void push_pivots_up(std::vector<T> &in, std::vector<T> &temp,
+                    int n_rows, int n_cols,
+                    order layout,
+                    std::vector<int> &curPivots,
+                    int first_non_pivot_row,
+                    std::vector<bool>& pivots,
+                    std::vector<bool>& early_non_pivots,
+                    std::vector<bool>& late_pivots
+                    ) {
+    if (n_rows == 0 || n_cols == 0 || first_non_pivot_row >= n_rows)
+        return;
 
 #pragma omp parallel for shared(curPivots, in, n_cols, temp)
     // copy first v pivots to temporary buffer
@@ -452,9 +468,9 @@ std::vector<T> LU_rep(T* C, // C is only used when CONFLUX_WITH_VALIDATION
     MPI_Comm k_comm = gv.k_comm;
 
     auto chosen_step = Nt - 1;
+    // auto debug_level = 0;
+    //auto chosen_step = 90;
     auto debug_level = 0;
-    // auto chosen_step = 0;
-    // auto debug_level = 3;
 
     int print_rank = X2p(lu_comm, 0, 1, 0);
 
@@ -510,6 +526,12 @@ std::vector<T> LU_rep(T* C, // C is only used when CONFLUX_WITH_VALIDATION
     std::vector<T> candidatePivotBuffPerm(Ml * (v + 1));
     std::vector<int> perm(std::max(2 * v, Ml));  // rows
     std::vector<int> ipiv(std::max(2 * v, Ml));
+
+    std::vector<bool> pivots(Ml);
+    std::vector<bool> early_non_pivots;
+    early_non_pivots.reserve(v);
+    std::vector<bool> late_pivots;
+    late_pivots.reserve(v);
 
     // 0 = num of pivots
     // 1..v+1 = pivots
@@ -873,6 +895,10 @@ std::vector<T> LU_rep(T* C, // C is only used when CONFLUX_WITH_VALIDATION
         PL();
 
 #ifdef DEBUG
+        MPI_Barrier(lu_comm);
+        if (k == chosen_step && rank == print_rank) {
+            std::cout << "Finished tournament pivoting" << std::endl;
+        }
         if (debug_level > 1) {
             if (k == chosen_step) {
                 std::cout << "After ircv. Rank [" << pi << ", " << pj << ", " << pk << "], k = " << k << ", A00Buff = " << std::endl;
@@ -930,6 +956,10 @@ std::vector<T> LU_rep(T* C, // C is only used when CONFLUX_WITH_VALIDATION
         // update the row mask
 
 #ifdef DEBUG
+        MPI_Barrier(lu_comm);
+        if (k == chosen_step && rank == print_rank) {
+            std::cout << "Before pushing pivots up" << std::endl;
+        }
         if (debug_level > 1) {
             if (chosen_step == k) {
                 if (pi == 0 && pj == 1 && pk == 0) {
@@ -963,10 +993,24 @@ std::vector<T> LU_rep(T* C, // C is only used when CONFLUX_WITH_VALIDATION
         PL();
 
         PE(step2_pushingpivots);
+
+        analyze_pivots(first_non_pivot_row, Ml,
+                       curPivots, pivots, early_non_pivots, late_pivots);
+
         push_pivots_up<T>(A11Buff, A11BuffTemp,
                           Ml, Nl,
                           layout, curPivots,
-                          first_non_pivot_row);
+                          first_non_pivot_row,
+                          pivots,
+                          early_non_pivots,
+                          late_pivots
+                          );
+#ifdef DEBUG
+        MPI_Barrier(lu_comm);
+        if (k == chosen_step && rank == print_rank) {
+            std::cout << "Pushed pivots up in A11Buff" << std::endl;
+        }
+#endif
 
 #ifdef CONFLUX_WITH_VALIDATION
         push_pivots_up<T>(A10resultBuff, A11BuffTemp,
@@ -978,12 +1022,39 @@ std::vector<T> LU_rep(T* C, // C is only used when CONFLUX_WITH_VALIDATION
         push_pivots_up<T>(A10Buff, A10BuffTemp,
                           Ml, v,
                           layout, curPivots,
-                          first_non_pivot_row);
+                          first_non_pivot_row,
+                          pivots,
+                          early_non_pivots,
+                          late_pivots
+                          );
+
+#ifdef DEBUG
+        MPI_Barrier(lu_comm);
+        if (k == chosen_step && rank == print_rank) {
+            std::cout << "Pushed pivots up in A10Buff" << std::endl;
+                    std::cout << "curPivots before pushing pivots up" << std::endl;
+                    print_matrix(curPivots.data(),
+                                 0, 1,
+                                 0, v + 1,
+                                 v + 1);
+                    std::cout << "first non pivot row = " << first_non_pivot_row << std::endl;
+                    std::cout << "Ml = " << Ml << std::endl;
+            std::cout << "gri = ";
+            for (int i = first_non_pivot_row; i < Ml; ++i) {
+                std::cout << gri[i] << ", ";
+            }
+            std::cout << std::endl;
+        }
+#endif
 
         push_pivots_up<int>(gri, griTemp,
                             Ml, 1,
                             layout, curPivots,
-                            first_non_pivot_row);
+                            first_non_pivot_row,
+                            pivots,
+                            early_non_pivots,
+                            late_pivots
+                            );
         PL();
 
         igri.clear();
@@ -992,6 +1063,10 @@ std::vector<T> LU_rep(T* C, // C is only used when CONFLUX_WITH_VALIDATION
         }
 
 #ifdef DEBUG
+        MPI_Barrier(lu_comm);
+        if (k == chosen_step && rank == print_rank) {
+            std::cout << "Finished pushing pivots up" << std::endl;
+        }
         if (debug_level > 1) {
             if (chosen_step == k) {
                 if (pi == 0 && pj == 1 && pk == 0) {
@@ -1065,6 +1140,10 @@ std::vector<T> LU_rep(T* C, // C is only used when CONFLUX_WITH_VALIDATION
 
         ts = te;
 #ifdef DEBUG
+        MPI_Barrier(lu_comm);
+        if (k == chosen_step && rank == print_rank) {
+            std::cout << "Finished step 2" << std::endl;
+        }
         if (debug_level > 0) {
             if (k == chosen_step) {
                 if (rank == print_rank) {
@@ -1114,6 +1193,10 @@ std::vector<T> LU_rep(T* C, // C is only used when CONFLUX_WITH_VALIDATION
         timers[3] += std::chrono::duration_cast<std::chrono::microseconds>(te - ts).count();
 
 #ifdef DEBUG
+        MPI_Barrier(lu_comm);
+        if (k == chosen_step && rank == print_rank) {
+            std::cout << "Finished step 3" << std::endl;
+        }
         if (debug_level > 0) {
             if (k == chosen_step) {
                 if (rank == print_rank) {
@@ -1253,6 +1336,10 @@ std::vector<T> LU_rep(T* C, // C is only used when CONFLUX_WITH_VALIDATION
         timers[4] += std::chrono::duration_cast<std::chrono::microseconds>(te - ts).count();
 
 #ifdef DEBUG
+        MPI_Barrier(lu_comm);
+        if (k == chosen_step && rank == print_rank) {
+            std::cout << "Finished step 4" << std::endl;
+        }
         if (debug_level > 0) {
             if (k == chosen_step) {
                 if (rank == print_rank) {

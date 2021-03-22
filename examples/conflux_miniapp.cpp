@@ -81,11 +81,12 @@ int main(int argc, char *argv[]) {
     }
 
     std::vector<double> C;
+    std::vector<double> Perm; // (params.M * params.M);
     bool display_global_res = 1;
 #ifdef CONFLUX_WITH_VALIDATION
     C = std::vector<double>(params.M * params.N);
+    Perm = std::vector<int>(params.M * params.N);
 #endif
-    std::vector<double> Perm(params.M * params.M);
 
     for (int i = 0; i < n_rep; ++i) {
         PC();
