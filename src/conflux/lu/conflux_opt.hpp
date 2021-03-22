@@ -477,6 +477,8 @@ std::vector<T> LU_rep(T* C, // C is only used when CONFLUX_WITH_VALIDATION
     std::vector<T> A10resultBuff(Ml * Nl);
     std::vector<T> A11BuffTemp(Ml * Nl);
 
+    //TODO: can we handle such a big global pivots vector?
+    std::vector<T> pivotIndsBuff(M);
 #ifdef FINAL_SCALAPACK_LAYOUT
     std::vector<T> ScaLAPACKResultBuff(Ml * Nl);
     MPI_Win res_Win = create_window(lu_comm,
@@ -484,6 +486,13 @@ std::vector<T> LU_rep(T* C, // C is only used when CONFLUX_WITH_VALIDATION
                                     ScaLAPACKResultBuff.size(),
                                     true);
     MPI_Win_fence(0, res_Win);
+    // TODO: This is DEFINITELY suboptimal. We will use two buffers
+    // (pivotIndsBuff and ipvt_g) to recreate local scalapack ipvt
+    // Hopefully, it won't impact performance much.
+    std::vector<T> ipvt_g(M);
+    // initially, ipvt_g contains consecutive integers (0, 1, ..., M-1)
+    // then, we will recreate this ipvt permutations 
+    std::iota (std::begin(ipvt_g), std::end(ipvt_g), 0); 
 #endif
 
     // global row indices
@@ -507,10 +516,7 @@ std::vector<T> LU_rep(T* C, // C is only used when CONFLUX_WITH_VALIDATION
 
     std::vector<T> pivotBuff(Ml * v);
 
-    //#ifdef CONFLUX_WITH_VALIDATION
-    //TODO: can we handle such a big global pivots vector?
-    std::vector<T> pivotIndsBuff(M);
-    //#endif
+    
     std::vector<T> candidatePivotBuff(Ml * (v + 1));
     std::vector<T> candidatePivotBuffPerm(Ml * (v + 1));
     std::vector<int> perm(std::max(2 * v, Ml));  // rows
@@ -1320,15 +1326,7 @@ std::vector<T> LU_rep(T* C, // C is only used when CONFLUX_WITH_VALIDATION
                         &A01Buff[0],  // A01
                         lld_A01);     // leading dim of A01
             PL();
-
-
-            #ifdef FINAL_SCALAPACK_LAYOUT
-                // update scalapack's ipvt vector based on local row pivots (curPivots[0:v])
-                // and their order (curPivots[v:2v])
-                for (int i = 0; i < v; i++) {
-                    ipvt[i + loff] = pivotIndsBuff[k*v + i];
-                }
-            #endif
+            
 
 #ifdef DEBUG
             if (debug_level > 1) {
@@ -1450,6 +1448,17 @@ std::vector<T> LU_rep(T* C, // C is only used when CONFLUX_WITH_VALIDATION
 #endif
 
 #ifdef FINAL_SCALAPACK_LAYOUT
+        // INEFFICIENT! But should be cheap
+        for (int i = 0; i < v; i++) {
+            std::swap(ipvt_g[k*v + i], ipvt_g[pivotIndsBuff[k*v + i]]);            
+        }
+        if (pi == k % Px) {
+            for (int i = 0; i < v; i++) {
+                ipvt[i + loff] = pivotIndsBuff[k*v + i];
+            }
+        }
+
+
         int locK = k / Py;
         // A10
         if (k > 0) {
