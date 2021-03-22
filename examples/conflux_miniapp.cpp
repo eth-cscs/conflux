@@ -81,19 +81,25 @@ int main(int argc, char *argv[]) {
     }
 
     std::vector<double> C;
+    std::vector<double> Perm;
+    
     bool display_global_res = 1;
 #ifdef CONFLUX_WITH_VALIDATION
     C = std::vector<double>(params.M * params.N);
+    Perm = std::vector<double>(params.M * params.N);
 #endif
-    std::vector<double> Perm(params.M * params.M);
+    
 
     for (int i = 0; i < n_rep; ++i) {
         PC();
         // reinitialize the matrix
         params.InitMatrix();
+        // TODO: check datatype! If uint is large enough
+        std::vector<uint> ipvt(params.Ml);
         auto resultBuff = conflux::LU_rep<double>(
                                C.data(), 
                                Perm.data(), 
+                               ipvt.data(),
                                params);
 #ifdef CONFLUX_WITH_VALIDATION
 
@@ -118,6 +124,10 @@ int main(int argc, char *argv[]) {
                     std::cout << "Rank [" << pi << ", " << pj << ", " << pk << "], local final result:\n";
                     conflux::print_matrix(resultBuff.data(), 0, M / params.Px, 0, N / params.Py, N / params.Py);
                     std::cout << std::flush;
+                    std::cout << "ipvt:\n";
+                    conflux::print_matrix(ipvt.data(), 0, 1, 0, params.Ml, params.Ml);
+                    std::cout << std::flush;
+                    
                 }
                 MPI_Barrier(MPI_COMM_WORLD);
             }

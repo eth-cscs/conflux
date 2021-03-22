@@ -422,7 +422,8 @@ g2lnoTile(std::vector<int> &grows, int Px, int v) {
 
 template <class T>
 std::vector<T> LU_rep(T* C, // C is only used when CONFLUX_WITH_VALIDATION
-                      T *PP,
+                      T *PP, // C is only used when CONFLUX_WITH_VALIDATION
+                      uint *ipvt,
                       lu_params<T> &gv) {
     PC();
     PE(init);
@@ -505,7 +506,11 @@ std::vector<T> LU_rep(T* C, // C is only used when CONFLUX_WITH_VALIDATION
     int first_non_pivot_row = 0;
 
     std::vector<T> pivotBuff(Ml * v);
+
+    //#ifdef CONFLUX_WITH_VALIDATION
+    //TODO: can we handle such a big global pivots vector?
     std::vector<T> pivotIndsBuff(M);
+    //#endif
     std::vector<T> candidatePivotBuff(Ml * (v + 1));
     std::vector<T> candidatePivotBuffPerm(Ml * (v + 1));
     std::vector<int> perm(std::max(2 * v, Ml));  // rows
@@ -1102,7 +1107,7 @@ std::vector<T> LU_rep(T* C, // C is only used when CONFLUX_WITH_VALIDATION
                 auto dest_dspls = curPivots[v + 1 + i] * (Nl - loff);
                 MPI_Put(&A01BuffTemp[i * (Nl - loff)], Nl - loff, MPI_DOUBLE,
                         p_rcv, dest_dspls, Nl - loff, MPI_DOUBLE,
-                        A01Win);
+                        A01Win);                
             }
         }
         MPI_Win_fence(0, A01Win);
@@ -1315,6 +1320,15 @@ std::vector<T> LU_rep(T* C, // C is only used when CONFLUX_WITH_VALIDATION
                         &A01Buff[0],  // A01
                         lld_A01);     // leading dim of A01
             PL();
+
+
+            #ifdef FINAL_SCALAPACK_LAYOUT
+                // update scalapack's ipvt vector based on local row pivots (curPivots[0:v])
+                // and their order (curPivots[v:2v])
+                for (int i = 0; i < v; i++) {
+                    ipvt[i + loff] = pivotIndsBuff[k*v + i];
+                }
+            #endif
 
 #ifdef DEBUG
             if (debug_level > 1) {
