@@ -1027,7 +1027,11 @@ std::vector<T> LU_rep(T* C, // C is only used when CONFLUX_WITH_VALIDATION
         push_pivots_up<T>(A10resultBuff, A11BuffTemp,
                           Ml, Nl,
                           layout, curPivots,
-                          first_non_pivot_row);
+                          first_non_pivot_row,
+                          pivots,
+                          early_non_pivots,
+                          late_pivots
+                          );
 #endif
 
         push_pivots_up<T>(A10Buff, A10BuffTemp,
