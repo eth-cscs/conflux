@@ -213,8 +213,8 @@ void analyze_pivots(int first_non_pivot_row,
                     int n_rows,
                     std::vector<int>& curPivots,
                     std::vector<bool>& pivots,
-                    std::vector<bool>& early_non_pivots,
-                    std::vector<bool>& late_pivots
+                    std::vector<int>& early_non_pivots,
+                    std::vector<int>& late_pivots
                     ) {
     if (first_non_pivot_row > n_rows)
         return;
@@ -266,8 +266,8 @@ void push_pivots_up(std::vector<T> &in, std::vector<T> &temp,
                     std::vector<int> &curPivots,
                     int first_non_pivot_row,
                     std::vector<bool>& pivots,
-                    std::vector<bool>& early_non_pivots,
-                    std::vector<bool>& late_pivots
+                    std::vector<int>& early_non_pivots,
+                    std::vector<int>& late_pivots
                     ) {
     if (n_rows == 0 || n_cols == 0 || first_non_pivot_row > n_rows)
         return;
@@ -541,9 +541,9 @@ std::vector<T> LU_rep(T* C, // C is only used when CONFLUX_WITH_VALIDATION
     std::vector<int> ipiv(std::max(2 * v, Ml));
 
     std::vector<bool> pivots(Ml);
-    std::vector<bool> early_non_pivots;
+    std::vector<int> early_non_pivots;
     early_non_pivots.reserve(v);
-    std::vector<bool> late_pivots;
+    std::vector<int> late_pivots;
     late_pivots.reserve(v);
 
     // 0 = num of pivots

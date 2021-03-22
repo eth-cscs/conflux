@@ -44,7 +44,6 @@ TEST(push_pivots_up, row_major) {
     // curPivots[0] is the number of local pivots
     // (i.e. the size of the array)
     int v = 4;
-    int Ml = 8;
     std::vector<int> curPivots = {3, 2, 1, 5};
 
     // temporary matrix
@@ -57,13 +56,13 @@ TEST(push_pivots_up, row_major) {
     std::cout << "Input matrix:" << std::endl;
     std::cout << in_mat.to_string() << std::endl;
 
-    std::vector<bool> pivots(Ml);
-    std::vector<bool> early_non_pivots;
+    std::vector<bool> pivots(n);
+    std::vector<int> early_non_pivots;
     early_non_pivots.reserve(v);
-    std::vector<bool> late_pivots;
+    std::vector<int> late_pivots;
     late_pivots.reserve(v);
 
-    conflux::analyze_pivots(first_non_pivot_row, Ml,
+    conflux::analyze_pivots(first_non_pivot_row, n,
                             curPivots, pivots, early_non_pivots, late_pivots);
     // in-place pushing pivots up
     conflux::push_pivots_up<int>(in, in_temp, 
