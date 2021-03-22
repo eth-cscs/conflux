@@ -216,7 +216,7 @@ void analyze_pivots(int first_non_pivot_row,
                     std::vector<int>& early_non_pivots,
                     std::vector<int>& late_pivots
                     ) {
-    if (first_non_pivot_row > n_rows)
+    if (first_non_pivot_row >= n_rows)
         return;
     // clear up from previous step
     early_non_pivots.clear();
@@ -269,7 +269,7 @@ void push_pivots_up(std::vector<T> &in, std::vector<T> &temp,
                     std::vector<int>& early_non_pivots,
                     std::vector<int>& late_pivots
                     ) {
-    if (n_rows == 0 || n_cols == 0 || first_non_pivot_row > n_rows)
+    if (n_rows == 0 || n_cols == 0 || first_non_pivot_row >= n_rows)
         return;
 
 #pragma omp parallel for shared(curPivots, in, n_cols, temp)
@@ -1094,8 +1094,7 @@ std::vector<T> LU_rep(T* C, // C is only used when CONFLUX_WITH_VALIDATION
         first_non_pivot_row += curPivots[0];
         n_local_active_rows -= curPivots[0];
 
-        if (n_local_active_rows < 0)
-            break;
+        if (n_local_active_rows < 0) continue;
 
         // for A01Buff
         // TODO: NOW: reduce pivot rows: curPivots[0] x (Nl-loff)
