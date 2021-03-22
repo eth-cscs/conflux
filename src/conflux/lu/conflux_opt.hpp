@@ -267,7 +267,7 @@ void push_pivots_up(std::vector<T> &in, std::vector<T> &temp,
                     std::vector<bool>& early_non_pivots,
                     std::vector<bool>& late_pivots
                     ) {
-    if (n_rows == 0 || n_cols == 0 || first_non_pivot_row >= n_rows)
+    if (n_rows == 0 || n_cols == 0 || first_non_pivot_row <= n_rows)
         return;
 
 #pragma omp parallel for shared(curPivots, in, n_cols, temp)
@@ -1032,18 +1032,6 @@ std::vector<T> LU_rep(T* C, // C is only used when CONFLUX_WITH_VALIDATION
         MPI_Barrier(lu_comm);
         if (k == chosen_step && rank == print_rank) {
             std::cout << "Pushed pivots up in A10Buff" << std::endl;
-                    std::cout << "curPivots before pushing pivots up" << std::endl;
-                    print_matrix(curPivots.data(),
-                                 0, 1,
-                                 0, v + 1,
-                                 v + 1);
-                    std::cout << "first non pivot row = " << first_non_pivot_row << std::endl;
-                    std::cout << "Ml = " << Ml << std::endl;
-            std::cout << "gri = ";
-            for (int i = first_non_pivot_row; i < Ml; ++i) {
-                std::cout << gri[i] << ", ";
-            }
-            std::cout << std::endl;
         }
 #endif
 
