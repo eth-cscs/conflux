@@ -164,7 +164,31 @@ public:
         // into A10Buff, causing wrong results
         if (pk != 0) return;
 
-        if (N == 16 && M == 16) {
+        if (N == 9 && M == 9) {
+            std::vector<T> generator = {
+                1.0,  1.2,  1.4,  1.6,  1.8,  2.0,  2.2,  2.4,  2.6,  
+                1.2,  1.0,  1.2,  1.4,  1.6,  1.8,  2.0,  2.2,  2.4,  
+                1.4,  1.2,  1.0,  1.2,  1.4,  1.6,  1.8,  2.0,  2.2,  
+                1.6,  1.4,  1.2,  1.0,  1.2,  1.4,  1.6,  1.8,  2.0,  
+                1.8,  1.6,  1.4,  1.2,  1.0,  1.2,  1.4,  1.6,  1.8,  
+                2.0,  1.8,  1.6,  1.4,  1.2,  1.0,  1.2,  1.4,  1.6,  
+                2.2,  2.0,  1.8,  1.6,  1.4,  1.2,  1.0,  1.2,  1.4,  
+                2.4,  2.2,  2.0,  1.8,  1.6,  1.4,  1.2,  1.0,  1.2,  
+                2.6,  2.4,  2.2,  2.0,  1.8,  1.6,  1.4,  1.2,  1.0  };
+
+            full_matrix = generator;
+
+            // define lambda function for initialization
+            int lld = N;
+            auto f = [&generator, &lld](int i, int j) -> T {
+                auto value = generator[i * lld + j];
+                return value;
+            };
+
+            matrix.initialize(f);
+
+        }
+        else if (N == 16 && M == 16) {
             std::vector<T> generator = {
                 1, 8, 2, 7, 3, 8, 2, 4, 8, 7, 5, 5, 1, 4, 4, 9,
                 8, 4, 9, 2, 8, 6, 9, 9, 3, 7, 7, 7, 8, 7, 2, 8,
