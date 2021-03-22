@@ -80,7 +80,6 @@ public:
     uint32_t N;      //!< input matrix dimension
     uint32_t l;      //!< number of columns in a sub-tile
     TileIndex Kappa; //!< number of tiles along row or cols-dimension of matrix
-    bool smallerBroadcast; //!< this flag indicates whether or not broadcast of A00 should be sent to all processors
 };
 
 } // namespace conflux
