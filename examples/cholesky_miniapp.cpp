@@ -41,7 +41,7 @@
 
 #include <mpi.h>
 #include <cxxopts.hpp>
-#include <semiprof/semiprof.hpp>
+//#include <semiprof/semiprof.hpp>
 
 #include "conflux/cholesky/CholeskyTypes.h"
 #include "conflux/cholesky/Cholesky.h"
@@ -138,9 +138,9 @@ int main(int argc, char *argv[])
     for (size_t i = 0; i < runs; ++i) {
         // initialize the factorization from the ground for every iteration
         conflux::initialize(argc, argv, N, v, grid);
-        if (rank == 0) {
-            semiprof::profiler_clear();
-        }
+        //if (rank == 0) {
+        //    semiprof::profiler_clear();
+        //}
         MPI_Barrier(MPI_COMM_WORLD);
 
         // this is the part of the code that will be benchmarked
@@ -150,9 +150,9 @@ int main(int argc, char *argv[])
         auto end = std::chrono::high_resolution_clock::now();
         double timeMs = std::chrono::duration_cast<std::chrono::milliseconds>(end-start).count();
 
-        if (rank == 0) {
-            std::cout << semiprof::profiler_summary() << std::endl;
-        }
+        //if (rank == 0) {
+        //    std::cout << semiprof::profiler_summary() << std::endl;
+        //}
         // finalize the library, and if successful, push timing back in the vector
         conflux::finalize(true);
         timings.push_back(timeMs);
