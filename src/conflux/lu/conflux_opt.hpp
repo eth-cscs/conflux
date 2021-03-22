@@ -439,7 +439,7 @@ g2lnoTile(std::vector<int> &grows, int Px, int v) {
 template <class T>
 std::vector<T> LU_rep(T* C, // C is only used when CONFLUX_WITH_VALIDATION
                       T *PP, // C is only used when CONFLUX_WITH_VALIDATION
-                      uint *ipvt,
+                      std::size_t *ipvt,
                       lu_params<T> &gv) {
     PC();
     PE(init);

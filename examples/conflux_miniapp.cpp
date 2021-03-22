@@ -94,7 +94,7 @@ int main(int argc, char *argv[]) {
         // reinitialize the matrix
         params.InitMatrix();
         // TODO: check datatype! If uint is large enough
-        std::vector<uint> ipvt(params.Ml);
+        std::vector<std::size_t> ipvt(params.Ml);
         auto resultBuff = conflux::LU_rep<double>(
                                C.data(), 
                                Perm.data(), 
