@@ -216,6 +216,8 @@ void analyze_pivots(int first_non_pivot_row,
                     std::vector<bool>& early_non_pivots,
                     std::vector<bool>& late_pivots
                     ) {
+    if (first_non_pivot_row > n_rows)
+        return;
     // clear up from previous step
     early_non_pivots.clear();
     late_pivots.clear();
@@ -267,7 +269,7 @@ void push_pivots_up(std::vector<T> &in, std::vector<T> &temp,
                     std::vector<bool>& early_non_pivots,
                     std::vector<bool>& late_pivots
                     ) {
-    if (n_rows == 0 || n_cols == 0 || first_non_pivot_row <= n_rows)
+    if (n_rows == 0 || n_cols == 0 || first_non_pivot_row > n_rows)
         return;
 
 #pragma omp parallel for shared(curPivots, in, n_cols, temp)
