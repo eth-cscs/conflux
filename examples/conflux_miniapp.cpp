@@ -81,6 +81,7 @@ int main(int argc, char *argv[]) {
     }
 
     std::vector<double> C;
+    bool display_global_res = 1;
 #ifdef CONFLUX_WITH_VALIDATION
     C = std::vector<double>(params.M * params.N);
 #endif
@@ -95,17 +96,34 @@ int main(int argc, char *argv[]) {
                                Perm.data(), 
                                params);
 #ifdef CONFLUX_WITH_VALIDATION
+
 #ifdef FINAL_SCALAPACK_LAYOUT
-    MPI_Barrier(MPI_COMM_WORLD);    
-    for (int p = 0; p < P; p++) {
-        if (rank == p){
-            std::cout << "Rank " << rank << "/" << P << ", local final result:\n";
-            conflux::print_matrix(resultBuff.data(), 0, M/params.Px, 0, N/params.Py, N/params.Py);
-            std::cout << std::flush;
-        }        
-        MPI_Barrier(MPI_COMM_WORLD);    
-    }
-#else
+        MPI_Barrier(MPI_COMM_WORLD);        
+        int Px = params.Px;
+        int Py = params.Py;
+        int Pz = params.Pz;
+        MPI_Comm lu_comm;
+        int dim[] = {Px, Py, Pz};  // 3D processor grid
+        int period[] = {0, 0, 0};
+        int reorder = 1;
+        MPI_Cart_create(MPI_COMM_WORLD, 3, dim, period, reorder, &lu_comm);
+
+        int rank;
+        MPI_Comm_rank(lu_comm, &rank);
+        int pi, pj, pk;
+        std::tie(pi, pj, pk) = conflux::p2X(lu_comm, rank);
+        for (int pii = 0; pii < Px; pii++) {
+            for (int pjj = 0; pjj < Py; pjj++) {
+                if (pi == pii && pj == pjj && pk == 0) {
+                    std::cout << "Rank [" << pi << ", " << pj << ", " << pk << "], local final result:\n";
+                    conflux::print_matrix(resultBuff.data(), 0, M / params.Px, 0, N / params.Py, N / params.Py);
+                    std::cout << std::flush;
+                }
+                MPI_Barrier(MPI_COMM_WORLD);
+            }
+        }
+#endif
+if (display_global_res == 1) {
         if (rank == 0) {
             auto M = params.M;
             auto N = params.N;
@@ -153,7 +171,7 @@ int main(int argc, char *argv[]) {
             norm = std::sqrt(norm);
             std::cout << "residual: " << norm << std::endl;
         }
-#endif
+}
 #endif
     }
     // print the profiler data

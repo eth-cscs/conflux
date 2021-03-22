@@ -1453,23 +1453,33 @@ std::vector<T> LU_rep(T* C, // C is only used when CONFLUX_WITH_VALIDATION
                     int dest_pi = k % Px;
                     int dest_p = X2p(lu_comm, dest_pi, pj, layrK);
                     int dest_row_offset = (i + locK * v) * Nl;
-
-                    if (k == 1) {
-                        std::cout << "\nRank [" << pi << ", " << pj << ", " << pk << "] " << 
-                        " -> [" << dest_pi << ", " << pj << ", " << pk << "] " 
-                        " A10_row_offset: " << A10_row_offset<< ", " << " dest_row_offset: " <<
-                            dest_row_offset << ", A10resultBuff: \n";
-                            print_matrix(A10resultBuff.data(), 0, 2*v,
-                                    0, Nl,
-                                    Nl);
-                    }
                     
-                    MPI_Put(&A10resultBuff[A10_row_offset], locK * v, MPI_DOUBLE,
+                    if (dest_pi > pj) {
+                        MPI_Put(&A10resultBuff[A10_row_offset], (locK+1) * v, MPI_DOUBLE,
+                            dest_p, dest_row_offset, (locK+1) * v, MPI_DOUBLE,
+                            res_Win);
+                    }
+                    else {
+                        MPI_Put(&A10resultBuff[A10_row_offset], locK * v, MPI_DOUBLE,
                             dest_p, dest_row_offset, locK * v, MPI_DOUBLE,
                             res_Win);
+                    }
+                    
                 }
             }
         }
+
+        #ifdef DEBUG
+        MPI_Win_fence(0, res_Win);    
+        if (k > 0 && pi == 2 && pj == 0 && pk == layrK && ScaLAPACKResultBuff[3] > -6.4) { 
+                std::cout << "\nk= " << k <<", rank [" << pi << ", " << pj << ", " << pk << "] (" << rank << ") " << 
+                        ", ScaLAPACKResultBuff: \n";
+                        print_matrix(ScaLAPACKResultBuff.data(), 0, Nl,
+                                0, Nl,
+                                Nl);
+        }
+        
+        #endif
 
         // A01 and A00: these are the ranks that own the pivot data in this round
         if (pk == layrK && pi == k % Px) {
@@ -1477,13 +1487,21 @@ std::vector<T> LU_rep(T* C, // C is only used when CONFLUX_WITH_VALIDATION
             if (k < Nt - 1) {
                 // due to the column densification of A01, we now need to know how many columns does A01 have
                 int A01cols = Nl - v * (k / Py);
-
                 // offsets in resultBuff
                 int rowOffset = Nl * v * locK;
-                int colOffset = v * locK;
-                parallel_mcopy<T>(v, Nl - loff,
+                int colOffset;
+                if (pi > pj) {
+                    colOffset = v * (locK + 1);
+                    parallel_mcopy<T>(v, Nl - loff - v,
+                                  &A01Buff[v], A01cols,
+                                  &ScaLAPACKResultBuff[rowOffset + colOffset], Nl);
+                }
+                else {
+                    colOffset = v * locK;
+                    parallel_mcopy<T>(v, Nl - loff,
                                   &A01Buff[0], A01cols,
                                   &ScaLAPACKResultBuff[rowOffset + colOffset], Nl);
+                }
             }
 
             // # -- A00 -- #
