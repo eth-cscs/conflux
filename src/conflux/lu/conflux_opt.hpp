@@ -1062,11 +1062,6 @@ std::vector<T> LU_rep(T* C, // C is only used when CONFLUX_WITH_VALIDATION
                             );
         PL();
 
-        igri.clear();
-        for (int i = 0; i < Ml; ++i) {
-            igri[gri[i]] = i;
-        }
-
 #ifdef DEBUG
         MPI_Barrier(lu_comm);
         if (k == chosen_step && rank == print_rank) {
@@ -1093,6 +1088,10 @@ std::vector<T> LU_rep(T* C, // C is only used when CONFLUX_WITH_VALIDATION
 
         first_non_pivot_row += curPivots[0];
         n_local_active_rows -= curPivots[0];
+
+        for (int i = first_non_pivot_row; i < Ml; ++i) {
+            igri[gri[i]] = i;
+        }
 
         if (n_local_active_rows < 0) continue;
 
