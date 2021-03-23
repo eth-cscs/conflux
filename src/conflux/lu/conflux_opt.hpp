@@ -470,7 +470,7 @@ std::vector<T> LU_rep(T* C, // C is only used when CONFLUX_WITH_VALIDATION
     MPI_Comm jk_comm = gv.jk_comm;
     MPI_Comm k_comm = gv.k_comm;
 
-    auto chosen_step = Nt - 1;
+    auto chosen_step = Nt; // - 1;
     // auto debug_level = 0;
     //auto chosen_step = 90;
     auto debug_level = 0;
@@ -872,7 +872,6 @@ std::vector<T> LU_rep(T* C, // C is only used when CONFLUX_WITH_VALIDATION
             std::copy_n(&gpivots[0], v, &pivotIndsBuff[k * v]);
             PL();
 
-            /*
             PE(step1_A00Buff_isend);
             // send A00 to pi = k % sqrtp1 && pk = layrK
             // pj = k % sqrtp1; pk = layrK
@@ -907,8 +906,6 @@ std::vector<T> LU_rep(T* C, // C is only used when CONFLUX_WITH_VALIDATION
             }
         }
         PL();
-        */
-        }
 
 #ifdef DEBUG
         MPI_Barrier(lu_comm);
@@ -929,10 +926,12 @@ std::vector<T> LU_rep(T* C, // C is only used when CONFLUX_WITH_VALIDATION
         auto root = X2p(jk_comm, k % Py, layrK);
 
         // # Sending A00Buff:
+        /*
             PE(step1_A00Buff_bcast);
             MPI_Request A00_bcast_req;
             MPI_Ibcast(&A00Buff[0], v * v, MPI_DOUBLE, root, jk_comm, &A00_bcast_req);
             PL();
+            */
 
         // sending pivotIndsBuff
         PE(step1_pivotIndsBuff);
@@ -1215,16 +1214,16 @@ std::vector<T> LU_rep(T* C, // C is only used when CONFLUX_WITH_VALIDATION
 
         ts = te;
 
+        /*
             PE(step1_A00Buff_bcast);
             MPI_Wait(&A00_bcast_req, MPI_STATUS_IGNORE);
             PL();
-        /*
+            */
         PE(step1_A00Buff_waitall);
         if (n_A00_reqs > 0) {
             MPI_Waitall(n_A00_reqs, &A00_req[0], MPI_STATUSES_IGNORE);
         }
         PL();
-            */
 
         // if (n_local_active_rows <= 0) continue;
 
