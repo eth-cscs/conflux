@@ -622,10 +622,10 @@ std::vector<T> LU_rep(T* C, // C is only used when CONFLUX_WITH_VALIDATION
     for (auto k = 0; k < Nt; ++k) {
         bool last_step = k == Nt - 1;
 #ifdef DEBUG
-        if (debug_level > 1) {
+        if (debug_level > 1 && print_rank == rank) {
             std::cout << "Iteration = " << k << std::endl;
-            MPI_Barrier(lu_comm);
         }
+        MPI_Barrier(lu_comm);
 #endif
         if (k == chosen_step + 1)
             break;
