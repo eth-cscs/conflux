@@ -1493,15 +1493,21 @@ std::vector<T> LU_rep(T* C, // C is only used when CONFLUX_WITH_VALIDATION
         }
 
         #ifdef DEBUG
-        MPI_Win_fence(0, res_Win);    
-        if (k > 0 && pi == 2 && pj == 0 && pk == layrK && ScaLAPACKResultBuff[3] > -6.4) { 
-                std::cout << "\nk= " << k <<", rank [" << pi << ", " << pj << ", " << pk << "] (" << rank << ") " << 
-                        ", ScaLAPACKResultBuff: \n";
-                        print_matrix(ScaLAPACKResultBuff.data(), 0, Nl,
-                                0, Nl,
-                                Nl);
+        // MPI_Win_fence(0, res_Win);    
+        // if (k > 0 && pi == 2 && pj == 0 && pk == layrK && ScaLAPACKResultBuff[3] > -6.4) { 
+        //         std::cout << "\nk= " << k <<", rank [" << pi << ", " << pj << ", " << pk << "] (" << rank << ") " << 
+        //                 ", ScaLAPACKResultBuff: \n";
+        //                 print_matrix(ScaLAPACKResultBuff.data(), 0, Nl,
+        //                         0, Nl,
+        //                         Nl);
+        // }
+        #endif
+
+        #ifdef DEBUG
+        if (pj == k % Py) {
+            std::cout << "\nk= " << k <<", rank [" << pi << ", " << pj << ", " << pk << "] (" << rank << ") " << 
+                     ", n_local_active_rows: " << n_local_active_rows << "\n";
         }
-        
         #endif
 
         // A01 and A00: these are the ranks that own the pivot data in this round
