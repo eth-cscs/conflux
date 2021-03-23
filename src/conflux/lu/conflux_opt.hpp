@@ -872,6 +872,7 @@ std::vector<T> LU_rep(T* C, // C is only used when CONFLUX_WITH_VALIDATION
             std::copy_n(&gpivots[0], v, &pivotIndsBuff[k * v]);
             PL();
 
+            /*
             PE(step1_A00Buff_isend);
             // send A00 to pi = k % sqrtp1 && pk = layrK
             // pj = k % sqrtp1; pk = layrK
@@ -906,6 +907,8 @@ std::vector<T> LU_rep(T* C, // C is only used when CONFLUX_WITH_VALIDATION
             }
         }
         PL();
+        */
+        }
 
 #ifdef DEBUG
         MPI_Barrier(lu_comm);
@@ -926,12 +929,10 @@ std::vector<T> LU_rep(T* C, // C is only used when CONFLUX_WITH_VALIDATION
         auto root = X2p(jk_comm, k % Py, layrK);
 
         // # Sending A00Buff:
-        /*
             PE(step1_A00Buff_bcast);
             MPI_Request A00_bcast_req;
             MPI_Ibcast(&A00Buff[0], v * v, MPI_DOUBLE, root, jk_comm, &A00_bcast_req);
             PL();
-            */
 
         // sending pivotIndsBuff
         PE(step1_pivotIndsBuff);
@@ -1093,8 +1094,6 @@ std::vector<T> LU_rep(T* C, // C is only used when CONFLUX_WITH_VALIDATION
             igri[gri[i]] = i;
         }
 
-        if (n_local_active_rows < 0) continue;
-
         // for A01Buff
         // TODO: NOW: reduce pivot rows: curPivots[0] x (Nl-loff)
         //
@@ -1169,6 +1168,7 @@ std::vector<T> LU_rep(T* C, // C is only used when CONFLUX_WITH_VALIDATION
         // # here, only processors pk == layrK participate      #
         // # -------------------------------------------------- #
         PE(step3_put);
+        MPI_Win_fence(0, A01Win);
         if (pk == layrK) {
             // curPivOrder[i] refers to the target
             auto p_rcv = X2p(lu_comm, k % Px, pj, layrK);
@@ -1181,7 +1181,9 @@ std::vector<T> LU_rep(T* C, // C is only used when CONFLUX_WITH_VALIDATION
             //     }
 
             for (int i = 0; i < curPivots[0]; ++i) {
-                auto dest_dspls = curPivots[v + 1 + i] * (Nl - loff);
+                int curPivOrder = curPivots[v+1+i];
+                assert(curPivOrder >= 0 && curPivOrder < v);
+                auto dest_dspls = curPivOrder * (Nl - loff);
                 MPI_Put(&A01BuffTemp[i * (Nl - loff)], Nl - loff, MPI_DOUBLE,
                         p_rcv, dest_dspls, Nl - loff, MPI_DOUBLE,
                         A01Win);                
@@ -1213,38 +1215,40 @@ std::vector<T> LU_rep(T* C, // C is only used when CONFLUX_WITH_VALIDATION
 
         ts = te;
 
-        MPI_Request reqs[Pz * (Px + Py) + 2];
-        int req_id = 0;
-
-        ts = te;
-
-        /*
             PE(step1_A00Buff_bcast);
             MPI_Wait(&A00_bcast_req, MPI_STATUS_IGNORE);
             PL();
-            */
+        /*
         PE(step1_A00Buff_waitall);
         if (n_A00_reqs > 0) {
             MPI_Waitall(n_A00_reqs, &A00_req[0], MPI_STATUSES_IGNORE);
         }
         PL();
+            */
 
-        // RECEIVE FROM STEP 4
-        auto p_send = X2p(lu_comm, pi, k % Py, layrK);
-        int size = nlayr * n_local_active_rows;  // nlayr = v / c
+        // if (n_local_active_rows <= 0) continue;
 
-        if (p_send != rank) {
-            PE(step4_comm);
-            MPI_Irecv(&A10BuffRcv[0], size, MPI_DOUBLE,
-                      p_send, 5, lu_comm, &reqs[req_id]);
-            ++req_id;
-            PL();
+        MPI_Request reqs[Pz * (Px + Py) + 2];
+        int req_id = 0;
+
+        if (n_local_active_rows > 0) {
+            // RECEIVE FROM STEP 4
+            auto p_send = X2p(lu_comm, pi, k % Py, layrK);
+            int size = nlayr * n_local_active_rows;  // nlayr = v / c
+
+            if (p_send != rank) {
+                PE(step4_comm);
+                MPI_Irecv(&A10BuffRcv[0], size, MPI_DOUBLE,
+                          p_send, 5, lu_comm, &reqs[req_id]);
+                ++req_id;
+                PL();
+            }
         }
 
         // # ---------------------------------------------- #
         // # 4. compute A10 and broadcast it to A10BuffRecv #
         // # ---------------------------------------------- #
-        if (pk == layrK && pj == k % Py) {
+        if (pk == layrK && pj == k % Py && n_local_active_rows > 0) {
             // # this could basically be a sparse-dense A10 = A10 * U^(-1)   (BLAS tiangular solve) with A10 sparse and U dense
             // however, since we are ignoring the mask, it's dense, potentially with more computation than necessary.
 #ifdef DEBUG
@@ -1356,8 +1360,8 @@ std::vector<T> LU_rep(T* C, // C is only used when CONFLUX_WITH_VALIDATION
 #endif
 
         // RECEIVE FROM STEP 5
-        p_send = X2p(lu_comm, k % Px, pj, layrK);
-        size = nlayr * (Nl - loff);  // nlayr = v / c
+        auto p_send = X2p(lu_comm, k % Px, pj, layrK);
+        auto size = nlayr * (Nl - loff);  // nlayr = v / c
         // if non-local, receive it
         if (p_send != rank) {
             PE(step5_irecv);
@@ -1405,7 +1409,6 @@ std::vector<T> LU_rep(T* C, // C is only used when CONFLUX_WITH_VALIDATION
                         &A01Buff[0],  // A01
                         lld_A01);     // leading dim of A01
             PL();
-            
 
 #ifdef DEBUG
             if (debug_level > 1) {
@@ -1495,11 +1498,13 @@ std::vector<T> LU_rep(T* C, // C is only used when CONFLUX_WITH_VALIDATION
         // 2. A10BuffRcv is column-major
         // 3. A01BuffTemp is densified and leading dimensions = Nl-loff, row-major
         PE(step6_dgemm);
-        cblas_dgemm(CblasRowMajor, CblasNoTrans, CblasNoTrans,
-                    n_local_active_rows, Nl - loff, nlayr,
-                    -1.0, &A10BuffRcv[0], nlayr,
-                    &A01BuffRcv[0], Nl - loff,
-                    1.0, &A11Buff[first_non_pivot_row * Nl + loff], Nl);
+        if (n_local_active_rows > 0) {
+            cblas_dgemm(CblasRowMajor, CblasNoTrans, CblasNoTrans,
+                        n_local_active_rows, Nl - loff, nlayr,
+                        -1.0, &A10BuffRcv[0], nlayr,
+                        &A01BuffRcv[0], Nl - loff,
+                        1.0, &A11Buff[first_non_pivot_row * Nl + loff], Nl);
+        }
         PL();
 
         te = std::chrono::high_resolution_clock::now();
