@@ -40,10 +40,10 @@ TEST(push_pivots_up, row_major) {
     // matrix layout (row/col major)
     auto layout = conflux::order::row_major;
 
-
     // current (local) pivots
     // curPivots[0] is the number of local pivots
     // (i.e. the size of the array)
+    int v = 4;
     std::vector<int> curPivots = {3, 2, 1, 5};
 
     // temporary matrix
@@ -56,10 +56,19 @@ TEST(push_pivots_up, row_major) {
     std::cout << "Input matrix:" << std::endl;
     std::cout << in_mat.to_string() << std::endl;
 
+    std::vector<bool> pivots(n);
+    std::vector<int> early_non_pivots;
+    early_non_pivots.reserve(v);
+    std::vector<int> late_pivots;
+    late_pivots.reserve(v);
+
+    conflux::analyze_pivots(first_non_pivot_row, n,
+                            curPivots, pivots, early_non_pivots, late_pivots);
     // in-place pushing pivots up
     conflux::push_pivots_up<int>(in, in_temp, 
                         n, n, layout, 
-                        curPivots, first_non_pivot_row);
+                        curPivots, first_non_pivot_row,
+                        pivots, early_non_pivots, late_pivots);
 
     std::vector<bool> correct_row(n, true);
 

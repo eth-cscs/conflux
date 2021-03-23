@@ -88,7 +88,6 @@ int main(int argc, char *argv[]) {
     C = std::vector<double>(params.M * params.N);
     Perm = std::vector<double>(params.M * params.N);
 #endif
-    
 
     for (int i = 0; i < n_rep; ++i) {
         PC();
