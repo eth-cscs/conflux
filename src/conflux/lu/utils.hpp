@@ -49,7 +49,8 @@ std::vector<S> column(matrix_view<T> mat, int col) {
 template <typename T>
 void permute_rows(matrix_view<T> in, matrix_view<T> out,
                   std::vector<int>& out_perm) {
-    if (in.n_rows <= 0 || out.n_rows <= 0) return;
+    assert(in.n_rows >= 0 && in.n_cols >=0 && out.n_rows >= 0 && out.n_cols >=0);
+    if (in.n_rows == 0 || out.n_rows == 0) return;
     assert(in.n_rows >= out.n_rows);
     assert(in.n_cols >= out.n_cols);
 
@@ -85,7 +86,8 @@ void permute_rows(matrix_view<T> in, matrix_view<T> out,
 template <typename T>
 void inverse_permute_rows(matrix_view<T> in, matrix_view<T> out,
                   std::vector<int>& in_perm) {
-    if (in.n_rows <= 0 || out.n_rows <= 0) return;
+    assert(in.n_rows >= 0 && in.n_cols >= 0 && out.n_rows >= 0 && out.n_cols >= 0);
+    if (in.n_rows == 0 || out.n_rows == 0) return;
     assert(in.n_rows <= in_perm.size());
     assert(in.n_cols >= out.n_cols);
 
@@ -121,7 +123,8 @@ void inverse_permute_rows(T* in, T* out,
                           int n_rows, int n_cols,
                           int new_n_rows, int new_n_cols,
                           order layout, std::vector<int>& perm) {
-    if (n_rows <= 0 || new_n_rows <= 0) return;
+    assert(n_rows >= 0 && n_cols >= 0 && new_n_rows >= 0 && new_n_cols >= 0);
+    if (n_rows == 0 || new_n_rows == 0) return;
     int in_stride = n_cols;
     int out_stride = new_n_cols;
     if (layout == order::col_major) {
@@ -142,7 +145,8 @@ void permute_rows(T* in, T* out,
                   int n_rows, int n_cols,
                   int new_n_rows, int new_n_cols,
                   order layout, std::vector<int>& perm) {
-    if (n_rows <= 0 || new_n_rows <= 0) return;
+    assert(n_rows >= 0 && n_cols >= 0 && new_n_rows >= 0 && new_n_cols >= 0);
+    if (n_rows == 0 || new_n_rows == 0) return;
     int in_stride = n_cols;
     int out_stride = new_n_cols;
     if (layout == order::col_major) {
