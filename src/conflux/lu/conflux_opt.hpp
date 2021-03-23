@@ -1294,13 +1294,11 @@ std::vector<T> LU_rep(T* C, // C is only used when CONFLUX_WITH_VALIDATION
             MPI_Wait(&A00_bcast_req, MPI_STATUS_IGNORE);
             PL();
             */
-        if (n_local_active_rows > 0) {
-            PE(step1_A00Buff_waitall);
-            if (n_A00_reqs > 0) {
-                MPI_Waitall(n_A00_reqs, &A00_req[0], MPI_STATUSES_IGNORE);
-            }
-            PL();
+        PE(step1_A00Buff_waitall);
+        if (n_A00_reqs > 0) {
+            MPI_Waitall(n_A00_reqs, &A00_req[0], MPI_STATUSES_IGNORE);
         }
+        PL();
 
         // if (n_local_active_rows <= 0) continue;
 
