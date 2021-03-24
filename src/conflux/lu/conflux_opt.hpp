@@ -321,15 +321,16 @@ void tournament_rounds(
     int pi, pj, pk;
     std::tie(pi, pj, pk) = p2X(lu_comm, rank);
 
+    int req_id = 0;
+    int n_reqs = (Px & (Px - 1) == 0) ? 2 : (Px + 2);
+    // int n_reqs = Px+2;
+    MPI_Request reqs[n_reqs];
+
     for (int r = 0; r < n_rounds; ++r) {
         // auto src_pi = std::min(flipbit(pi, r), Px - 1);
         auto src_pi = butterfly_pair(pi, r, Px);
         auto p_rcv = X2p(lu_comm, src_pi, pj, pk);
-
-        int req_id = 0;
-        int n_reqs = (Px & (Px - 1) == 0) ? 2 : (Px + 2);
-        // int n_reqs = Px+2;
-        MPI_Request reqs[n_reqs];
+        req_id = 0;
 
         if (src_pi < pi) {
             MPI_Isend(&candidatePivotBuff[v * (v + 1)], v * (v + 1), MPI_DOUBLE,
@@ -661,6 +662,18 @@ std::vector<T> LU_rep(T* C, // C is only used when CONFLUX_WITH_VALIDATION
         }
 
 #if DEBUG
+        if (k == chosen_step) {
+            std::cout << "Matrix A10BuffRcv = " << std::endl;
+            print_matrix_all(A10BuffRcv.data(), 0, n_local_active_rows, 
+                                                0, nlayr, nlayr, 
+                                                rank, P, lu_comm);
+            std::cout << "Matrix A10BuffTemp = " << std::endl;
+            print_matrix_all(A10BuffTemp.data(), 0, n_local_active_rows, 
+                                                0, nlayr, nlayr, 
+                                                rank, P, lu_comm);
+        }
+        assert(n_local_active_rows >= 0);
+        assert(first_non_pivot_row <= Ml);
         assert(!std::any_of(A11Buff.begin(), A11Buff.end(), 
                             [&A11Buff](T i) {
                                 return std::isnan(A11Buff[i]);})
@@ -1001,8 +1014,8 @@ std::vector<T> LU_rep(T* C, // C is only used when CONFLUX_WITH_VALIDATION
         // the one who entered this is the root
         auto root = X2p(jk_comm, k % Py, layrK);
 
-        // # Sending A00Buff:
         /*
+        // # Sending A00Buff:
             PE(step1_A00Buff_bcast);
             MPI_Request A00_bcast_req;
             MPI_Ibcast(&A00Buff[0], v * v, MPI_DOUBLE, root, jk_comm, &A00_bcast_req);
@@ -1333,7 +1346,7 @@ std::vector<T> LU_rep(T* C, // C is only used when CONFLUX_WITH_VALIDATION
             PE(step1_A00Buff_bcast);
             MPI_Wait(&A00_bcast_req, MPI_STATUS_IGNORE);
             PL();
-            */
+        */
         PE(step1_A00Buff_waitall);
         if (n_A00_reqs > 0) {
             MPI_Waitall(n_A00_reqs, &A00_req[0], MPI_STATUSES_IGNORE);
