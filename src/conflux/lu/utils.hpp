@@ -62,7 +62,7 @@ void permute_rows(matrix_view<T> in, matrix_view<T> out,
     int col = in.n_cols - out.n_cols;
     if (in.layout() == order::row_major) {
         // let each thread copy i-th row to perm[i]-th row
-#pragma omp parallel for
+#pragma omp parallel for shared(in, out, out_perm)
         for (int i = 0; i < in.n_rows; ++i) {
             T* in_ptr = &in(i, col);
             T* out_ptr = &out(out_perm[i], 0);
@@ -70,7 +70,7 @@ void permute_rows(matrix_view<T> in, matrix_view<T> out,
         }
     } else {
         // let each thread permute a single column
-#pragma omp parallel for
+#pragma omp parallel for shared(in, out, out_perm)
         for (int c = col; c < in.n_cols; ++c) {
             for (int r = 0; r < in.n_rows; ++r) {
                 T* in_ptr = &in(r, c);
@@ -99,7 +99,7 @@ void inverse_permute_rows(matrix_view<T> in, matrix_view<T> out,
     int col = in.n_cols - out.n_cols;
     if (in.layout() == order::row_major) {
         // let each thread copy i-th row to perm[i]-th row
-#pragma omp parallel for
+#pragma omp parallel for shared(in, out, in_perm)
         for (int i = 0; i < out.n_rows; ++i) {
             T* in_ptr = &in(in_perm[i], col);
             T* out_ptr = &out(i, 0);
@@ -107,7 +107,7 @@ void inverse_permute_rows(matrix_view<T> in, matrix_view<T> out,
         }
     } else {
         // let each thread permute a single column
-#pragma omp parallel for
+#pragma omp parallel for shared(in, out, in_perm)
         for (int c = 0; c < out.n_cols; ++c) {
             for (int r = 0; r < out.n_rows; ++r) {
                 T* in_ptr = &in(in_perm[r], c+col);

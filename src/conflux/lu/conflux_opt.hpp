@@ -676,7 +676,7 @@ std::vector<T> LU_rep(T* C, // C is only used when CONFLUX_WITH_VALIDATION
         assert(first_non_pivot_row <= Ml);
         assert(!std::any_of(A11Buff.begin(), A11Buff.end(), 
                             [&A11Buff](T i) {
-                                return std::isnan(A11Buff[i]);})
+                                return std::isnan(A11Buff[i]) || std::isinf(A11Buff[i]);})
                                        /*
                                        || 
                                        (std::abs(A11Buff[i]) < 0.0001);})
@@ -684,7 +684,7 @@ std::vector<T> LU_rep(T* C, // C is only used when CONFLUX_WITH_VALIDATION
               );
         assert(!std::any_of(A00Buff.begin(), A00Buff.end(), 
                             [&A00Buff](T i) {
-                                return std::isnan(A00Buff[i]);})
+                                return std::isnan(A00Buff[i]) || std::isinf(A00Buff[i]);})
                                        /*
                                        || 
                                        (std::abs(A00Buff[i]) < 0.0001);})
@@ -692,7 +692,7 @@ std::vector<T> LU_rep(T* C, // C is only used when CONFLUX_WITH_VALIDATION
               );
         assert(!std::any_of(A10Buff.begin(), A10Buff.end(), 
                             [&A10Buff](T i) {
-                                return std::isnan(A10Buff[i]);})
+                                return std::isnan(A10Buff[i]) || std::isinf(A10Buff[i]);})
                                        /*
                                        || 
                                        (std::abs(A10Buff[i]) < 0.0001);})
@@ -700,7 +700,7 @@ std::vector<T> LU_rep(T* C, // C is only used when CONFLUX_WITH_VALIDATION
               );
         assert(!std::any_of(A01Buff.begin(), A01Buff.end(), 
                             [&A01Buff](T i) {
-                                return std::isnan(A01Buff[i]);})
+                                return std::isnan(A01Buff[i]) || std::isinf(A01Buff[i]);})
                                        /*
                                        || 
                                        (std::abs(A01Buff[i]) < 0.0001);})
@@ -708,7 +708,7 @@ std::vector<T> LU_rep(T* C, // C is only used when CONFLUX_WITH_VALIDATION
               );
         assert(!std::any_of(A10BuffRcv.begin(), A10BuffRcv.end(), 
                             [&A10BuffRcv](T i) {
-                                return std::isnan(A10BuffRcv[i]);})
+                                return std::isnan(A10BuffRcv[i]) || std::isinf(A10BuffRcv[i]);})
                                        /*
                                        || 
                                        (std::abs(A01Buff[i]) < 0.0001);})
@@ -716,7 +716,7 @@ std::vector<T> LU_rep(T* C, // C is only used when CONFLUX_WITH_VALIDATION
               );
         assert(!std::any_of(A01BuffRcv.begin(), A01BuffRcv.end(), 
                             [&A01BuffRcv](T i) {
-                                return std::isnan(A01BuffRcv[i]);})
+                                return std::isnan(A01BuffRcv[i]) || std::isinf(A01BuffRcv[i]);})
                                        /*
                                        || 
                                        (std::abs(A01Buff[i]) < 0.0001);})

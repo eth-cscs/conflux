@@ -181,7 +181,27 @@ public:
         // into A10Buff, causing wrong results
         if (pk != 0) return;
 
-        if (N == 9 && M == 9) {
+        if (N == 8 && M == 8) {
+            std::vector<T> generator = {
+                100, 8, 2, 7, 3, 8, 200, 4,
+                8, 2, 9, 2, 8, 6, 9, 9,
+                300, 5, 0, 8, 9, 2, 7, 1,
+                6, 4, 1, 2, 3, 7, 9, 1,
+                8, 7, 100, 2, 9, 1, 1, 9,
+                4, 2, 900, 3, 7, 3, 4, 5,   //pi=0, pj=1 owner of 900
+                1, 3, 8, 3, 5, 5, 1, 3,
+                3, 9, 2, 7, 9, 2, 3, 9};
+            full_matrix = generator;
+
+            // define lambda function for initialization
+            int lld = N;
+            auto f = [&generator, &lld](int i, int j) -> T {
+                auto value = generator[i * lld + j];
+                return value;
+            };
+
+            matrix.initialize(f);
+        } else if (N == 9 && M == 9) {
             std::vector<T> generator = {
                 1.0,  1.2,  1.4,  1.6,  1.8,  2.0,  2.2,  2.4,  2.6,  
                 1.2,  1.0,  1.2,  1.4,  1.6,  1.8,  2.0,  2.2,  2.4,  
