@@ -484,7 +484,7 @@ std::vector<T> LU_rep(T* C, // C is only used when CONFLUX_WITH_VALIDATION
     auto chosen_step = Nt; // - 1;
     // auto debug_level = 0;
     //auto chosen_step = 90;
-    auto debug_level = 2;
+    auto debug_level = 0;
 
     int print_rank = X2p(lu_comm, 0, 1, 0);
 
@@ -807,9 +807,6 @@ std::vector<T> LU_rep(T* C, // C is only used when CONFLUX_WITH_VALIDATION
                     candidatePivotBuff.swap(candidatePivotBuffPerm);
                 }
                 PL();
-            } else {
-                std::fill(candidatePivotBuff.begin(), candidatePivotBuff.end(), 0);
-                std::fill(candidatePivotBuffPerm.begin(), candidatePivotBuffPerm.end(), 0);
             }
 
             // TODO: after first LUP and swap

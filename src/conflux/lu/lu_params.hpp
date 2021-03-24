@@ -3,7 +3,6 @@
 #include <vector>
 #include <mpi.h>
 #include <costa/layout.hpp>
-#include <iomanip>
 
 namespace conflux {
 template <typename T>
@@ -87,6 +86,7 @@ class lu_params {
 
         InitMatrix();
 
+        /*
         std::cout << std::setprecision(3);
         for (int p = 0; p < P; ++p) {
             if (rank == p) {
@@ -101,6 +101,7 @@ class lu_params {
             }
             MPI_Barrier(lu_comm);
         }
+        */
     }
 
 public:
