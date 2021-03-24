@@ -42,6 +42,7 @@
 #include <mpi.h>
 #include <cxxopts.hpp>
 
+#include "conflux/cholesky/CholeskyProfiler.h"
 #include "conflux/cholesky/CholeskyTypes.h"
 #include "conflux/cholesky/Cholesky.h"
 
@@ -137,12 +138,24 @@ int main(int argc, char *argv[])
     for (size_t i = 0; i < runs; ++i) {
         // initialize the factorization from the ground for every iteration
         conflux::initialize(argc, argv, N, v, grid);
+
+        // clear profiler if enabled with compile flag
+        if (rank == 0) {
+            PC();
+        }
+
         MPI_Barrier(MPI_COMM_WORLD);
 
         // this is the part of the code that will be benchmarked
         auto start = std::chrono::high_resolution_clock::now();
         conflux::parallelCholesky();
         MPI_Barrier(MPI_COMM_WORLD);
+
+        // print profiler information if enabled with compile flag
+        if (rank == 0) {
+            PP();
+        }
+
         auto end = std::chrono::high_resolution_clock::now();
         double timeMs = std::chrono::duration_cast<std::chrono::milliseconds>(end-start).count();
 
