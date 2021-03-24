@@ -371,7 +371,7 @@ public:
             matrix.initialize(f);
         } else {
             // randomly generate matrix
-            std::mt19937_64 eng(seed);
+            std::mt19937_64 eng(seed + rank);
             std::uniform_real_distribution<T> dist;
             auto generator = std::bind(dist, eng);
             // define lambda function for initialization
