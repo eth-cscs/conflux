@@ -356,7 +356,7 @@ public:
             auto generator = std::bind(dist, eng);
             // define lambda function for initialization
             auto f = [&generator](int i, int j) -> T {
-                return generator();
+                return 5 + generator();
             };
 
             matrix.initialize(f);

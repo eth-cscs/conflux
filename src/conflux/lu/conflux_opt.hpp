@@ -486,7 +486,7 @@ std::vector<T> LU_rep(T* C, // C is only used when CONFLUX_WITH_VALIDATION
     //auto chosen_step = 90;
     auto debug_level = 0;
 
-    int print_rank = X2p(lu_comm, 0, 1, 0);
+    int print_rank = X2p(lu_comm, 0, 0, 0);
 
     // Create buffers
     std::vector<T> A00Buff(v * v);
@@ -659,6 +659,57 @@ std::vector<T> LU_rep(T* C, // C is only used when CONFLUX_WITH_VALIDATION
         if (n_local_active_rows <= 0) {
             assert(curPivots[0] == 0);
         }
+
+#if DEBUG
+        assert(!std::any_of(A11Buff.begin(), A11Buff.end(), 
+                            [&A11Buff](T i) {
+                                return std::isnan(A11Buff[i]);})
+                                       /*
+                                       || 
+                                       (std::abs(A11Buff[i]) < 0.0001);})
+                                       */
+              );
+        assert(!std::any_of(A00Buff.begin(), A00Buff.end(), 
+                            [&A00Buff](T i) {
+                                return std::isnan(A00Buff[i]);})
+                                       /*
+                                       || 
+                                       (std::abs(A00Buff[i]) < 0.0001);})
+                                       */
+              );
+        assert(!std::any_of(A10Buff.begin(), A10Buff.end(), 
+                            [&A10Buff](T i) {
+                                return std::isnan(A10Buff[i]);})
+                                       /*
+                                       || 
+                                       (std::abs(A10Buff[i]) < 0.0001);})
+                                       */
+              );
+        assert(!std::any_of(A01Buff.begin(), A01Buff.end(), 
+                            [&A01Buff](T i) {
+                                return std::isnan(A01Buff[i]);})
+                                       /*
+                                       || 
+                                       (std::abs(A01Buff[i]) < 0.0001);})
+                                       */
+              );
+        assert(!std::any_of(A10BuffRcv.begin(), A10BuffRcv.end(), 
+                            [&A10BuffRcv](T i) {
+                                return std::isnan(A10BuffRcv[i]);})
+                                       /*
+                                       || 
+                                       (std::abs(A01Buff[i]) < 0.0001);})
+                                       */
+              );
+        assert(!std::any_of(A01BuffRcv.begin(), A01BuffRcv.end(), 
+                            [&A01BuffRcv](T i) {
+                                return std::isnan(A01BuffRcv[i]);})
+                                       /*
+                                       || 
+                                       (std::abs(A01Buff[i]) < 0.0001);})
+                                       */
+              );
+#endif
 
         PE(step0_padding);
         if (n_local_active_rows < v) {
