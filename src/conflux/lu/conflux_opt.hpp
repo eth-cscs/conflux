@@ -668,7 +668,7 @@ std::vector<T> LU_rep(T* C, // C is only used when CONFLUX_WITH_VALIDATION
                       candidatePivotBuff.begin() + padding_end, 0);
             std::fill(candidatePivotBuffPerm.begin() + padding_start,
                       candidatePivotBuffPerm.begin() + padding_end, 0);
-            std::fill(gri.begin() + n_local_active_rows, gri.begin() + v, -1);
+            std::fill(gri.begin() + first_non_pivot_row, gri.end(), -1);
         }
         PL();
 
@@ -1033,25 +1033,19 @@ std::vector<T> LU_rep(T* C, // C is only used when CONFLUX_WITH_VALIDATION
         for (auto& el : activeRows) {
             if (el > 0) sum_rows += el;
         }
-        for (int p = 0; p < P; ++p) {
-            if (rank == p) {
-                std::cout << "[Rank " << p << "], step: " << k << ", sum_rows = " << sum_rows << ", N-kv = " << N-k*v << std::endl;
-                std::cout << "Nl = " << Nl << ", n_local_active_rows = " << n_local_active_rows << ", first_non_pivot_row = " << first_non_pivot_row << std::endl;
-                std::cout << "curPivots: " << curPivots[0] << " | ";
-                for (int i = 0; i < curPivots[0]; ++i) {
-                    std::cout << curPivots[i+1] << ", ";
-                }
-                std::cout << std::endl;
-                std::cout << "======================" << std::endl;
-            }
-            MPI_Barrier(lu_comm);
-        }
         assert(sum_rows == N - k*v);
 
         if (k == chosen_step) {
             for (int p = 0; p < P; ++p) {
                 if (rank == p) {
-                    std::cout << "[Rank " << p << "], step: " << k << ", first_non_pivot_row = " << first_non_pivot_row << ", Ml = " << Ml << ", num_pivots = " << curPivots[0] << std::endl;
+                    std::cout << "[Rank " << p << "], step: " << k << ", sum_rows = " << sum_rows << ", N-kv = " << N-k*v << std::endl;
+                    std::cout << "Nl = " << Nl << ", n_local_active_rows = " << n_local_active_rows << ", first_non_pivot_row = " << first_non_pivot_row << std::endl;
+                    std::cout << "curPivots: " << curPivots[0] << " | ";
+                    for (int i = 0; i < curPivots[0]; ++i) {
+                        std::cout << curPivots[i+1] << ", ";
+                    }
+                    std::cout << std::endl;
+                    std::cout << "======================" << std::endl;
                 }
                 MPI_Barrier(lu_comm);
             }
