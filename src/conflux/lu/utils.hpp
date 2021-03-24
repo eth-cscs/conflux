@@ -11,7 +11,7 @@ namespace conflux {
 // the previous values 
 template <typename T, typename S>
 void prepend_column(matrix_view<T> mat,
-                    S* indices) {
+                    S* indices, bool check_positive=true) {
     assert(mat.n_rows >= 0);
     assert(mat.n_cols >= 1);
     // put the elements of indices[i] -> column 0 of mat
@@ -19,6 +19,7 @@ void prepend_column(matrix_view<T> mat,
         // cast from S -> T
         auto el = indices[i];
         auto casted_el = static_cast<T>(el);
+        assert(!check_positive || casted_el >= 0);
         assert(std::abs(casted_el - el) < 1e-12);
         mat(i, 0) = casted_el;
     }
@@ -26,7 +27,7 @@ void prepend_column(matrix_view<T> mat,
 
 // extracts the first column of matrix<T>, casts it to <S> and stores it in a vector
 template <typename T, typename S>
-std::vector<S> column(matrix_view<T> mat, int col) {
+std::vector<S> column(matrix_view<T> mat, int col, bool check_positive=true) {
     assert(col >= 0);
     assert(mat.n_cols > col);
     std::vector<S> column;
@@ -35,6 +36,7 @@ std::vector<S> column(matrix_view<T> mat, int col) {
         const auto& el = mat(i, col);
         // cast from T -> S
         auto casted_el = static_cast<S>(el);
+        assert(!check_positive || casted_el >= 0);
         assert(std::abs(casted_el - el) < 1e-12);
         column.push_back(casted_el);
     }

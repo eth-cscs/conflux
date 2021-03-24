@@ -484,7 +484,7 @@ std::vector<T> LU_rep(T* C, // C is only used when CONFLUX_WITH_VALIDATION
     auto chosen_step = Nt; // - 1;
     // auto debug_level = 0;
     //auto chosen_step = 90;
-    auto debug_level = 0;
+    auto debug_level = 2;
 
     int print_rank = X2p(lu_comm, 0, 0, 0);
 
@@ -719,7 +719,7 @@ std::vector<T> LU_rep(T* C, // C is only used when CONFLUX_WITH_VALIDATION
                       candidatePivotBuff.begin() + padding_end, 0);
             std::fill(candidatePivotBuffPerm.begin() + padding_start,
                       candidatePivotBuffPerm.begin() + padding_end, 0);
-            std::fill(gri.begin() + first_non_pivot_row, gri.end(), -1);
+            // std::fill(gri.begin() + first_non_pivot_row, gri.end(), -1);
         }
         PL();
 
@@ -939,10 +939,10 @@ std::vector<T> LU_rep(T* C, // C is only used when CONFLUX_WITH_VALIDATION
                      */
                 curPivots[0] = lpivots[pi].size();
                 // if (curPivots[0] > 0) {
-                    std::copy_n(&lpivots[pi][0], curPivots[0], &curPivots[1]);
-                    std::copy_n(&loffsets[pi][0], curPivots[0], &curPivots[v + 1]);
-                    // curPivOrder = loffsets[pi];
-                    std::copy_n(&gpivots[0], v, &pivotIndsBuff[k * v]);
+                std::copy_n(&lpivots[pi][0], curPivots[0], &curPivots[1]);
+                std::copy_n(&loffsets[pi][0], curPivots[0], &curPivots[v + 1]);
+                // curPivOrder = loffsets[pi];
+                std::copy_n(&gpivots[0], v, &pivotIndsBuff[k * v]);
                //  }
             } else {
                 curPivots[0] = 0;
