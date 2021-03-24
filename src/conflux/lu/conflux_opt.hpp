@@ -507,7 +507,7 @@ std::vector<T> LU_rep(T* C, // C is only used when CONFLUX_WITH_VALIDATION
     std::vector<T> A11BuffTemp(Ml * Nl);
 
     //TODO: can we handle such a big global pivots vector?
-    std::vector<T> pivotIndsBuff(M);
+    std::vector<int> pivotIndsBuff(M);
 #ifdef FINAL_SCALAPACK_LAYOUT
     std::vector<T> ScaLAPACKResultBuff(Ml * Nl);
     MPI_Win res_Win = create_window(lu_comm,
@@ -518,7 +518,7 @@ std::vector<T> LU_rep(T* C, // C is only used when CONFLUX_WITH_VALIDATION
     // TODO: This is DEFINITELY suboptimal. We will use two buffers
     // (pivotIndsBuff and ipvt_g) to recreate local scalapack ipvt
     // Hopefully, it won't impact performance much.
-    std::vector<T> ipvt_g(M);
+    std::vector<int> ipvt_g(M);
     // initially, ipvt_g contains consecutive integers (0, 1, ..., M-1)
     // then, we will recreate this ipvt permutations 
     std::iota (std::begin(ipvt_g), std::end(ipvt_g), 0); 
@@ -966,7 +966,7 @@ std::vector<T> LU_rep(T* C, // C is only used when CONFLUX_WITH_VALIDATION
         // sending pivotIndsBuff
         PE(step1_pivotIndsBuff);
         MPI_Request pivotIndsBuff_bcast_req;
-        MPI_Ibcast(&pivotIndsBuff[k * v], v, MPI_DOUBLE, root, jk_comm, &pivotIndsBuff_bcast_req);
+        MPI_Ibcast(&pivotIndsBuff[k * v], v, MPI_INT, root, jk_comm, &pivotIndsBuff_bcast_req);
         PL();
 
         // PE(step1_barrier);
@@ -1952,7 +1952,7 @@ std::vector<T> LU_rep(T* C, // C is only used when CONFLUX_WITH_VALIDATION
     // std::copy(B.begin(), B.end(), C);
     MPI_Barrier(lu_comm);
     for (auto i = 0; i < N; ++i) {
-        int idx = int(pivotIndsBuff[i]);
+        int idx = pivotIndsBuff[i];
         //std::copy(B.begin() + idx * N, B.begin() + (idx + 1) * N, C + i * N);
         PP[i * N + idx] = 1;
     }
