@@ -867,9 +867,7 @@ std::vector<T> LU_rep(T* C, // C is only used when CONFLUX_WITH_VALIDATION
                 }
 #endif
             // std::cout << "tournament rounds finished" << std::endl;
-
-            // extract the first col of candidatePivotBuff
-            // first v elements of the first column of candidatePivotBuff
+// extract the first col of candidatePivotBuff first v elements of the first column of candidatePivotBuff
             // first v rows
             // v+1 is the number of cols
             // std::cout << "candidatePivotBuff:" << std::endl;;
@@ -892,12 +890,12 @@ std::vector<T> LU_rep(T* C, // C is only used when CONFLUX_WITH_VALIDATION
                      So other ranks produced A00, gpivots, etc. and this information has to be propagated further
                      */
                 curPivots[0] = lpivots[pi].size();
-                if (curPivots[0] > 0) {
+                // if (curPivots[0] > 0) {
                     std::copy_n(&lpivots[pi][0], curPivots[0], &curPivots[1]);
                     std::copy_n(&loffsets[pi][0], curPivots[0], &curPivots[v + 1]);
                     // curPivOrder = loffsets[pi];
                     std::copy_n(&gpivots[0], v, &pivotIndsBuff[k * v]);
-                }
+               //  }
             } else {
                 curPivots[0] = 0;
             }
