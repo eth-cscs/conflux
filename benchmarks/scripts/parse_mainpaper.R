@@ -7,8 +7,6 @@ library(stringr)
 #library("reshape2")
 
 
-path = "C:/gk_pliki/uczelnia/doktorat/performance_modelling/repo/conflux_cpp_2/results/conflux/benchmarks" #getwd()
-#exp_name = "weak48"
 exp_name = ""
 exp_filename = "benchmarks.csv"
 scalings = c("weak", "strong")
@@ -40,8 +38,8 @@ annotCoord = list()
 
 
 #exp_filename = paste(exp_name,'.csv',sep="")
-setwd(paste(path,exp_name,sep =""))
-source(paste(path, "/scripts/SPCL_Stats.R", sep=""))
+setwd(paste("../",exp_name,sep =""))
+source(paste(getwd(), "/scripts/SPCL_Stats.R", sep=""))
 
 
 # prepare the data 
@@ -63,12 +61,19 @@ for (alg in algorithms){
         if (nrow(df3) == 0)
           next
         
+        if (variant == "time"){
+          ylabel = "time [ms]"
+          yscale = scale_y_continuous(labels=function(x) format(x, big.mark = ",", scientific = FALSE))
+        }
+        else {
+          ylabel = "% peak performance"
+          yscale = scale_y_continuous(labels=function(x) format(x, big.mark = ",", scientific = FALSE))
+        }
+        
         
         plot_data <- df3[c("P", "library", "value")]
         #  m = data$m
         #  plot_data$time = 200* data$m * data$n * data$k / (data$time * 1e6) / (GFLOPSperCore * data$p)
-        ylabel = "% peak performance"
-        yscale = scale_y_continuous(labels=function(x) format(x, big.mark = ",", scientific = FALSE))
         
         name = paste(alg, scaling, size, variant, sep="_")
         
@@ -146,6 +151,15 @@ for (alg in algorithms){
         
         data3 = ddply(plot_data, ~ library+P, summarize, min=min(value), max=max(value), mean=median(value))
         
+        scaling_label = paste(scaling, "scaling", sep = " ")
+        if (variant == "strong"){
+          size_label = paste("N = ", size, sep = " ")
+        }
+        else {
+          size_label = paste("N = ", size, " * sqrt(P)", sep = " ")
+        }
+        
+        
         p <- ggplot(mapping=aes(x=P, y=mean, ymin=min, ymax=max, fill=library, color=library, shape=library)) +
           geom_ribbon(data=data3[data3$library != "CARMA [21] ",], alpha=0.3, show.legend=TRUE)+
           shapes + 
@@ -154,8 +168,9 @@ for (alg in algorithms){
           scale_x_continuous(trans='log2',labels=function(x) format(x, big.mark = ",", scientific = FALSE)) +
           #scale_x_log2("# of cores", breaks=c(128, 256, 512, 1024, 2048, 4096, 8192, 16384)) +
           # scale_y_log10(ylabel) +
-          xlab("# of cores") +
+          xlab("# of nodes") +
           yscale +
+          ggtitle(paste(alg, scaling, size, sep=" ")) +
           ylab(ylabel) +
           theme_bw(27)
           # annotate("text", x = annotx, y = annoty, label = annotl, size=textSize/3) +
