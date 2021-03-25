@@ -32,4 +32,19 @@ void parallel_mcopy(int n_rows, int n_cols,
         std::copy_n(&in[i * in_stride], n_cols, &out[i * out_stride]);
     }
 }
+
+template <typename T>
+bool has_valid_data(T *pointer,
+                  int row_start, int row_end,
+                  int col_start, int col_end,
+                  int stride) {
+    for (int i = row_start; i < row_end; ++i) {
+        for (int j = col_start; j < col_end; ++j) {
+            if (std::isnan(pointer[i * stride + j]) || std::isinf(pointer[i * stride + j])){
+                return false;
+            }
+        }
+    }
+    return true;
+}
 }

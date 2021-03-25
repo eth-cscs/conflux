@@ -85,6 +85,23 @@ class lu_params {
         get_costa_layout();
 
         InitMatrix();
+
+        /*
+        std::cout << std::setprecision(3);
+        for (int p = 0; p < P; ++p) {
+            if (rank == p) {
+                std::cout << "Rank = (" << pi << ", " << pj << ", " << pk << "), Ml = " << Ml << ", Nl = " << Nl << std::endl;
+                for (int i = 0; i < Ml; ++i) {
+                    for (int j = 0; j < Nl; ++j) {
+                        std::cout << data[i * Nl + j] << ", ";
+                    }
+                    std::cout << std::endl;
+                }
+                std::cout << "=====================" << std::endl;
+            }
+            MPI_Barrier(lu_comm);
+        }
+        */
     }
 
 public:
@@ -164,7 +181,27 @@ public:
         // into A10Buff, causing wrong results
         if (pk != 0) return;
 
-        if (N == 9 && M == 9) {
+        if (N == 8 && M == 8) {
+            std::vector<T> generator = {
+                100, 8, 2, 7, 3, 8, 200, 4,
+                8, 2, 9, 2, 8, 6, 9, 9,
+                300, 5, 0, 8, 9, 2, 7, 1,
+                6, 4, 1, 2, 3, 7, 9, 1,
+                8, 7, 100, 2, 9, 1, 1, 9,
+                4, 2, 900, 3, 7, 3, 4, 5,   //pi=0, pj=1 owner of 900
+                1, 3, 8, 3, 5, 5, 1, 3,
+                3, 9, 2, 7, 9, 2, 3, 9};
+            full_matrix = generator;
+
+            // define lambda function for initialization
+            int lld = N;
+            auto f = [&generator, &lld](int i, int j) -> T {
+                auto value = generator[i * lld + j];
+                return value;
+            };
+
+            matrix.initialize(f);
+        } else if (N == 9 && M == 9) {
             std::vector<T> generator = {
                 1.0,  1.2,  1.4,  1.6,  1.8,  2.0,  2.2,  2.4,  2.6,  
                 1.2,  1.0,  1.2,  1.4,  1.6,  1.8,  2.0,  2.2,  2.4,  
@@ -186,7 +223,6 @@ public:
             };
 
             matrix.initialize(f);
-
         }
         else if (N == 16 && M == 16) {
             std::vector<T> generator = {
@@ -206,6 +242,40 @@ public:
                 7, 6, 7, 8, 2, 2, 4, 6, 6, 8, 3, 6, 5, 2, 6, 5,
                 4, 5, 1, 5, 3, 7, 4, 4, 7, 5, 8, 2, 4, 7, 1, 7,
                 8, 3, 2, 4, 3, 8, 1, 6, 9, 6, 3, 6, 4, 8, 7, 8};
+
+            full_matrix = generator;
+
+            // define lambda function for initialization
+            int lld = N;
+            auto f = [&generator, &lld](int i, int j) -> T {
+                auto value = generator[i * lld + j];
+                return value;
+            };
+
+            matrix.initialize(f);
+
+        } else if (N == 20 && M == 20) {
+            std::vector<T> generator = {
+                1, 8, 2, 7, 3, 8, 2, 4, 8, 7, 5, 5, 1, 4, 4, 9, 8, 7, 1, 2,
+                8, 4, 9, 2, 8, 6, 9, 9, 3, 7, 7, 7, 8, 7, 2, 8, 1, 2, 3, 4,
+                3, 5, 4, 8, 9, 2, 7, 1, 2, 2, 7, 9, 8, 2, 1, 3, 3, 4, 5, 6,
+                6, 4, 1, 5, 3, 7, 9, 1, 1, 3, 2, 9, 9, 5, 1, 9, 7, 8, 9, 1,
+                8, 7, 100, 2, 9, 1, 1, 9, 3, 5, 8, 8, 5, 5, 3, 3, 2, 1, 4, 3,
+                4, 2, 900, 3, 7, 3, 4, 5, 1, 9, 7, 7, 2, 4, 5, 2, 9, 8, 5, 6, //pi=0, pj=1 owner of 900
+                1, 9, 8, 3, 5, 5, 1, 3, 6, 8, 3, 4, 3, 9, 1, 9, 3, 5, 7, 8,
+                3, 9, 2, 7, 9, 2, 3, 9, 8, 6, 3, 5, 5, 2, 2, 9, 9, 7, 6, 4,
+                9, 9, 5, 4, 3, 4, 6, 6, 9, 2, 1, 5, 6, 9, 5, 7, 4, 2, 8, 6,
+                3, 2, 4, 5, 2, 4, 5, 3, 6, 5, 2, 6, 2, 7, 8, 2, 9, 7, 1, 2,
+                4, 4, 4, 5, 2, 5, 3, 4, 1, 7, 8, 1, 8, 8, 5, 4, 1, 5, 4, 2,
+                4, 5, 9, 5, 7, 9, 2, 9, 4, 6, 4, 3, 5, 8, 1, 2, 8, 7, 9, 1,
+                7, 8, 1, 4, 7, 6, 5, 7, 1, 2, 7, 3, 8, 1, 4, 4, 3, 3, 1, 2,
+                7, 6, 7, 8, 2, 2, 4, 6, 6, 8, 3, 6, 5, 2, 6, 5, 5, 4, 9, 8,
+                4, 5, 1, 5, 3, 7, 4, 4, 7, 5, 8, 2, 4, 7, 1, 7, 1, 1, 4, 3,
+                8, 3, 2, 4, 3, 8, 1, 6, 9, 6, 3, 6, 4, 8, 7, 8, 9, 5, 3, 9,
+                1, 8, 2, 7, 3, 8, 2, 4, 8, 7, 5, 5, 1, 4, 4, 9, 8, 7, 1, 2,
+                8, 4, 9, 2, 8, 6, 9, 9, 3, 7, 7, 7, 8, 7, 2, 8, 1, 2, 3, 4,
+                3, 5, 4, 8, 9, 2, 7, 1, 2, 2, 7, 9, 8, 2, 1, 3, 3, 4, 5, 6,
+                6, 4, 1, 5, 3, 7, 9, 1, 1, 3, 2, 9, 9, 5, 1, 9, 7, 8, 9, 1};
 
             full_matrix = generator;
 
@@ -330,12 +400,12 @@ public:
             matrix.initialize(f);
         } else {
             // randomly generate matrix
-            std::mt19937_64 eng(seed);
+            std::mt19937_64 eng(seed + rank);
             std::uniform_real_distribution<T> dist;
             auto generator = std::bind(dist, eng);
             // define lambda function for initialization
             auto f = [&generator](int i, int j) -> T {
-                return generator();
+                return 5 + generator();
             };
 
             matrix.initialize(f);

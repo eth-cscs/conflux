@@ -39,6 +39,10 @@ public:
     , n_rows(n_rows)
     , n_cols(n_cols)
     {
+        assert(n_rows >= 1);
+        assert(n_cols >= 1);
+        assert(stride >= 1);
+        assert(data != nullptr);
         if (layout == order::row_major) {
             row_stride = stride;
             assert(row_stride >= n_cols);
