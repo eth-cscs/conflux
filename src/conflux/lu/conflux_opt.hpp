@@ -560,7 +560,8 @@ std::vector<T> LU_rep(T* C, // C is only used when CONFLUX_WITH_VALIDATION
     // 0 = num of pivots
     // 1..v+1 = pivots
     // v+1 .. 2v+1 = curPivOrder
-    std::vector<int> curPivots(v + 1 + v);
+    // 2v+1 .. 3v+1 = pivotIndsBuff
+    std::vector<int> curPivots(3*v+1);
     for (int i = v + 1; i < curPivots.size(); ++i) {
         curPivots[i] = i;
     }
@@ -926,7 +927,9 @@ std::vector<T> LU_rep(T* C, // C is only used when CONFLUX_WITH_VALIDATION
                 std::copy_n(&lpivots[pi][0], curPivots[0], &curPivots[1]);
                 std::copy_n(&loffsets[pi][0], curPivots[0], &curPivots[v + 1]);
                 // curPivOrder = loffsets[pi];
-                std::copy_n(&gpivots[0], v, &pivotIndsBuff[k * v]);
+                // std::copy_n(&gpivots[0], v, &pivotIndsBuff[k * v]);
+                // curPivots[2*v+1] holds the pivotIndsBuff
+                std::copy_n(&gpivots[0], v, &curPivots[2*v+1]);
                //  }
             } else {
                 curPivots[0] = 0;
@@ -993,24 +996,11 @@ std::vector<T> LU_rep(T* C, // C is only used when CONFLUX_WITH_VALIDATION
             PL();
             */
 
-        // sending pivotIndsBuff
-        PE(step1_pivotIndsBuff);
-        MPI_Request pivotIndsBuff_bcast_req;
-        MPI_Ibcast(&pivotIndsBuff[k * v], v, MPI_INT, root, jk_comm, &pivotIndsBuff_bcast_req);
-        PL();
-
-        // PE(step1_barrier);
-        // MPI_Barrier(lu_comm);
-        // PL();
-
         PE(step1_curPivots);
-        MPI_Bcast(&curPivots[0], 2 * v + 1, MPI_INT, root, jk_comm);
+        MPI_Bcast(&curPivots[0], 3 * v + 1, MPI_INT, root, jk_comm);
+        std::copy_n(&curPivots[2*v+1], v, &pivotIndsBuff[k*v]);
         PL();
 
-        /*
-            MPI_Request curPivOrder_bcast_req;
-            MPI_Ibcast(&curPivOrder[0], v, MPI_INT, root, jk_comm, &curPivOrder_bcast_req);
-            */
         // PL();
 
         // assert(curPivots[0] <= v && curPivots[0] >= 0);
@@ -1257,11 +1247,6 @@ std::vector<T> LU_rep(T* C, // C is only used when CONFLUX_WITH_VALIDATION
         }
 #endif
 
-        /*
-            PE(step1_curPivOrder);
-            MPI_Wait(&curPivOrder_bcast_req, MPI_STATUS_IGNORE);
-            PL();
-            */
         // # -------------------------------------------------- #
         // # 3. distribute v pivot rows from A11buff to A01Buff #
         // # here, only processors pk == layrK participate      #
@@ -1778,12 +1763,6 @@ std::vector<T> LU_rep(T* C, // C is only used when CONFLUX_WITH_VALIDATION
             }
         }
 #endif
-
-        // MPI_Wait(&pivotIndsBuff_bcast_req, MPI_STATUS_IGNORE);
-
-        PE(step1_pivotIndsBuff);
-        MPI_Wait(&pivotIndsBuff_bcast_req, MPI_STATUS_IGNORE);
-        PL();
 
         // # ----------------------------------------------------------------- #
         // # ------------------------- DEBUG ONLY ---------------------------- #
