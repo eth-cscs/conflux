@@ -128,6 +128,23 @@ void print_matrix_all(T *pointer,
     }
 }
 
+template <typename T>
+void print_map(std::unordered_map<T, std::vector<T>> m){
+    for (const auto& x : m) {
+            std::cout << x.first << ": [";
+            for (auto i: x.second)
+                std::cout << i << ", ";
+             std::cout<< "]\n";
+        }
+}
+
+template <typename T>
+void print_map(std::unordered_map<T, T> m){
+    for (const auto& x : m) {
+            std::cout << x.first << ": " << x.second << "\n";
+        }
+}
+
 int flipbit(int n, int k) {
     return n ^ (1ll << k);
 }
@@ -191,7 +208,7 @@ void LUP(int n_local_active_rows, int v, int stride,
          T *pivotBuff, T *candidatePivotBuff,
          std::vector<int> &ipiv, std::vector<int> &perm) {
     assert(n_local_active_rows >= 0);
-    if (n_local_active_rows == 0) return;
+//    if (n_local_active_rows == 0) return;
     // reset the values
     for (int i = 0; i < std::max(2 * v, n_local_active_rows); ++i) {
         perm[i] = i;
@@ -482,12 +499,12 @@ std::vector<T> LU_rep(T* C, // C is only used when CONFLUX_WITH_VALIDATION
     MPI_Cart_sub(lu_comm, keep_dims_i, &i_comm);
 #endif
 
-    auto chosen_step = Nt; // - 1;
+    auto chosen_step = 30; // - 1;
     // auto debug_level = 0;
     //auto chosen_step = 90;
-    auto debug_level = 2;
+    auto debug_level = 0;
 
-    int print_rank = X2p(lu_comm, 0, 0, 0);
+    int print_rank = X2p(lu_comm, 2, 6, 0);
 
     // Create buffers
     std::vector<T> A00Buff(v * v);
@@ -658,12 +675,14 @@ std::vector<T> LU_rep(T* C, // C is only used when CONFLUX_WITH_VALIDATION
 
         assert(n_local_active_rows >= 0);
         assert(first_non_pivot_row <= Ml);
+        #ifdef DEBUG
         if (n_local_active_rows <= 0) {
             assert(curPivots[0] == 0);
         }
+        #endif
 
 #if DEBUG
-        if (k == chosen_step) {
+        if (k == chosen_step && debug_level > 1) {
             std::cout << "Matrix A10BuffRcv = " << std::endl;
             print_matrix_all(A10BuffRcv.data(), 0, n_local_active_rows, 
                                                 0, nlayr, nlayr, 
@@ -702,7 +721,7 @@ std::vector<T> LU_rep(T* C, // C is only used when CONFLUX_WITH_VALIDATION
 
         // # reduce first tile column. In this part, only pj == k % sqrtp1 participate:
 
-        if (pj == k % Py && n_local_active_rows > 0) {
+       // if (pj == k % Py && n_local_active_rows > 0) {
             PE(step0_copy);
             parallel_mcopy<T>(n_local_active_rows, v,
                               &A11Buff[first_non_pivot_row * Nl + loff], Nl,
@@ -731,7 +750,7 @@ std::vector<T> LU_rep(T* C, // C is only used when CONFLUX_WITH_VALIDATION
                            MPI_DOUBLE, MPI_SUM, layrK, k_comm);
             }
             PL();
-        }
+     //   }
 
 #ifdef DEBUG
         if (debug_level > 1) {
@@ -779,7 +798,7 @@ std::vector<T> LU_rep(T* C, // C is only used when CONFLUX_WITH_VALIDATION
             auto min_perm_size = std::min(N - k * v, v);
             auto max_perm_size = std::max(n_local_active_rows, v);
 
-            if (n_local_active_rows > 0) {
+          //  if (n_local_active_rows > 0) {
                 PE(step1_A10copy);
                 parallel_mcopy<T>(n_local_active_rows, v,
                                   &A10Buff[first_non_pivot_row * v], v,
@@ -835,7 +854,7 @@ std::vector<T> LU_rep(T* C, // C is only used when CONFLUX_WITH_VALIDATION
                     candidatePivotBuff.swap(candidatePivotBuffPerm);
                 }
                 PL();
-            }
+      //      }
 
             // TODO: after first LUP and swap
 #ifdef DEBUG
@@ -885,27 +904,14 @@ std::vector<T> LU_rep(T* C, // C is only used when CONFLUX_WITH_VALIDATION
             }
 #endif
 
-#ifdef DEBUG
-                if (k == chosen_step && debug_level > 1) {
-                    std::cout << "Rank [" << pi << ", " << pj << ", " << pk << "], n_local_active_rows: "
-                              << n_local_active_rows << ", candidatePivotBuff after: \n"
-                              << std::flush;
-                    print_matrix(candidatePivotBuff.data(), 0, Ml, 0, v + 1, v + 1);
-                    std::cout << "\n\n"
-                              << std::flush;
-
-                    std::cout << "candidatePivotBuff FINAL VALUE " << pi << std::endl;
-                    print_matrix(candidatePivotBuff.data(),
-                                 0, n_local_active_rows, 0, v + 1, v + 1);
-                }
-#endif
             // std::cout << "tournament rounds finished" << std::endl;
 // extract the first col of candidatePivotBuff first v elements of the first column of candidatePivotBuff
             // first v rows
             // v+1 is the number of cols
             // std::cout << "candidatePivotBuff:" << std::endl;;
             // print_matrix(candidatePivotBuff.data(), 0, v, 0, v+1, v+1);
-            if (n_local_active_rows > 0) {
+            
+            //if (n_local_active_rows > 0) {
                 auto gpivots = column<T, int>(matrix_view<T>(&candidatePivotBuff[0],
                                                              min_perm_size, v + 1, v + 1,
                                                              layout),
@@ -931,10 +937,38 @@ std::vector<T> LU_rep(T* C, // C is only used when CONFLUX_WITH_VALIDATION
                 // curPivots[2*v+1] holds the pivotIndsBuff
                 std::copy_n(&gpivots[0], v, &curPivots[2*v+1]);
                //  }
-            } else {
-                curPivots[0] = 0;
-            }
+           // } else {
+            // if (n_local_active_rows > 0) {
+            //     curPivots[0] = 0;
+            // }
             PL();
+
+            
+#ifdef DEBUG
+                if (k == chosen_step && debug_level > -1 && rank == print_rank) {
+                    std::cout << "Rank [" << pi << ", " << pj << ", " << pk << "], k: " << k << ", n_local_active_rows: "
+                              << n_local_active_rows << ", candidatePivotBuff after tournament pivoting: \n"
+                              << std::flush;
+                    print_matrix(candidatePivotBuff.data(), 0, Ml, 0, v + 1, v + 1);
+                    std::cout << "\n\n"
+                              << std::flush;
+
+                    std::cout << "Rank [" << pi << ", " << pj << ", " << pk << "], k: " << k << ", gpivots: \n" << std::flush;
+                    print_matrix(gpivots.data(), 0, 1, 0, N, N);
+                    std::cout << "\n\n"
+                              << std::flush;
+
+                    std::cout << "Rank [" << pi << ", " << pj << ", " << pk << "], k: " << k << ", lpivots: \n" << std::flush;
+                    print_map(lpivots);
+                    std::cout << "\n\n"
+                              << std::flush;
+
+                    std::cout << "Rank [" << pi << ", " << pj << ", " << pk << "], k: " << k << ", lpivots_offsets: \n" << std::flush;
+                    print_map(loffsets);
+                    std::cout << "\n\n"
+                              << std::flush;
+                }
+#endif
 
             PE(step1_A00Buff_isend);
             // send A00 to pi = k % sqrtp1 && pk = layrK
@@ -972,14 +1006,10 @@ std::vector<T> LU_rep(T* C, // C is only used when CONFLUX_WITH_VALIDATION
 
 #ifdef DEBUG
         MPI_Barrier(lu_comm);
-        if (k == chosen_step && rank == print_rank) {
-            std::cout << "Finished tournament pivoting" << std::endl;
-        }
-        if (debug_level > 1) {
-            if (k == chosen_step) {
+        
+        if (debug_level > 1 && k == chosen_step && rank == print_rank) {
                 std::cout << "After ircv. Rank [" << pi << ", " << pj << ", " << pk << "], k = " << k << ", A00Buff = " << std::endl;
                 print_matrix(A00Buff.data(), 0, v, 0, v, v);
-            }
         }
 #endif
 
@@ -1020,9 +1050,6 @@ std::vector<T> LU_rep(T* C, // C is only used when CONFLUX_WITH_VALIDATION
 
 #ifdef DEBUG
         MPI_Barrier(lu_comm);
-        if (k == chosen_step && rank == print_rank) {
-            std::cout << "Before pushing pivots up" << std::endl;
-        }
         if (debug_level > 1) {
             if (chosen_step == k) {
                 if (pi == 0 && pj == 1 && pk == 0) {
@@ -1058,9 +1085,19 @@ std::vector<T> LU_rep(T* C, // C is only used when CONFLUX_WITH_VALIDATION
         for (auto& el : activeRows) {
             if (el > 0) sum_rows += el;
         }
+
+        if (sum_rows != N - k*v) {
+            if (pj == 0) {
+                std::cout << "Rank [" << pi << ", " << pj << "," << pk << "], k: " 
+                << k << ", sum_rows = " << sum_rows << ", N-kv = " << N-k*v 
+                << ", n_local_active_rows: " << n_local_active_rows << std::endl;
+                std::cout << "Active rows: \n";
+                print_matrix(activeRows.data(), 0, 1, 0, Px, Px);
+            }
+        }
         assert(sum_rows == N - k*v);
 
-        if (k == chosen_step) {
+        if (k == chosen_step && debug_level > 1) {
             for (int p = 0; p < P; ++p) {
                 if (rank == p) {
                     std::cout << "[Rank " << p << "], step: " << k << ", sum_rows = " << sum_rows << ", N-kv = " << N-k*v << std::endl;
@@ -1082,7 +1119,11 @@ std::vector<T> LU_rep(T* C, // C is only used when CONFLUX_WITH_VALIDATION
         for (int i = 0; i < curPivots[0]; ++i) {
             auto pivot_row = igri[curPivots[i+1]];
             if (pivot_row < first_non_pivot_row || pivot_row >= Ml) {
-                std::cout << "Rank [" << pi << ", " << pj << ", " << pk << "], k = " << k << ", first_non_pivot_row: " << first_non_pivot_row << ", pivot_row: " << pivot_row  << ", n_rows: " << Ml << std::endl;;
+                std::cout << "Rank [" << pi << ", " << pj << ", " << pk << "], k = " << k << ", curPivots[0]: " << curPivots[0] << ", first_non_pivot_row: " << first_non_pivot_row << ", pivot_row: " << pivot_row  << ", n_rows: " << Ml << std::endl;;
+                std::cout << "Rank [" << pi << ", " << pj << ", " << pk << "], k = " << k << ", curPivots:\n";
+                print_matrix(curPivots.data(), 0, 1, 0, 2*v+1, 2*v+1);
+                std::cout << "\nRank [" << pi << ", " << pj << ", " << pk << "], k = " << k << ", igri:\n";
+                print_map(igri);
             }
             assert(first_non_pivot_row >= Ml 
                    || 
@@ -1184,7 +1225,7 @@ std::vector<T> LU_rep(T* C, // C is only used when CONFLUX_WITH_VALIDATION
         // for A01Buff
         // TODO: NOW: reduce pivot rows: curPivots[0] x (Nl-loff)
         //
-        if (n_local_active_rows > 0) {
+      //  if (n_local_active_rows > 0) {
             PE(step2_localcopy);
             // we have curPivots[0] pivot rows to copy from A11Buff to A01Buff
             // But - the precise row location in A01Buff is determined by the curPivOrder,
@@ -1222,7 +1263,7 @@ std::vector<T> LU_rep(T* C, // C is only used when CONFLUX_WITH_VALIDATION
                            MPI_DOUBLE, MPI_SUM, layrK, k_comm);
             }
             PL();
-        }
+  //      }
 
         // MPI_Barrier(lu_comm);
 
@@ -1322,7 +1363,7 @@ std::vector<T> LU_rep(T* C, // C is only used when CONFLUX_WITH_VALIDATION
         MPI_Request reqs[Pz * (Px + Py) + 2];
         int req_id = 0;
 
-        if (n_local_active_rows > 0) {
+     //   if (n_local_active_rows > 0) {
             // RECEIVE FROM STEP 4
             auto p_send = X2p(lu_comm, pi, k % Py, layrK);
             int size = nlayr * n_local_active_rows;  // nlayr = v / c
@@ -1334,12 +1375,12 @@ std::vector<T> LU_rep(T* C, // C is only used when CONFLUX_WITH_VALIDATION
                 ++req_id;
                 PL();
             }
-        }
+    //    }
 
         // # ---------------------------------------------- #
         // # 4. compute A10 and broadcast it to A10BuffRecv #
         // # ---------------------------------------------- #
-        if (pk == layrK && pj == k % Py && n_local_active_rows > 0) {
+        if (pk == layrK && pj == k % Py) {// && n_local_active_rows > 0) {
             // # this could basically be a sparse-dense A10 = A10 * U^(-1)   (BLAS tiangular solve) with A10 sparse and U dense
             // however, since we are ignoring the mask, it's dense, potentially with more computation than necessary.
 #ifdef DEBUG
@@ -1438,7 +1479,7 @@ std::vector<T> LU_rep(T* C, // C is only used when CONFLUX_WITH_VALIDATION
         if (k == chosen_step && rank == print_rank) {
             std::cout << "Finished step 4" << std::endl;
         }
-        if (debug_level > 0) {
+        if (debug_level > 1) {
             if (k == chosen_step) {
                 if (rank == print_rank) {
                     std::cout << "Step 4 finished." << std::endl;
@@ -1449,10 +1490,9 @@ std::vector<T> LU_rep(T* C, // C is only used when CONFLUX_WITH_VALIDATION
             }
         }
 #endif
-
         // RECEIVE FROM STEP 5
-        auto p_send = X2p(lu_comm, k % Px, pj, layrK);
-        auto size = nlayr * (Nl - loff);  // nlayr = v / c
+        p_send = X2p(lu_comm, k % Px, pj, layrK);
+        size = nlayr * (Nl - loff);  // nlayr = v / c
         // if non-local, receive it
         if (p_send != rank) {
             PE(step5_irecv);
@@ -1589,13 +1629,13 @@ std::vector<T> LU_rep(T* C, // C is only used when CONFLUX_WITH_VALIDATION
         // 2. A10BuffRcv is column-major
         // 3. A01BuffTemp is densified and leading dimensions = Nl-loff, row-major
         PE(step6_dgemm);
-        if (n_local_active_rows > 0) {
+    //    if (n_local_active_rows > 0) {
             cblas_dgemm(CblasRowMajor, CblasNoTrans, CblasNoTrans,
                         n_local_active_rows, Nl - loff, nlayr,
                         -1.0, &A10BuffRcv[0], nlayr,
                         &A01BuffRcv[0], Nl - loff,
                         1.0, &A11Buff[first_non_pivot_row * Nl + loff], Nl);
-        }
+      //  }
         PL();
 
         te = std::chrono::high_resolution_clock::now();
@@ -1679,7 +1719,7 @@ std::vector<T> LU_rep(T* C, // C is only used when CONFLUX_WITH_VALIDATION
         #endif
 
         #ifdef DEBUG
-        if (pj == k % Py) {
+        if (pj == k % Py && debug_level > 1) {
             std::cout << "\nk= " << k <<", rank [" << pi << ", " << pj << ", " << pk << "] (" << rank << ") " << 
                      ", n_local_active_rows: " << n_local_active_rows << "\n";
         }
@@ -1864,7 +1904,7 @@ std::vector<T> LU_rep(T* C, // C is only used when CONFLUX_WITH_VALIDATION
 
                 // if (k == chosen_step) {
 #ifdef DEBUG
-                if (debug_level > 0 && k > 12) {
+                if (debug_level > 1 && k > 12) {
                     std::cout << "Rank [" << pi << ", " << pj << ", " << pk << "], k = " << k << ". A01: \n";
                     print_matrix(A01Buff.data(), 0, v,
                                  0, A01cols, A01cols);
