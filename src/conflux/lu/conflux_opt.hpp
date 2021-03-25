@@ -190,6 +190,8 @@ template <typename T>
 void LUP(int n_local_active_rows, int v, int stride,
          T *pivotBuff, T *candidatePivotBuff,
          std::vector<int> &ipiv, std::vector<int> &perm) {
+    assert(n_local_active_rows >= 0);
+    if (n_local_active_rows == 0) return;
     // reset the values
     for (int i = 0; i < std::max(2 * v, n_local_active_rows); ++i) {
         perm[i] = i;
@@ -319,15 +321,16 @@ void tournament_rounds(
     int pi, pj, pk;
     std::tie(pi, pj, pk) = p2X(lu_comm, rank);
 
+    int req_id = 0;
+    int n_reqs = (Px & (Px - 1) == 0) ? 2 : (Px + 2);
+    // int n_reqs = Px+2;
+    MPI_Request reqs[n_reqs];
+
     for (int r = 0; r < n_rounds; ++r) {
         // auto src_pi = std::min(flipbit(pi, r), Px - 1);
         auto src_pi = butterfly_pair(pi, r, Px);
         auto p_rcv = X2p(lu_comm, src_pi, pj, pk);
-
-        int req_id = 0;
-        int n_reqs = (Px & (Px - 1) == 0) ? 2 : (Px + 2);
-        // int n_reqs = Px+2;
-        MPI_Request reqs[n_reqs];
+        req_id = 0;
 
         if (src_pi < pi) {
             MPI_Isend(&candidatePivotBuff[v * (v + 1)], v * (v + 1), MPI_DOUBLE,
@@ -357,56 +360,59 @@ void tournament_rounds(
             }
         }
         MPI_Waitall(req_id, &reqs[0], MPI_STATUSES_IGNORE);
-        // MPI_Request_free(&reqs[0]);
 
-        // if (pi == 1) {
-        //    std::cout << "pi: " << pi << ", src_pi: " << src_pi << ", tournament round " << r << "/" << n_rounds << ", before LUP. candidatePivBuff\n" << std::flush;
-        //    print_matrix(candidatePivotBuff.data(), 0, 2*v, 0, v+1, v+1);
-        //             std::cout << "\n\n" << std::flush;
-        // }
-        // candidatePivotBuff := input
-        LUP(2 * v, v, v + 1, &pivotBuff[0], &candidatePivotBuff[1], ipiv, perm);
+        // if (n_local_active_rows > 0) {
+            // MPI_Request_free(&reqs[0]);
 
-        // if final round
-        if (r == n_rounds - 1) {
-            inverse_permute_rows(&candidatePivotBuff[0],
-                                 &candidatePivotBuffPerm[0],
-                                 2 * v, v + 1, v, v + 1, layout, perm);
-
-            candidatePivotBuff.swap(candidatePivotBuffPerm);
-
-            // if (k > 12) {
-            // std::cout << "Rank [" << pi << ", " << pj << ", " << pk << "], k = " << k << ", pivotBuff:\n" << std::flush;
-            //         print_matrix(pivotBuff.data(), 0, v, 0, v, v);
-            //         std::cout << "\n\n" << std::flush;
+            // if (pi == 1) {
+            //    std::cout << "pi: " << pi << ", src_pi: " << src_pi << ", tournament round " << r << "/" << n_rounds << ", before LUP. candidatePivBuff\n" << std::flush;
+            //    print_matrix(candidatePivotBuff.data(), 0, 2*v, 0, v+1, v+1);
+            //             std::cout << "\n\n" << std::flush;
             // }
+            // candidatePivotBuff := input
+            LUP(2 * v, v, v + 1, &pivotBuff[0], &candidatePivotBuff[1], ipiv, perm);
 
-            // just the top v rows
-            parallel_mcopy(v, v,
-                           &pivotBuff[0], v,
-                           &A00Buff[0], v);
-        } else {
-            src_pi = butterfly_pair(pi, r + 1, Px);  //std::min(flipbit(pi, r+1), Px - 1);
-            if (src_pi < pi) {
-                inverse_permute_rows(&candidatePivotBuff[0],
-                                     &candidatePivotBuffPerm[v * (v + 1)],
-                                     2 * v, v + 1, v, v + 1, layout, perm);
-                candidatePivotBuff.swap(candidatePivotBuffPerm);
-            } else {
+            // if final round
+            if (r == n_rounds - 1) {
                 inverse_permute_rows(&candidatePivotBuff[0],
                                      &candidatePivotBuffPerm[0],
                                      2 * v, v + 1, v, v + 1, layout, perm);
-                candidatePivotBuff.swap(candidatePivotBuffPerm);
-            }
-        }
 
-        // if (pi == 1) {
-        //    std::cout << "pi: " << pi << ", src_pi: " << src_pi << ", tournament round " << r << "/" << n_rounds << ", AFTER LUP. candidatePivBuff\n" << std::flush;
-        //    print_matrix(candidatePivotBuff.data(), 0, 2*v, 0, v+1, v+1);
-        //             std::cout << "\n\n" << std::flush;
-        //     std::cout << "pivotBuff\n" << std::flush;
-        //    print_matrix(pivotBuff.data(), 0, 2*v, 0, v, v);
-        //             std::cout << "\n\n" << std::flush;
+                candidatePivotBuff.swap(candidatePivotBuffPerm);
+
+                // if (k > 12) {
+                // std::cout << "Rank [" << pi << ", " << pj << ", " << pk << "], k = " << k << ", pivotBuff:\n" << std::flush;
+                //         print_matrix(pivotBuff.data(), 0, v, 0, v, v);
+                //         std::cout << "\n\n" << std::flush;
+                // }
+
+                // just the top v rows
+                parallel_mcopy(v, v,
+                               &pivotBuff[0], v,
+                               &A00Buff[0], v);
+            } else {
+                src_pi = butterfly_pair(pi, r + 1, Px);  //std::min(flipbit(pi, r+1), Px - 1);
+                if (src_pi < pi) {
+                    inverse_permute_rows(&candidatePivotBuff[0],
+                                         &candidatePivotBuffPerm[v * (v + 1)],
+                                         2 * v, v + 1, v, v + 1, layout, perm);
+                    candidatePivotBuff.swap(candidatePivotBuffPerm);
+                } else {
+                    inverse_permute_rows(&candidatePivotBuff[0],
+                                         &candidatePivotBuffPerm[0],
+                                         2 * v, v + 1, v, v + 1, layout, perm);
+                    candidatePivotBuff.swap(candidatePivotBuffPerm);
+                }
+            }
+
+            // if (pi == 1) {
+            //    std::cout << "pi: " << pi << ", src_pi: " << src_pi << ", tournament round " << r << "/" << n_rounds << ", AFTER LUP. candidatePivBuff\n" << std::flush;
+            //    print_matrix(candidatePivotBuff.data(), 0, 2*v, 0, v+1, v+1);
+            //             std::cout << "\n\n" << std::flush;
+            //     std::cout << "pivotBuff\n" << std::flush;
+            //    print_matrix(pivotBuff.data(), 0, 2*v, 0, v, v);
+            //             std::cout << "\n\n" << std::flush;
+            // }
         // }
     }
 }
@@ -470,12 +476,18 @@ std::vector<T> LU_rep(T* C, // C is only used when CONFLUX_WITH_VALIDATION
     MPI_Comm jk_comm = gv.jk_comm;
     MPI_Comm k_comm = gv.k_comm;
 
+#ifdef DEBUG
+    MPI_Comm i_comm;
+    int keep_dims_i[] = {1, 0, 0};
+    MPI_Cart_sub(lu_comm, keep_dims_i, &i_comm);
+#endif
+
     auto chosen_step = Nt; // - 1;
     // auto debug_level = 0;
     //auto chosen_step = 90;
-    auto debug_level = 0;
+    auto debug_level = 2;
 
-    int print_rank = X2p(lu_comm, 0, 1, 0);
+    int print_rank = X2p(lu_comm, 0, 0, 0);
 
     // Create buffers
     std::vector<T> A00Buff(v * v);
@@ -496,7 +508,7 @@ std::vector<T> LU_rep(T* C, // C is only used when CONFLUX_WITH_VALIDATION
     std::vector<T> A11BuffTemp(Ml * Nl);
 
     //TODO: can we handle such a big global pivots vector?
-    std::vector<T> pivotIndsBuff(M);
+    std::vector<int> pivotIndsBuff(M);
 #ifdef FINAL_SCALAPACK_LAYOUT
     std::vector<T> ScaLAPACKResultBuff(Ml * Nl);
     MPI_Win res_Win = create_window(lu_comm,
@@ -507,7 +519,7 @@ std::vector<T> LU_rep(T* C, // C is only used when CONFLUX_WITH_VALIDATION
     // TODO: This is DEFINITELY suboptimal. We will use two buffers
     // (pivotIndsBuff and ipvt_g) to recreate local scalapack ipvt
     // Hopefully, it won't impact performance much.
-    std::vector<T> ipvt_g(M);
+    std::vector<int> ipvt_g(M);
     // initially, ipvt_g contains consecutive integers (0, 1, ..., M-1)
     // then, we will recreate this ipvt permutations 
     std::iota (std::begin(ipvt_g), std::end(ipvt_g), 0); 
@@ -534,7 +546,6 @@ std::vector<T> LU_rep(T* C, // C is only used when CONFLUX_WITH_VALIDATION
 
     std::vector<T> pivotBuff(Ml * v);
 
-    
     std::vector<T> candidatePivotBuff(Ml * (v + 1));
     std::vector<T> candidatePivotBuffPerm(Ml * (v + 1));
     std::vector<int> perm(std::max(2 * v, Ml));  // rows
@@ -587,6 +598,10 @@ std::vector<T> LU_rep(T* C, // C is only used when CONFLUX_WITH_VALIDATION
 
     auto layout = order::row_major;
 
+#ifdef DEBUG
+    std::vector<int> activeRows(Px);
+#endif
+
     /*
 # ---------------------------------------------- #
 # ----------------- MAIN LOOP ------------------ #
@@ -608,10 +623,10 @@ std::vector<T> LU_rep(T* C, // C is only used when CONFLUX_WITH_VALIDATION
     for (auto k = 0; k < Nt; ++k) {
         bool last_step = k == Nt - 1;
 #ifdef DEBUG
-        if (debug_level > 1) {
+        if (debug_level > 1 && print_rank == rank) {
             std::cout << "Iteration = " << k << std::endl;
-            MPI_Barrier(lu_comm);
         }
+        MPI_Barrier(lu_comm);
 #endif
         if (k == chosen_step + 1)
             break;
@@ -640,36 +655,68 @@ std::vector<T> LU_rep(T* C, // C is only used when CONFLUX_WITH_VALIDATION
         // flush the buffer
         curPivots[0] = 0;
 
+        assert(n_local_active_rows >= 0);
+        assert(first_non_pivot_row <= Ml);
+        if (n_local_active_rows <= 0) {
+            assert(curPivots[0] == 0);
+        }
+
+#if DEBUG
+        if (k == chosen_step) {
+            std::cout << "Matrix A10BuffRcv = " << std::endl;
+            print_matrix_all(A10BuffRcv.data(), 0, n_local_active_rows, 
+                                                0, nlayr, nlayr, 
+                                                rank, P, lu_comm);
+            std::cout << "Matrix A10BuffTemp = " << std::endl;
+            print_matrix_all(A10BuffTemp.data(), 0, n_local_active_rows, 
+                                                0, nlayr, nlayr, 
+                                                rank, P, lu_comm);
+        }
+        assert(n_local_active_rows >= 0);
+        assert(first_non_pivot_row <= Ml);
+
+        assert(has_valid_data(&A10Buff[0], 
+                              first_non_pivot_row, Ml, 
+                              0, v, v));
+        assert(has_valid_data(A00Buff.data(), 0, v, 0, v, v));
+        assert(has_valid_data(&A01Buff[0], 
+                              0, v,
+                              0, Nl-loff, Nl-loff));
+        assert(has_valid_data(&A11Buff[0], 
+                              first_non_pivot_row, Ml,
+                              loff, Nl, Nl))
+#endif
+
         PE(step0_padding);
         if (n_local_active_rows < v) {
-            int padding_start = n_local_active_rows * (v + 1);
+            int padding_start = std::max(0, n_local_active_rows) * (v + 1);
             int padding_end = v * (v + 1);
             std::fill(candidatePivotBuff.begin() + padding_start,
                       candidatePivotBuff.begin() + padding_end, 0);
             std::fill(candidatePivotBuffPerm.begin() + padding_start,
                       candidatePivotBuffPerm.begin() + padding_end, 0);
-            std::fill(gri.begin() + n_local_active_rows, gri.begin() + v, -1);
+            // std::fill(gri.begin() + first_non_pivot_row, gri.end(), -1);
         }
         PL();
 
         // # reduce first tile column. In this part, only pj == k % sqrtp1 participate:
-#ifdef DEBUG
-        if (debug_level > 0) {
-            if (k == chosen_step) {
-                if (rank == print_rank) {
-                    std::cout << "Step 0, A10Buff before reduction." << std::endl;
-                    print_matrix(A10Buff.data(), 0, Ml, 0, v, v);
-                }
-            }
-        }
-#endif
 
-        if (pj == k % Py) {
+        if (pj == k % Py && n_local_active_rows > 0) {
             PE(step0_copy);
             parallel_mcopy<T>(n_local_active_rows, v,
                               &A11Buff[first_non_pivot_row * Nl + loff], Nl,
                               &A10Buff[first_non_pivot_row * v], v);
             PL();
+#ifdef DEBUG
+            if (debug_level > 0) {
+                if (k == chosen_step) {
+                    if (rank == print_rank) {
+                        std::cout << "Step 0, A10Buff before reduction." << std::endl;
+                        print_matrix(A10Buff.data(), 0, Ml, 0, v, v);
+                    }
+                }
+            }
+#endif
 
             PE(step0_reduce);
             if (pk == layrK) {
@@ -726,66 +773,68 @@ std::vector<T> LU_rep(T* C, // C is only used when CONFLUX_WITH_VALIDATION
 #endif
         MPI_Request A00_req[2];
         int n_A00_reqs = 0;
+        assert(n_local_active_rows + first_non_pivot_row == Ml);
         if (pj == k % Py && pk == layrK) {
             auto min_perm_size = std::min(N - k * v, v);
             auto max_perm_size = std::max(n_local_active_rows, v);
 
-            PE(step1_A10copy);
-            parallel_mcopy<T>(n_local_active_rows, v,
-                              &A10Buff[first_non_pivot_row * v], v,
-                              &candidatePivotBuff[1], v + 1);
-            assert(n_local_active_rows + first_non_pivot_row == Ml);
-            // glue the gri elements to the first column of candidatePivotBuff
-            prepend_column(matrix_view<T>(&candidatePivotBuff[0],
-                                          n_local_active_rows, v + 1, v + 1,
-                                          layout),
-                           &gri[first_non_pivot_row]);
-            PL();
+            if (n_local_active_rows > 0) {
+                PE(step1_A10copy);
+                parallel_mcopy<T>(n_local_active_rows, v,
+                                  &A10Buff[first_non_pivot_row * v], v,
+                                  &candidatePivotBuff[1], v + 1);
+                // glue the gri elements to the first column of candidatePivotBuff
+                prepend_column(matrix_view<T>(&candidatePivotBuff[0],
+                                              n_local_active_rows, v + 1, v + 1,
+                                              layout),
+                               &gri[first_non_pivot_row]);
+                PL();
 #ifdef DEBUG
-            if (debug_level > 0) {
-                // TODO: before anything
-                if (chosen_step == k) {
-                    std::cout << "candidatePivotBuff BEFORE ANYTHING " << pi << std::endl;
-                    print_matrix(candidatePivotBuff.data(),
-                                 0, n_local_active_rows, 0, v + 1, v + 1);
+                if (debug_level > 0) {
+                    // TODO: before anything
+                    if (chosen_step == k) {
+                        std::cout << "candidatePivotBuff BEFORE ANYTHING " << pi << std::endl;
+                        print_matrix(candidatePivotBuff.data(),
+                                     0, n_local_active_rows, 0, v + 1, v + 1);
+                    }
                 }
-            }
 #endif
-            // # tricky part! to preserve the order of the rows between swapping pairs (e.g., if ranks 0 and 1 exchange their
-            // # candidate rows), we want to preserve that candidates of rank 0 are always above rank 1 candidates. Otherwise,
-            // # we can get inconsistent results. That's why,in each communication pair, higher rank puts his candidates below:
+                // # tricky part! to preserve the order of the rows between swapping pairs (e.g., if ranks 0 and 1 exchange their
+                // # candidate rows), we want to preserve that candidates of rank 0 are always above rank 1 candidates. Otherwise,
+                // # we can get inconsistent results. That's why,in each communication pair, higher rank puts his candidates below:
 
-            // # find with which rank we will communicate
-            // # ANOTHER tricky part ! If sqrtp1 is not 2^n, then we will not have a nice butterfly communication graph.
-            // # that's why with the flipBit strategy, src_pi can actually be larger than sqrtp1
-            auto src_pi = std::min(flipbit(pi, 0), Px - 1);
+                // # find with which rank we will communicate
+                // # ANOTHER tricky part ! If sqrtp1 is not 2^n, then we will not have a nice butterfly communication graph.
+                // # that's why with the flipBit strategy, src_pi can actually be larger than sqrtp1
+                auto src_pi = std::min(flipbit(pi, 0), Px - 1);
 
-            PE(step1_lup)
-            LUP(n_local_active_rows, v, v + 1, &pivotBuff[0], &candidatePivotBuff[1], ipiv, perm);
-            PL();
+                PE(step1_lup)
+                LUP(n_local_active_rows, v, v + 1, &pivotBuff[0], &candidatePivotBuff[1], ipiv, perm);
+                PL();
 
-            // TODO: after first LUP and swap
+                // TODO: after first LUP and swap
 #ifdef DEBUG
-            if (debug_level > 0) {
-                if (chosen_step == k) {
-                    std::cout << "candidatePivotBuff BEFORE FIRST LUP AND SWAP " << pi << std::endl;
-                    print_matrix(candidatePivotBuff.data(),
-                                 0, n_local_active_rows, 0, v + 1, v + 1);
+                if (debug_level > 0) {
+                    if (chosen_step == k) {
+                        std::cout << "candidatePivotBuff BEFORE FIRST LUP AND SWAP " << pi << std::endl;
+                        print_matrix(candidatePivotBuff.data(),
+                                     0, n_local_active_rows, 0, v + 1, v + 1);
+                    }
                 }
-            }
 #endif
 
-            PE(step1_rowpermute);
-            if (src_pi < pi) {
-                inverse_permute_rows(&candidatePivotBuff[0], &candidatePivotBuffPerm[v * (v + 1)],
-                                     max_perm_size, v + 1, v, v + 1, layout, perm);
-                candidatePivotBuff.swap(candidatePivotBuffPerm);
-            } else {
-                inverse_permute_rows(&candidatePivotBuff[0], &candidatePivotBuffPerm[0],
-                                     max_perm_size, v + 1, v, v + 1, layout, perm);
-                candidatePivotBuff.swap(candidatePivotBuffPerm);
+                PE(step1_rowpermute);
+                if (src_pi < pi) {
+                    inverse_permute_rows(&candidatePivotBuff[0], &candidatePivotBuffPerm[v * (v + 1)],
+                                         max_perm_size, v + 1, v, v + 1, layout, perm);
+                    candidatePivotBuff.swap(candidatePivotBuffPerm);
+                } else {
+                    inverse_permute_rows(&candidatePivotBuff[0], &candidatePivotBuffPerm[0],
+                                         max_perm_size, v + 1, v, v + 1, layout, perm);
+                    candidatePivotBuff.swap(candidatePivotBuffPerm);
+                }
+                PL();
             }
-            PL();
 
             // TODO: after first LUP and swap
 #ifdef DEBUG
@@ -828,48 +877,52 @@ std::vector<T> LU_rep(T* C, // C is only used when CONFLUX_WITH_VALIDATION
                 k);
 
 #ifdef DEBUG
-            if (k == chosen_step && debug_level > 1) {
-                std::cout << "Rank [" << pi << ", " << pj << ", " << pk << "], n_local_active_rows: "
-                          << n_local_active_rows << ", candidatePivotBuff after: \n"
-                          << std::flush;
-                print_matrix(candidatePivotBuff.data(), 0, Ml, 0, v + 1, v + 1);
-                std::cout << "\n\n"
-                          << std::flush;
+                if (k == chosen_step && debug_level > 1) {
+                    std::cout << "Rank [" << pi << ", " << pj << ", " << pk << "], n_local_active_rows: "
+                              << n_local_active_rows << ", candidatePivotBuff after: \n"
+                              << std::flush;
+                    print_matrix(candidatePivotBuff.data(), 0, Ml, 0, v + 1, v + 1);
+                    std::cout << "\n\n"
+                              << std::flush;
 
-                std::cout << "candidatePivotBuff FINAL VALUE " << pi << std::endl;
-                print_matrix(candidatePivotBuff.data(),
-                             0, n_local_active_rows, 0, v + 1, v + 1);
-            }
+                    std::cout << "candidatePivotBuff FINAL VALUE " << pi << std::endl;
+                    print_matrix(candidatePivotBuff.data(),
+                                 0, n_local_active_rows, 0, v + 1, v + 1);
+                }
 #endif
             // std::cout << "tournament rounds finished" << std::endl;
-
-            // extract the first col of candidatePivotBuff
-            // first v elements of the first column of candidatePivotBuff
+// extract the first col of candidatePivotBuff first v elements of the first column of candidatePivotBuff
             // first v rows
             // v+1 is the number of cols
             // std::cout << "candidatePivotBuff:" << std::endl;;
             // print_matrix(candidatePivotBuff.data(), 0, v, 0, v+1, v+1);
-            auto gpivots = column<T, int>(matrix_view<T>(&candidatePivotBuff[0],
-                                                         min_perm_size, v + 1, v + 1,
-                                                         layout),
-                                          0);
+            if (n_local_active_rows > 0) {
+                auto gpivots = column<T, int>(matrix_view<T>(&candidatePivotBuff[0],
+                                                             min_perm_size, v + 1, v + 1,
+                                                             layout),
+                                              0);
 
-            std::unordered_map<int, std::vector<int>> lpivots;
-            std::unordered_map<int, std::vector<int>> loffsets;
-            std::tie(lpivots, loffsets) = g2lnoTile(gpivots, Px, v);
+                std::unordered_map<int, std::vector<int>> lpivots;
+                std::unordered_map<int, std::vector<int>> loffsets;
+                std::tie(lpivots, loffsets) = g2lnoTile(gpivots, Px, v);
 
-            // locally set curPivots
-            /*
-                 because the thing is that n_local_active_rows is BEFORE tournament pivoting
-                 so you entered the tournnament with empty hands but at least 
-                 you should tell others what was the outcome of the tournament. 
-                 So other ranks produced A00, gpivots, etc. and this information has to be propagated further
-                 */
-            curPivots[0] = lpivots[pi].size();
-            std::copy_n(&lpivots[pi][0], curPivots[0], &curPivots[1]);
-            std::copy_n(&loffsets[pi][0], curPivots[0], &curPivots[v + 1]);
-            // curPivOrder = loffsets[pi];
-            std::copy_n(&gpivots[0], v, &pivotIndsBuff[k * v]);
+                // locally set curPivots
+                /*
+                     because the thing is that n_local_active_rows is BEFORE tournament pivoting
+                     so you entered the tournnament with empty hands but at least 
+                     you should tell others what was the outcome of the tournament. 
+                     So other ranks produced A00, gpivots, etc. and this information has to be propagated further
+                     */
+                curPivots[0] = lpivots[pi].size();
+                // if (curPivots[0] > 0) {
+                std::copy_n(&lpivots[pi][0], curPivots[0], &curPivots[1]);
+                std::copy_n(&loffsets[pi][0], curPivots[0], &curPivots[v + 1]);
+                // curPivOrder = loffsets[pi];
+                std::copy_n(&gpivots[0], v, &pivotIndsBuff[k * v]);
+               //  }
+            } else {
+                curPivots[0] = 0;
+            }
             PL();
 
             PE(step1_A00Buff_isend);
@@ -893,7 +946,6 @@ std::vector<T> LU_rep(T* C, // C is only used when CONFLUX_WITH_VALIDATION
             }
             PL();
         }
-
         // (pi, k % sqrtp1, layrK) -> (k % sqrtp1, pi, layrK)
         // # Receiving A00Buff:
         PE(step1_A00Buff_irecv);
@@ -925,8 +977,8 @@ std::vector<T> LU_rep(T* C, // C is only used when CONFLUX_WITH_VALIDATION
         // the one who entered this is the root
         auto root = X2p(jk_comm, k % Py, layrK);
 
-        // # Sending A00Buff:
         /*
+        // # Sending A00Buff:
             PE(step1_A00Buff_bcast);
             MPI_Request A00_bcast_req;
             MPI_Ibcast(&A00Buff[0], v * v, MPI_DOUBLE, root, jk_comm, &A00_bcast_req);
@@ -936,7 +988,7 @@ std::vector<T> LU_rep(T* C, // C is only used when CONFLUX_WITH_VALIDATION
         // sending pivotIndsBuff
         PE(step1_pivotIndsBuff);
         MPI_Request pivotIndsBuff_bcast_req;
-        MPI_Ibcast(&pivotIndsBuff[k * v], v, MPI_DOUBLE, root, jk_comm, &pivotIndsBuff_bcast_req);
+        MPI_Ibcast(&pivotIndsBuff[k * v], v, MPI_INT, root, jk_comm, &pivotIndsBuff_bcast_req);
         PL();
 
         // PE(step1_barrier);
@@ -998,10 +1050,46 @@ std::vector<T> LU_rep(T* C, // C is only used when CONFLUX_WITH_VALIDATION
         MPI_Barrier(lu_comm);
 #endif
 
+#ifdef DEBUG
+        assert(n_local_active_rows >= 0);
+
+        MPI_Allgather(&n_local_active_rows, 1, MPI_INT,
+                      &activeRows[0], 1, MPI_INT, i_comm);
+
+        int sum_rows = 0;
+        for (auto& el : activeRows) {
+            if (el > 0) sum_rows += el;
+        }
+        assert(sum_rows == N - k*v);
+
+        if (k == chosen_step) {
+            for (int p = 0; p < P; ++p) {
+                if (rank == p) {
+                    std::cout << "[Rank " << p << "], step: " << k << ", sum_rows = " << sum_rows << ", N-kv = " << N-k*v << std::endl;
+                    std::cout << "Nl = " << Nl << ", n_local_active_rows = " << n_local_active_rows << ", first_non_pivot_row = " << first_non_pivot_row << std::endl;
+                    std::cout << "curPivots: " << curPivots[0] << " | ";
+                    for (int i = 0; i < curPivots[0]; ++i) {
+                        std::cout << curPivots[i+1] << ", ";
+                    }
+                    std::cout << std::endl;
+                    std::cout << "======================" << std::endl;
+                }
+                MPI_Barrier(lu_comm);
+            }
+        }
+#endif
+
         PE(step1_curPivots);
         // MPI_Wait(&curPivots_bcast_req, MPI_STATUS_IGNORE);
         for (int i = 0; i < curPivots[0]; ++i) {
-            curPivots[i + 1] = igri[curPivots[i + 1]];
+            auto pivot_row = igri[curPivots[i+1]];
+            if (pivot_row < first_non_pivot_row || pivot_row >= Ml) {
+                std::cout << "Rank [" << pi << ", " << pj << ", " << pk << "], k = " << k << ", first_non_pivot_row: " << first_non_pivot_row << ", pivot_row: " << pivot_row  << ", n_rows: " << Ml << std::endl;;
+            }
+            assert(first_non_pivot_row >= Ml 
+                   || 
+                  (first_non_pivot_row <= pivot_row && pivot_row < Ml));
+            curPivots[i + 1] = pivot_row;
         }
         PL();
 
@@ -1089,50 +1177,54 @@ std::vector<T> LU_rep(T* C, // C is only used when CONFLUX_WITH_VALIDATION
         first_non_pivot_row += curPivots[0];
         n_local_active_rows -= curPivots[0];
 
-        for (int i = first_non_pivot_row; i < Ml; ++i) {
+        assert(n_local_active_rows >= 0);
+
+        for (int i = 0; i < Ml; ++i) {
             igri[gri[i]] = i;
         }
 
         // for A01Buff
         // TODO: NOW: reduce pivot rows: curPivots[0] x (Nl-loff)
         //
-        PE(step2_localcopy);
-        // we have curPivots[0] pivot rows to copy from A11Buff to A01Buff
-        // But - the precise row location in A01Buff is determined by the curPivOrder,
-        // so i-th pivot row goes to curPivOrder[i] row in A01Buff
-        // HOWEVER. To coalesce the reduction operation, and make A01Buff for reduction dense and not sparse,
-        // we put them in top curPivots[0] of A01BuffTemp. And then, only after the reduction took place, we
-        // use MPI_Put to properly distribute in correct order pivot rows from A01BuffTemp to A01Buff
+        if (n_local_active_rows > 0) {
+            PE(step2_localcopy);
+            // we have curPivots[0] pivot rows to copy from A11Buff to A01Buff
+            // But - the precise row location in A01Buff is determined by the curPivOrder,
+            // so i-th pivot row goes to curPivOrder[i] row in A01Buff
+            // HOWEVER. To coalesce the reduction operation, and make A01Buff for reduction dense and not sparse,
+            // we put them in top curPivots[0] of A01BuffTemp. And then, only after the reduction took place, we
+            // use MPI_Put to properly distribute in correct order pivot rows from A01BuffTemp to A01Buff
 #pragma omp parallel for shared(curPivots, first_non_pivot_row, A11Buff, Nl, loff, A01BuffTemp)
-        for (int i = 0; i < curPivots[0]; ++i) {
+            for (int i = 0; i < curPivots[0]; ++i) {
+                // if (pi == 0 && pj == 1 && pk == 0 && (k % Px) == 0){
+                //     std::cout << "Rank [" << pi << ", " << pj << ", " << pk << "]. curPivOrder: \n";
+                //             print_matrix(curPivOrder.data(), 0, 1,
+                //                         0, v, v);
+                // }
+                int pivot_row = first_non_pivot_row - curPivots[0] + i;
+                std::copy_n(&A11Buff[pivot_row * Nl + loff], Nl - loff, &A01BuffTemp[i * (Nl - loff)]);
+            }
+
             // if (pi == 0 && pj == 1 && pk == 0 && (k % Px) == 0){
-            //     std::cout << "Rank [" << pi << ", " << pj << ", " << pk << "]. curPivOrder: \n";
-            //             print_matrix(curPivOrder.data(), 0, 1,
-            //                         0, v, v);
+            //     std::cout << "A01Buff before reduce. Rank [" << pi << ", " << pj << ", " << pk << "]:" << std::endl << std::flush;
+            //     print_matrix(A01Buff.data(), 0, v, 0, Nl, Nl);
             // }
-            int pivot_row = first_non_pivot_row - curPivots[0] + i;
-            std::copy_n(&A11Buff[pivot_row * Nl + loff], Nl - loff, &A01BuffTemp[i * (Nl - loff)]);
+            // MPI_Barrier(lu_comm);
+
+            PL();
+
+            PE(step2_reduce);
+            if (pk == layrK) {
+                MPI_Reduce(MPI_IN_PLACE, &A01BuffTemp[0],
+                           curPivots[0] * (Nl - loff),
+                           MPI_DOUBLE, MPI_SUM, layrK, k_comm);
+            } else {
+                MPI_Reduce(&A01BuffTemp[0], &A01BuffTemp[0],
+                           curPivots[0] * (Nl - loff),
+                           MPI_DOUBLE, MPI_SUM, layrK, k_comm);
+            }
+            PL();
         }
-
-        // if (pi == 0 && pj == 1 && pk == 0 && (k % Px) == 0){
-        //     std::cout << "A01Buff before reduce. Rank [" << pi << ", " << pj << ", " << pk << "]:" << std::endl << std::flush;
-        //     print_matrix(A01Buff.data(), 0, v, 0, Nl, Nl);
-        // }
-        // MPI_Barrier(lu_comm);
-
-        PL();
-
-        PE(step2_reduce);
-        if (pk == layrK) {
-            MPI_Reduce(MPI_IN_PLACE, &A01BuffTemp[0],
-                       curPivots[0] * (Nl - loff),
-                       MPI_DOUBLE, MPI_SUM, layrK, k_comm);
-        } else {
-            MPI_Reduce(&A01BuffTemp[0], &A01BuffTemp[0],
-                       curPivots[0] * (Nl - loff),
-                       MPI_DOUBLE, MPI_SUM, layrK, k_comm);
-        }
-        PL();
 
         // MPI_Barrier(lu_comm);
 
@@ -1167,7 +1259,6 @@ std::vector<T> LU_rep(T* C, // C is only used when CONFLUX_WITH_VALIDATION
         // # here, only processors pk == layrK participate      #
         // # -------------------------------------------------- #
         PE(step3_put);
-        MPI_Win_fence(0, A01Win);
         if (pk == layrK) {
             // curPivOrder[i] refers to the target
             auto p_rcv = X2p(lu_comm, k % Px, pj, layrK);
@@ -1218,7 +1309,7 @@ std::vector<T> LU_rep(T* C, // C is only used when CONFLUX_WITH_VALIDATION
             PE(step1_A00Buff_bcast);
             MPI_Wait(&A00_bcast_req, MPI_STATUS_IGNORE);
             PL();
-            */
+        */
         PE(step1_A00Buff_waitall);
         if (n_A00_reqs > 0) {
             MPI_Waitall(n_A00_reqs, &A00_req[0], MPI_STATUSES_IGNORE);
@@ -1845,10 +1936,12 @@ std::vector<T> LU_rep(T* C, // C is only used when CONFLUX_WITH_VALIDATION
         }
 
         if (debug_level > 0) {
-            if (rank == print_rank) {
-                std::cout << "k = " << k << ", pivotIndsBuff: \n";
-                print_matrix(pivotIndsBuff.data(), 0, 1, 0, N, N);
-                std::cout << "\n\n";
+            if (chosen_step == k) {
+                if (rank == print_rank) {
+                    std::cout << "k = " << k << ", pivotIndsBuff: \n";
+                    print_matrix(pivotIndsBuff.data(), 0, 1, 0, N, N);
+                    std::cout << "\n\n";
+                }
             }
         }
 #endif
@@ -1867,12 +1960,15 @@ std::vector<T> LU_rep(T* C, // C is only used when CONFLUX_WITH_VALIDATION
     }
 
     MPI_Win_free(&A01Win);
+#ifdef DEBUG
+    MPI_Comm_free(&i_comm);
+#endif
 #ifdef CONFLUX_WITH_VALIDATION
     MPI_Win_free(&B_Win);
     // std::copy(B.begin(), B.end(), C);
     MPI_Barrier(lu_comm);
     for (auto i = 0; i < N; ++i) {
-        int idx = int(pivotIndsBuff[i]);
+        int idx = pivotIndsBuff[i];
         //std::copy(B.begin() + idx * N, B.begin() + (idx + 1) * N, C + i * N);
         PP[i * N + idx] = 1;
     }
