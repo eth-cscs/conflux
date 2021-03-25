@@ -875,6 +875,14 @@ std::vector<T> LU_rep(T* C, // C is only used when CONFLUX_WITH_VALIDATION
                 Px, layrK,
                 lu_comm,
                 k);
+#ifdef DEBUG
+            // after the tournament pivoting is finished, A00 has global pivots
+            // that are independent of n_local_active_rows
+            // no global pivot should be 0
+            for (int i = 0; i < v; ++i){
+                assert(std::abs(A00Buff[i*v + i]) > 0.001);
+            }
+#endif
 
 #ifdef DEBUG
                 if (k == chosen_step && debug_level > 1) {
@@ -1313,6 +1321,14 @@ std::vector<T> LU_rep(T* C, // C is only used when CONFLUX_WITH_VALIDATION
         PE(step1_A00Buff_waitall);
         if (n_A00_reqs > 0) {
             MPI_Waitall(n_A00_reqs, &A00_req[0], MPI_STATUSES_IGNORE);
+#ifdef DEBUG
+            // after the tournament pivoting is finished, A00 has global pivots
+            // that are independent of n_local_active_rows
+            // no global pivot should be 0
+            for (int i = 0; i < v; ++i){
+                assert(std::abs(A00Buff[i*v + i]) > 0.001);
+            }
+#endif
         }
         PL();
 
