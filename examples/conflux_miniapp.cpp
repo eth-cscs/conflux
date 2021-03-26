@@ -6,6 +6,34 @@
 #include <conflux/lu/conflux_opt.hpp>
 #include <conflux/lu/profiler.hpp>
 
+#include <costa/grid2grid/transform.hpp>
+
+#include "utils.hpp"
+
+MPI_Comm subcommunicator(std::vector<int>& ranks, MPI_Comm comm = MPI_COMM_WORLD) {
+    // original size
+    int P;
+    MPI_Comm_size(comm, &P);
+
+    // original group
+    MPI_Group group;
+    MPI_Comm_group(comm, &group);
+
+    // new comm and new group
+    MPI_Comm newcomm;
+    MPI_Group newcomm_group;
+
+    // create reduced group
+    MPI_Group_incl(group, ranks.size(), ranks.data(), &newcomm_group);
+    // create reduced communicator
+    MPI_Comm_create_group(comm, newcomm_group, 0, &newcomm);
+
+    MPI_Group_free(&group);
+    MPI_Group_free(&newcomm_group);
+
+    return newcomm;
+}
+
 int main(int argc, char *argv[]) {
     cxxopts::Options options("conflux miniapp", 
         "A miniapp computing: LU factorization of A, where dim(A)=N*N");
@@ -59,16 +87,6 @@ int main(int argc, char *argv[]) {
                                       p_grid[0], p_grid[1], p_grid[2], 
                                       MPI_COMM_WORLD);
 
-    /*
-    if (p_grid[0] <= 0 || p_grid[1] <= 0 || p_grid[2] <= 0) {
-        params = conflux::lu_params<double>(M, N, b, MPI_COMM_WORLD);
-    } else {
-        params = conflux::lu_params<double>(M, N, b, 
-                                            p_grid[0], p_grid[1], p_grid[2], 
-                                            MPI_COMM_WORLD);
-    }
-    */
-
     int rank, P;
     MPI_Comm_rank(params.lu_comm, &rank);
     MPI_Comm_size(params.lu_comm, &P);
@@ -80,109 +98,182 @@ int main(int argc, char *argv[]) {
                   << ", tA11x: " << params.tA11x << ", tA11y: " << params.tA11y << std::endl;
     }
 
-    std::vector<double> C;
-    std::vector<double> Perm;
-    
-    bool display_global_res = 1;
-#ifdef CONFLUX_WITH_VALIDATION
-    C = std::vector<double>(params.M * params.N);
-    Perm = std::vector<double>(params.M * params.N);
-#endif
+    // A = input, C = output
+    std::vector<double>& A_buff = params.data;
+    std::vector<double> C_buff(A_buff.size());
 
+    // pivots
+    std::vector<int> ipvt(params.Ml);
     for (int i = 0; i < n_rep; ++i) {
         PC();
         // reinitialize the matrix
         params.InitMatrix();
-        // TODO: check datatype! If uint is large enough
-        std::vector<std::size_t> ipvt(params.Ml);
-        auto resultBuff = conflux::LU_rep<double>(
-                               C.data(), 
-                               Perm.data(), 
-                               ipvt.data(),
-                               params);
-#ifdef CONFLUX_WITH_VALIDATION
-
-#ifdef FINAL_SCALAPACK_LAYOUT
-        MPI_Barrier(MPI_COMM_WORLD);        
-        int Px = params.Px;
-        int Py = params.Py;
-        int Pz = params.Pz;
-        MPI_Comm lu_comm;
-        int dim[] = {Px, Py, Pz};  // 3D processor grid
-        int period[] = {0, 0, 0};
-        int reorder = 1;
-        MPI_Cart_create(MPI_COMM_WORLD, 3, dim, period, reorder, &lu_comm);
-
-        int rank;
-        MPI_Comm_rank(lu_comm, &rank);
-        int pi, pj, pk;
-        std::tie(pi, pj, pk) = conflux::p2X(lu_comm, rank);
-        for (int pii = 0; pii < Px; pii++) {
-            for (int pjj = 0; pjj < Py; pjj++) {
-                if (pi == pii && pj == pjj && pk == 0) {
-                    std::cout << "Rank [" << pi << ", " << pj << ", " << pk << "], local final result:\n";
-                    conflux::print_matrix(resultBuff.data(), 0, M / params.Px, 0, N / params.Py, N / params.Py);
-                    std::cout << std::flush;
-                    std::cout << "ipvt:\n";
-                    conflux::print_matrix(ipvt.data(), 0, 1, 0, params.Ml, params.Ml);
-                    std::cout << std::flush;
-                    
-                }
-                MPI_Barrier(MPI_COMM_WORLD);
-            }
-        }
-#endif
-if (display_global_res == 1) {
-        if (rank == 0) {
-            auto M = params.M;
-            auto N = params.N;
-            std::vector<double> L(N*N);
-            std::vector<double> U(N*N);
-            for (auto i = 0; i < N; ++i) {
-                for (auto j = 0; j < i; ++j) {
-                    L[i * N + j] = C[i * N + j];
-                }
-                L[i * N + i] = 1;
-                for (auto j = i; j < N; ++j) {
-                    U[i * N + j] = C[i * N + j];
-                }
-            }
-
-            // mm<dtype>(L, U, C, N, N, N);
-            // gemm<dtype>(PP, params.matrix, C, -1.0, 1.0, N, N, N);
-            cblas_dgemm(CblasRowMajor, CblasNoTrans, CblasNoTrans, N, N, N,
-                        1.0, &L[0], N, &U[0], N, 0.0, &C[0], N);
-
-            if (rank == 0 && std::max(M, N) < print_limit) {
-                std::cout << "L:\n";
-                conflux::print_matrix(&L[0], 0, M, 0, N, N);
-                std::cout << "\nU:\n";
-                conflux::print_matrix(&U[0], 0, M, 0, N, N);
-                std::cout << "\nPerm:\n";
-                conflux::print_matrix(Perm.data(), 0, M, 0, N, N);
-                std::cout << "\nL*U:\n";
-                conflux::print_matrix(C.data(), 0, M, 0, N, N);
-            }
-
-            cblas_dgemm(CblasRowMajor, CblasNoTrans, CblasNoTrans, N, N, N,
-                        -1.0, Perm.data(), N, &params.full_matrix[0], N, 1.0, &C[0], N);
-            if (rank == 0 && std::max(M, N) < print_limit){ 
-                std::cout << "\nL*U - P*A:\n";
-                conflux::print_matrix(C.data(), 0, M, 0, N, N);
-            }
-            double norm = 0;
-            for (auto i = 0; i < M; ++i) {
-                for (auto j = 0; j < N; ++j) {
-                    auto value = C[i*N + j];
-                    norm += value * value;
-                }
-            }
-            norm = std::sqrt(norm);
-            std::cout << "residual: " << norm << std::endl;
-        }
-}
-#endif
+        conflux::LU_rep<double>(
+                               params,
+                               C_buff.data(),
+                               ipvt.data()
+                               );
     }
+
+    // the bottom-base of processor grid
+    // these ranks actually own the initial 
+    // and final data
+    std::vector<int> ranks;
+    ranks.reserve(params.Px * params.Py);
+    for (int ppi = 0; ppi < params.Px; ++ppi) {
+        for (int ppj = 0; ppj < params.Py; ++ppj) {
+            int rank = conflux::X2p(params.lu_comm, ppi, ppj, 0);
+            ranks.push_back(rank);
+        }
+    }
+    MPI_Comm comm = subcommunicator(ranks, params.lu_comm);
+
+// TODO:
+// 1. rank (and its coordinates) in lu_comm might be != rank (and coordinates) in comm
+//    So, make sure to relabel ranks
+// 2. permute rows with ipvt
+    if (comm != MPI_COMM_NULL) {
+        // create blacs grid from ranks owning data
+        // observe that the ordering in comm might be different than in lu_comm
+        int ctxt = Csys2blacs_handle(comm);
+        char order = 'R';
+        Cblacs_gridinit(&ctxt, &order, params.Px, params.Py);
+
+        // conflux layouts for A and C
+        auto A_layout = conflux::conflux_layout(A_buff.data(),
+                                                params.M, params.N, params.v,
+                                                'R',
+                                                params.lu_comm);
+        auto C_layout = conflux::conflux_layout(C_buff.data(),
+                                                params.M, params.N, params.v,
+                                                'R',
+                                                params.lu_comm);
+
+        // A and C copies in scalapack layout
+        std::vector<double> A_scalapack_buff(A_buff.size());
+        std::vector<double> C_scalapack_buff(A_buff.size());
+
+        // L and U of the result
+        std::vector<double> L_scalapack_buff(A_buff.size());
+        std::vector<double> U_scalapack_buff(A_buff.size());
+
+        auto A_scalapack_layout = conflux::conflux_layout(A_scalapack_buff.data(),
+                                                params.M, params.N, params.v,
+                                                'C',
+                                                params.lu_comm);
+        auto C_scalapack_layout = conflux::conflux_layout(C_scalapack_buff.data(),
+                                                params.M, params.N, params.v,
+                                                'C',
+                                                params.lu_comm);
+
+        auto L_scalapack_layout = conflux::conflux_layout(L_scalapack_buff.data(),
+                                                params.M, params.N, params.v,
+                                                'C',
+                                                params.lu_comm);
+        auto U_scalapack_layout = conflux::conflux_layout(U_scalapack_buff.data(),
+                                                params.M, params.N, params.v,
+                                                'C',
+                                                params.lu_comm);
+
+        // transform initial matrix conflux->scalapack
+        costa::transform(A_layout, A_scalapack_layout, params.lu_comm);
+
+        // transform the resulting matrix conflux->scalapack
+        costa::transform(C_layout, C_scalapack_layout, params.lu_comm);
+
+        // Let L and U be identical copies of the result matrix C
+        costa::transform(C_layout, L_scalapack_layout, params.lu_comm);
+        costa::transform(C_layout, U_scalapack_layout, params.lu_comm);
+
+        // annulate all elements of L above the diagonal
+        auto discard_upper_half = [](int gi, int gj, double prev_value) -> double {
+            // if above diagonal, return 0
+            if (gj > gi) return 0.0;
+            // otherwise, return the prev_value (i.e. left unchanged)
+            return prev_value;
+        };
+        L_scalapack_layout.apply(discard_upper_half);
+
+        // annulate all elements of U below the diagonal
+        auto discard_lower_half = [](int gi, int gj, double prev_value) -> double {
+            // if above diagonal, return 0
+            if (gi <= gj) return 0.0;
+            // otherwise, return the prev_value (i.e. left unchanged)
+            return prev_value;
+        };
+        U_scalapack_layout.apply(discard_lower_half);
+
+        // scalapack descriptors
+        std::array<int, 9> desc_L;
+        std::array<int, 9> desc_U;
+        std::array<int, 9> desc_C;
+
+        int info = 0;
+        int k = std::min(params.M, params.N);
+        int zero = 0;
+
+        descinit_(&desc_L[0], &params.M, &k, 
+                 &b, &b, &zero, &zero, &ctxt, &params.Ml, &info);
+        if (params.pi == 0 && params.pj == 0 && info != 0) {
+            std::cout << "ERROR: descinit, argument: " << -info << " has an illegal value!" << std::endl;
+        }
+        descinit_(&desc_U[0], &k, &params.N,
+                 &b, &b, &zero, &zero, &ctxt, &params.Ml, &info);
+        if (params.pi == 0 && params.pj == 0 && info != 0) {
+            std::cout << "ERROR: descinit, argument: " << -info << " has an illegal value!" << std::endl;
+        }
+        descinit_(&desc_C[0], &params.M, &params.N,
+                 &b, &b, &zero, &zero, &ctxt, &params.Ml, &info);
+        if (params.pi == 0 && params.pj == 0 && info != 0) {
+            std::cout << "ERROR: descinit, argument: " << -info << " has an illegal value!" << std::endl;
+        }
+
+        char no_trans = 'N';
+
+        double one = 1.0;
+        double minus_one = -1.0;
+
+        int int_one = 1;
+
+        // compute C = C - L*U
+        pdgemm_(&no_trans, &no_trans,
+                &params.M, &params.N, &k,
+                &one, &L_scalapack_buff[0], &int_one, &int_one, &desc_L[0],
+                &U_scalapack_buff[0], &int_one, &int_one, &desc_U[0], &minus_one,
+                &C_scalapack_buff[0], &int_one, &int_one, &desc_C[0]);
+
+        // annulate all elements of U below the diagonal
+        auto sum_squares = [](double prev_value, double el) -> double {
+            auto elem = std::abs(el);
+            return elem*elem + prev_value;
+        };
+
+        // now we want to compute the Frobenius norm of C
+        // first compute the local partial norms:
+        double local_norm = C_scalapack_layout.accumulate(sum_squares, 0.0);
+
+        double sum_local_norms = 0.0;
+
+        MPI_Comm_rank(comm, &rank);
+
+        int root = 0;
+
+        MPI_Reduce(&local_norm, &sum_local_norms, 1, MPI_DOUBLE, 
+                   MPI_SUM, root, comm);
+
+        auto frobenius_norm = std::sqrt(sum_local_norms);
+
+        //if (rank == 0) {
+            std::cout << "Total Frobenius norm = " << frobenius_norm << std::endl;
+        //}
+
+        Cblacs_gridexit(ctxt);
+        int dont_finalize_mpi = 1;
+        Cblacs_exit(dont_finalize_mpi);
+    }
+
+    MPI_Comm_free(&comm);
+
     // print the profiler data
     if (rank == 0) {
         PP();

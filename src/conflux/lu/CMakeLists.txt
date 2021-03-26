@@ -1,7 +1,8 @@
 set(INSTALLED_TARGETS_LIST "")
 if(NOT TARGET conflux-lu)
     set(conflux_lu_src_files conflux_opt.cpp
-                          blas.cpp)
+                             layout.cpp
+                             blas.cpp)
 
     add_library(conflux-lu ${conflux_lu_src_files})
 

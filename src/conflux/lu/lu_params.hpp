@@ -1,8 +1,7 @@
-#pragma once
 #include <tuple>
 #include <vector>
 #include <mpi.h>
-#include <costa/layout.hpp>
+#include <conflux/lu/layout.hpp>
 
 namespace conflux {
 template <typename T>
@@ -82,7 +81,11 @@ class lu_params {
         MPI_Comm_rank(lu_comm, &rank);
         std::tie(pi, pj, pk) = p2X(lu_comm, rank);
 
-        get_costa_layout();
+        // matrix data
+        data = std::vector<T>(Ml * Nl);
+
+        // create COSTA layout descriptor
+        matrix = conflux_layout(data.data(), M, N, v, 'R', lu_comm);
 
         InitMatrix();
 
@@ -105,66 +108,6 @@ class lu_params {
     }
 
 public:
-    std::vector<int> line_split(int N, int v) {
-        std::vector<int> splits;
-        splits.reserve(N/v + 1);
-        for (int i = 0; i < N/v; ++i) {
-            splits.push_back(i * v);
-        }
-        splits.push_back(N);
-        return splits;
-    }
-
-    void get_costa_layout() {
-        // create COSTA layout descriptor
-        data = std::vector<T>(Ml * Nl);
-
-        // local blocks
-        std::vector<costa::block_t> local_blocks;
-        int n_local_blocks = tA11x * tA11y;
-        local_blocks.reserve(n_local_blocks);
-
-        for (int lti = 0; lti < tA11x; ++lti) {
-            auto gti = lti * Px + pi;
-            for (int ltj = 0; ltj < tA11y; ++ltj) {
-                auto gtj = ltj * Py + pj;
-                costa::block_t block;
-                // pointer to the data of this tile
-                block.data = &data[lti * v * Nl + ltj * v];
-                // leading dimension
-                block.ld = Nl;
-                // global coordinates of this block
-                block.row = gti;
-                block.col = gtj;
-                local_blocks.push_back(block);
-            }
-        }
-
-        std::vector<int> row_splits = line_split(M, v);
-        std::vector<int> col_splits = line_split(N, v);
-
-        std::vector<int> owners(Mt*Nt);
-
-        for (int i = 0; i < Mt; ++i) {
-            for (int j = 0; j < Nt; ++j) {
-                int ij = i * Nt + j;
-                int pi = i % Px;
-                int pj = j % Py;
-                owners[ij] = X2p(lu_comm, pi, pj, 0);
-            }
-        }
-
-        matrix = costa::custom_layout<T>(
-                Mt, Nt, // num of global blocks
-                &row_splits[0], &col_splits[0], // splits in the global matrix
-                &owners[0], // ranks owning each tile
-                n_local_blocks, // num of local blocks
-                &local_blocks[0], // local blocks
-                'R' // row-major ordering within blocks
-                );
-
-    }
-
     void InitMatrix() {
         // put all 0s
         auto f = [](int i, int j) -> T {

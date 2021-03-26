@@ -445,10 +445,9 @@ g2lnoTile(std::vector<int> &grows, int Px, int v) {
 }
 
 template <class T>
-std::vector<T> LU_rep(T* C, // C is only used when CONFLUX_WITH_VALIDATION
-                      T *PP, // C is only used when CONFLUX_WITH_VALIDATION
-                      std::size_t *ipvt,
-                      lu_params<T> &gv) {
+void LU_rep(lu_params<T>& gv,
+            T* C, // C is only used when CONFLUX_WITH_VALIDATION
+            int* ipvt) {
     PC();
     PE(init);
     int M, N, P, Px, Py, Pz, v, nlayr, Mt, Nt, tA11x, tA11y;
@@ -510,11 +509,11 @@ std::vector<T> LU_rep(T* C, // C is only used when CONFLUX_WITH_VALIDATION
     //TODO: can we handle such a big global pivots vector?
     std::vector<int> pivotIndsBuff(M);
 #ifdef FINAL_SCALAPACK_LAYOUT
-    std::vector<T> ScaLAPACKResultBuff(Ml * Nl);
     MPI_Win res_Win = create_window(lu_comm,
-                                    ScaLAPACKResultBuff.data(),
-                                    ScaLAPACKResultBuff.size(),
+                                    C,
+                                    Ml*Nl,
                                     true);
+    auto ScaLAPACKResultBuff = C;
     MPI_Win_fence(0, res_Win);
     // TODO: This is DEFINITELY suboptimal. We will use two buffers
     // (pivotIndsBuff and ipvt_g) to recreate local scalapack ipvt
@@ -569,14 +568,6 @@ std::vector<T> LU_rep(T* C, // C is only used when CONFLUX_WITH_VALIDATION
     // GLOBAL result buffer
     // For debug only!
     std::cout << std::setprecision(3);
-
-#ifdef CONFLUX_WITH_VALIDATION
-    MPI_Win B_Win = create_window(lu_comm,
-                                  &C[0],
-                                  M * N,
-                                  true);
-    MPI_Win_fence(MPI_MODE_NOPRECEDE, B_Win);
-#endif
 
     // RNG
     std::mt19937_64 eng(gv.seed);
@@ -1672,7 +1663,7 @@ std::vector<T> LU_rep(T* C, // C is only used when CONFLUX_WITH_VALIDATION
         if (k > 0 && pi == 2 && pj == 0 && pk == layrK && ScaLAPACKResultBuff[3] > -6.4) { 
                 std::cout << "\nk= " << k <<", rank [" << pi << ", " << pj << ", " << pk << "] (" << rank << ") " << 
                         ", ScaLAPACKResultBuff: \n";
-                        print_matrix(ScaLAPACKResultBuff.data(), 0, Nl,
+                        print_matrix(&ScaLAPACKResultBuff[0], 0, Nl,
                                 0, Nl,
                                 Nl);
         }
@@ -1971,9 +1962,7 @@ std::vector<T> LU_rep(T* C, // C is only used when CONFLUX_WITH_VALIDATION
 
 #ifdef FINAL_SCALAPACK_LAYOUT
     MPI_Win_fence(0, res_Win);
-    return ScaLAPACKResultBuff;
 #else
-    return {};
 #endif
 
 }
