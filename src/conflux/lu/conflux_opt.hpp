@@ -499,12 +499,12 @@ std::vector<T> LU_rep(T* C, // C is only used when CONFLUX_WITH_VALIDATION
     MPI_Cart_sub(lu_comm, keep_dims_i, &i_comm);
 #endif
 
-    auto chosen_step = 30; // - 1;
+    auto chosen_step = Nt; // - 1;
     // auto debug_level = 0;
     //auto chosen_step = 90;
     auto debug_level = 0;
 
-    int print_rank = X2p(lu_comm, 2, 6, 0);
+    int print_rank = X2p(lu_comm, 0, 0, 0);
 
     // Create buffers
     std::vector<T> A00Buff(v * v);
