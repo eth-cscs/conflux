@@ -188,7 +188,7 @@ int main(int argc, char *argv[]) {
         costa::transform(A_layout, A_scalapack_layout, comm);
 
         // transform the resulting matrix conflux->scalapack
-        costa::transform(C_layout, C_scalapack_layout, comm);
+        // costa::transform(C_layout, C_scalapack_layout, comm);
 
         // Let L and U be identical copies of the result matrix C
         costa::transform(C_layout, L_scalapack_layout, comm);
@@ -215,7 +215,7 @@ int main(int argc, char *argv[]) {
         // scalapack descriptors
         std::array<int, 9> desc_L;
         std::array<int, 9> desc_U;
-        std::array<int, 9> desc_C;
+        std::array<int, 9> desc_A;
 
         int info = 0;
         int k = std::min(params.M, params.N);
@@ -231,7 +231,7 @@ int main(int argc, char *argv[]) {
         if (params.pi == 0 && params.pj == 0 && info != 0) {
             std::cout << "ERROR: descinit, argument: " << -info << " has an illegal value!" << std::endl;
         }
-        descinit_(&desc_C[0], &params.M, &params.N,
+        descinit_(&desc_A[0], &params.M, &params.N,
                  &b, &b, &zero, &zero, &ctxt, &params.Ml, &info);
         if (params.pi == 0 && params.pj == 0 && info != 0) {
             std::cout << "ERROR: descinit, argument: " << -info << " has an illegal value!" << std::endl;
@@ -249,7 +249,7 @@ int main(int argc, char *argv[]) {
                 &params.M, &params.N, &k,
                 &one, &L_scalapack_buff[0], &int_one, &int_one, &desc_L[0],
                 &U_scalapack_buff[0], &int_one, &int_one, &desc_U[0], &minus_one,
-                &C_scalapack_buff[0], &int_one, &int_one, &desc_C[0]);
+                &A_scalapack_buff[0], &int_one, &int_one, &desc_A[0]);
 
         // annulate all elements of U below the diagonal
         auto sum_squares = [](double prev_value, double el) -> double {
@@ -259,7 +259,7 @@ int main(int argc, char *argv[]) {
 
         // now we want to compute the Frobenius norm of C
         // first compute the local partial norms:
-        double local_norm = C_scalapack_layout.accumulate(sum_squares, 0.0);
+        double local_norm = A_scalapack_layout.accumulate(sum_squares, 0.0);
 
         double sum_local_norms = 0.0;
 
@@ -273,6 +273,8 @@ int main(int argc, char *argv[]) {
         auto frobenius_norm = std::sqrt(sum_local_norms);
 
         if (sub_rank == 0) {
+            std::cout << std::fixed;
+            std::cout << std::setprecision(4);
             std::cout << "Total Frobenius norm = " << frobenius_norm << std::endl;
         }
 

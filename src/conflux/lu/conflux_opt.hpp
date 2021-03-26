@@ -1624,7 +1624,6 @@ void LU_rep(lu_params<T>& gv,
             }
         }
 
-
         int locK = k / Py;
         // A10
         if (k > 0) {
