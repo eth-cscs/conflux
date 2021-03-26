@@ -37,7 +37,9 @@ class lu_params {
         return {Px, Py, Pz};
     }
 
-    void initialize(int inpM, int inpN, int v, int Px, int Py, int Pz, MPI_Comm comm) {
+    void initialize(int inpM, int inpN, int v,
+                    int Px, int Py, int Pz,
+                    MPI_Comm comm) {
         this->Px = Px;
         this->Py = Py;
         this->Pz = Pz;

@@ -139,15 +139,20 @@ int main(int argc, char *argv[]) {
         char order = 'R';
         Cblacs_gridinit(&ctxt, &order, params.Px, params.Py);
 
+        int sub_rank;
+        MPI_Comm_rank(comm, &sub_rank);
+
         // conflux layouts for A and C
         auto A_layout = conflux::conflux_layout(A_buff.data(),
                                                 params.M, params.N, params.v,
                                                 'R',
-                                                params.lu_comm);
+                                                params.Px, params.Py,
+                                                sub_rank);
         auto C_layout = conflux::conflux_layout(C_buff.data(),
                                                 params.M, params.N, params.v,
                                                 'R',
-                                                params.lu_comm);
+                                                params.Px, params.Py,
+                                                sub_rank);
 
         // A and C copies in scalapack layout
         std::vector<double> A_scalapack_buff(A_buff.size());
@@ -160,30 +165,34 @@ int main(int argc, char *argv[]) {
         auto A_scalapack_layout = conflux::conflux_layout(A_scalapack_buff.data(),
                                                 params.M, params.N, params.v,
                                                 'C',
-                                                params.lu_comm);
+                                                params.Px, params.Py,
+                                                sub_rank);
         auto C_scalapack_layout = conflux::conflux_layout(C_scalapack_buff.data(),
                                                 params.M, params.N, params.v,
                                                 'C',
-                                                params.lu_comm);
+                                                params.Px, params.Py,
+                                                sub_rank);
 
         auto L_scalapack_layout = conflux::conflux_layout(L_scalapack_buff.data(),
                                                 params.M, params.N, params.v,
                                                 'C',
-                                                params.lu_comm);
+                                                params.Px, params.Py,
+                                                sub_rank);
         auto U_scalapack_layout = conflux::conflux_layout(U_scalapack_buff.data(),
                                                 params.M, params.N, params.v,
                                                 'C',
-                                                params.lu_comm);
+                                                params.Px, params.Py,
+                                                sub_rank);
 
         // transform initial matrix conflux->scalapack
-        costa::transform(A_layout, A_scalapack_layout, params.lu_comm);
+        costa::transform(A_layout, A_scalapack_layout, comm);
 
         // transform the resulting matrix conflux->scalapack
-        costa::transform(C_layout, C_scalapack_layout, params.lu_comm);
+        costa::transform(C_layout, C_scalapack_layout, comm);
 
         // Let L and U be identical copies of the result matrix C
-        costa::transform(C_layout, L_scalapack_layout, params.lu_comm);
-        costa::transform(C_layout, U_scalapack_layout, params.lu_comm);
+        costa::transform(C_layout, L_scalapack_layout, comm);
+        costa::transform(C_layout, U_scalapack_layout, comm);
 
         // annulate all elements of L above the diagonal
         auto discard_upper_half = [](int gi, int gj, double prev_value) -> double {
@@ -263,16 +272,16 @@ int main(int argc, char *argv[]) {
 
         auto frobenius_norm = std::sqrt(sum_local_norms);
 
-        //if (rank == 0) {
+        if (sub_rank == 0) {
             std::cout << "Total Frobenius norm = " << frobenius_norm << std::endl;
-        //}
+        }
 
         Cblacs_gridexit(ctxt);
         int dont_finalize_mpi = 1;
         Cblacs_exit(dont_finalize_mpi);
+        MPI_Comm_free(&comm);
     }
 
-    MPI_Comm_free(&comm);
 
     // print the profiler data
     if (rank == 0) {
