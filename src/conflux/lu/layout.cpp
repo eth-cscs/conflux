@@ -35,9 +35,6 @@ costa::grid_layout<T> conflux::conflux_layout(T* data,
                                      int rank) {
     ordering = std::toupper(ordering);
     assert(ordering == 'R' || ordering == 'C');
-    // blacs grid on comm is row-major
-    int pi = rank / Py;
-    int pj = rank % Py;
 
     int Nt = (int)(std::ceil((double)N / v));
     int Mt = (int)(std::ceil((double)M / v));
@@ -47,50 +44,18 @@ costa::grid_layout<T> conflux::conflux_layout(T* data,
     int Ml = tA11x * v;
     int Nl = tA11y * v;
 
-    // local blocks
-    std::vector<costa::block_t> local_blocks;
-    int n_local_blocks = tA11x * tA11y;
-    local_blocks.reserve(n_local_blocks);
-
-    for (int lti = 0; lti < tA11x; ++lti) {
-        auto gti = lti * Px + pi;
-        for (int ltj = 0; ltj < tA11y; ++ltj) {
-            auto gtj = ltj * Py + pj;
-            costa::block_t block;
-            // pointer to the data of this tile
-            block.data = &data[lti * v * Nl + ltj * v];
-            // leading dimension
-            block.ld = ordering=='R' ? Nl : Ml;
-            // global coordinates of this block
-            block.row = gti;
-            block.col = gtj;
-            local_blocks.push_back(block);
-        }
-    }
-
-    std::vector<int> row_splits = line_split(M, v);
-    std::vector<int> col_splits = line_split(N, v);
-
-    std::vector<int> owners(Mt*Nt);
-
-    for (int i = 0; i < Mt; ++i) {
-        for (int j = 0; j < Nt; ++j) {
-            int ij = i * Nt + j;
-            int pi = i % Px;
-            int pj = j % Py;
-            // row-major ordering in p-grid assumed
-            owners[ij] = pi * Py + pj; // X2p(comm, pi, pj);
-        }
-    }
-
-    auto matrix = costa::custom_layout<T>(
-            Mt, Nt, // num of global blocks
-            &row_splits[0], &col_splits[0], // splits in the global matrix
-            &owners[0], // ranks owning each tile
-            n_local_blocks, // num of local blocks
-            &local_blocks[0], // local blocks
-            ordering // row-major ordering within blocks
-            );
+    int lld = ordering == 'R' ? Nl : Ml;
+    auto matrix = costa::block_cyclic_layout(M, N,
+                                             v, v,
+                                             1, 1,
+                                             M, N,
+                                             Px, Py,
+                                             'R',
+                                             0, 0,
+                                             data,
+                                             lld,
+                                             ordering,
+                                             rank);
 
     return matrix;
 }

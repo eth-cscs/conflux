@@ -10,6 +10,30 @@
 
 #include "utils.hpp"
 
+std::tuple<int, int> rank_to_coord(MPI_Comm comm2D, int rank) {
+    int coords[] = {-1, -1};
+    MPI_Cart_coords(comm2D, rank, 2, coords);
+    return {coords[0], coords[1]};
+}
+
+std::vector<int> translate_ranks(MPI_Comm comm1,
+                                 MPI_Comm comm2,
+                                 std::vector<int>& ranks1) {
+    std::vector<int> ranks2(ranks1.size());
+
+    MPI_Group group1;
+    MPI_Comm_group(comm1, &group1);
+
+    MPI_Group group2;
+    MPI_Comm_group(comm2, &group2);
+
+    MPI_Group_translate_ranks(group1, 
+                              ranks1.size(), &ranks1[0], 
+                              group2,
+                              &ranks2[0]);
+    return ranks2;
+}
+
 int main(int argc, char *argv[]) {
     cxxopts::Options options("conflux miniapp", 
         "A miniapp computing: LU factorization of A, where dim(A)=N*N");
@@ -91,46 +115,46 @@ int main(int argc, char *argv[]) {
                                );
     }
 
-    // the bottom-base of processor grid
-    // these ranks actually own the initial 
-    // and final data
-    std::vector<int> ranks;
-    ranks.reserve(params.Px * params.Py);
-    for (int ppi = 0; ppi < params.Px; ++ppi) {
-        for (int ppj = 0; ppj < params.Py; ++ppj) {
-            int rank = conflux::X2p(params.lu_comm, ppi, ppj, 0);
-            ranks.push_back(rank);
-        }
-    }
-    MPI_Comm comm = conflux::create_comm(params.lu_comm, ranks);
-    // MPI_Comm comm = params.k_comm;
-
-// TODO:
-// 1. rank (and its coordinates) in lu_comm might be != rank (and coordinates) in comm
-//    So, make sure to relabel ranks
-// 2. permute rows with ipvt
     //if (comm != MPI_COMM_NULL) {
     if (params.pk == 0) {
+        MPI_Comm comm = params.ij_comm;
+        int rank, P;
+        MPI_Comm_rank(comm, &rank);
+        MPI_Comm_size(comm, &P);
+
+        // relabel the ij_comm to row-major processor ordering
+        // to be compatible with the Cblacs grid that
+        // we will create with 'R'-ordering
+        int my_pi, my_pj;
+        std::tie(my_pi, my_pj) = rank_to_coord(comm, rank);
+        int row_major_coord = my_pi * params.Py + my_pj;
+
+        MPI_Comm row_major_comm;
+        MPI_Comm_split(comm, 0, row_major_coord, &row_major_comm);
+
+        // this is safe, because lu_params class is going to free the ij_comm
+        comm = row_major_comm;
+        rank = row_major_coord;
+
         // create blacs grid from ranks owning data
         // observe that the ordering in comm might be different than in lu_comm
         int ctxt = Csys2blacs_handle(comm);
+        // Cblacs_gridmap(&ctxt, &ranks2[0], params.Px, params.Px, params.Py);
         char order = 'R';
         Cblacs_gridinit(&ctxt, &order, params.Px, params.Py);
-
-        int sub_rank;
-        MPI_Comm_rank(comm, &sub_rank);
 
         // conflux layouts for A and C
         auto A_layout = conflux::conflux_layout(A_buff.data(),
                                                 params.M, params.N, params.v,
                                                 'R',
                                                 params.Px, params.Py,
-                                                sub_rank);
+                                                rank);
         auto C_layout = conflux::conflux_layout(C_buff.data(),
                                                 params.M, params.N, params.v,
                                                 'R',
                                                 params.Px, params.Py,
-                                                sub_rank);
+                                                rank);
+
         int k = std::min(params.M, params.N);
 
         // A and C copies in scalapack layout
@@ -143,43 +167,69 @@ int main(int argc, char *argv[]) {
         std::vector<double> L_scalapack_buff(params.M * k);
         std::vector<double> U_scalapack_buff(k * params.N);
 
+        std::vector<double> full_C_scalapack_buff(params.M * params.N);
+        std::vector<double> full_L_scalapack_buff(params.M * params.N);
+        std::vector<double> full_U_scalapack_buff(params.M * params.N);
+        std::vector<double> full_P_scalapack_buff(params.M * params.N);
+
         // A-matrix (result): M x N
         auto A_scalapack_layout = conflux::conflux_layout(A_scalapack_buff.data(),
                                                 params.M, params.N, params.v,
                                                 'C',
                                                 params.Px, params.Py,
-                                                sub_rank);
+                                                rank);
         // C-matrix (result): M x N
         auto C_scalapack_layout = conflux::conflux_layout(C_scalapack_buff.data(),
                                                 params.M, params.N, params.v,
                                                 'C',
                                                 params.Px, params.Py,
-                                                sub_rank);
-
+                                                rank);
         // M x M permutation matrix
         auto P_scalapack_layout = conflux::conflux_layout(P_scalapack_buff.data(),
                                                 params.M, params.M, params.v,
                                                 'C',
                                                 params.Px, params.Py,
-                                                sub_rank);
+                                                rank);
         // M x M permutation matrix
         auto PA_scalapack_layout = conflux::conflux_layout(PA_scalapack_buff.data(),
                                                 params.M, params.N, params.v,
                                                 'C',
                                                 params.Px, params.Py,
-                                                sub_rank);
+                                                rank);
         // L-matrix: M x min(M, N)
         auto L_scalapack_layout = conflux::conflux_layout(L_scalapack_buff.data(),
                                                 params.M, k, params.v,
                                                 'C',
                                                 params.Px, params.Py,
-                                                sub_rank);
+                                                rank);
         // U-matrix: min(M, N) x N
         auto U_scalapack_layout = conflux::conflux_layout(U_scalapack_buff.data(),
                                                 k, params.N, params.v,
                                                 'C',
                                                 params.Px, params.Py,
-                                                sub_rank);
+                                                rank);
+
+        // full matrices descriptors
+        auto full_C_scalapack_layout = conflux::conflux_layout(full_C_scalapack_buff.data(),
+                                                params.M, params.N, params.M,
+                                                'C',
+                                                1, 1,
+                                                rank);
+        auto full_L_scalapack_layout = conflux::conflux_layout(full_L_scalapack_buff.data(),
+                                                params.M, params.N, params.M,
+                                                'C',
+                                                1, 1,
+                                                rank);
+        auto full_U_scalapack_layout = conflux::conflux_layout(full_U_scalapack_buff.data(),
+                                                params.M, params.N, params.M,
+                                                'C',
+                                                1, 1,
+                                                rank);
+        auto full_P_scalapack_layout = conflux::conflux_layout(full_P_scalapack_buff.data(),
+                                                params.M, params.N, params.M,
+                                                'C',
+                                                1, 1,
+                                                rank);
 
         // transform initial matrix conflux->scalapack
         costa::transform(A_layout, A_scalapack_layout, comm);
@@ -192,6 +242,7 @@ int main(int argc, char *argv[]) {
         auto discard_upper_half = [](int gi, int gj, double prev_value) -> double {
             // if above diagonal, return 0
             if (gj > gi) return 0.0;
+            if (gj == gi) return 1.0;
             // otherwise, return the prev_value (i.e. left unchanged)
             return prev_value;
         };
@@ -200,7 +251,7 @@ int main(int argc, char *argv[]) {
         // annulate all elements of U below the diagonal
         auto discard_lower_half = [](int gi, int gj, double prev_value) -> double {
             // if above diagonal, return 0
-            if (gi < gj) return 0.0;
+            if (gi > gj) return 0.0;
             // otherwise, return the prev_value (i.e. left unchanged)
             return prev_value;
         };
@@ -214,6 +265,12 @@ int main(int argc, char *argv[]) {
             return pivotIndsBuff[gi]==gj ? 1 : 0;
         };
         P_scalapack_layout.initialize(set_permutation);
+
+        // full matrices
+        costa::transform(C_layout, full_C_scalapack_layout, comm);
+        costa::transform(L_scalapack_layout, full_L_scalapack_layout, comm);
+        costa::transform(U_scalapack_layout, full_U_scalapack_layout, comm);
+        costa::transform(P_scalapack_layout, full_P_scalapack_layout, comm);
 
         // scalapack descriptors
         std::array<int, 9> desc_P;
@@ -274,7 +331,31 @@ int main(int argc, char *argv[]) {
                 &U_scalapack_buff[0], &int_one, &int_one, &desc_U[0], &one,
                 &PA_scalapack_buff[0], &int_one, &int_one, &desc_PA[0]);
 
-        // annulate all elements of U below the diagonal
+        // Print full-C-scalapack-matrix
+        if (rank == 0) {
+            std::cout << "full-C-matrix on rank 0" << std::endl;
+            conflux::print_matrix(&full_C_scalapack_buff[0],
+                                  0, params.M, 0, params.N,
+                                  params.M, 'C');
+            std::cout << "======================" << std::endl;
+            std::cout << "full-L-matrix on rank 0" << std::endl;
+            conflux::print_matrix(&full_L_scalapack_buff[0],
+                                  0, params.M, 0, params.N,
+                                  params.M, 'C');
+            std::cout << "======================" << std::endl;
+            std::cout << "full-U-matrix on rank 0" << std::endl;
+            conflux::print_matrix(&full_U_scalapack_buff[0],
+                                  0, params.M, 0, params.N,
+                                  params.M, 'C');
+            std::cout << "======================" << std::endl;
+            std::cout << "full-P-matrix on rank 0" << std::endl;
+            conflux::print_matrix(&full_P_scalapack_buff[0],
+                                  0, params.M, 0, params.N,
+                                  params.M, 'C');
+            std::cout << "======================" << std::endl;
+        }
+
+        // compute local frobenius norm
         auto sum_squares = [](double prev_value, double el) -> double {
             auto elem = std::abs(el);
             return elem*elem + prev_value;
@@ -293,7 +374,7 @@ int main(int argc, char *argv[]) {
 
         auto frobenius_norm = std::sqrt(sum_local_norms);
 
-        if (sub_rank == root) {
+        if (rank == root) {
             std::cout << std::fixed;
             std::cout << std::setprecision(4);
             std::cout << "Total Frobenius norm = " << frobenius_norm << std::endl;

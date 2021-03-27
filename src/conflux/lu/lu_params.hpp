@@ -79,6 +79,10 @@ class lu_params {
         int keep_dims_k[] = {0, 0, 1};
         MPI_Cart_sub(lu_comm, keep_dims_k, &k_comm);
 
+        // ij-comm // used only for verification
+        int keep_dims_ij[] = {1, 1, 0};
+        MPI_Cart_sub(lu_comm, keep_dims_ij, &ij_comm);
+
         // initialize coordinates
         MPI_Comm_rank(lu_comm, &rank);
         std::tie(pi, pj, pk) = p2X(lu_comm, rank);
@@ -330,6 +334,7 @@ public:
 
     MPI_Comm lu_comm = MPI_COMM_NULL;
     MPI_Comm jk_comm = MPI_COMM_NULL;
+    MPI_Comm ij_comm = MPI_COMM_NULL;
     MPI_Comm k_comm = MPI_COMM_NULL;
     int rank;
     int pi, pj, pk;
@@ -365,6 +370,8 @@ public:
     void free_comms() {
         if (k_comm != MPI_COMM_NULL)
             MPI_Comm_free(&k_comm);
+        if (ij_comm != MPI_COMM_NULL)
+            MPI_Comm_free(&ij_comm);
         if (jk_comm != MPI_COMM_NULL)
             MPI_Comm_free(&jk_comm);
         if (lu_comm != MPI_COMM_NULL)
