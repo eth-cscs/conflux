@@ -67,6 +67,7 @@ extern "C" {
     int Csys2blacs_handle(MPI_Comm mpi_comm);
     void Cfree_blacs_system_handle(int i_sys_ctxt);
 
+    // matrix multiplication
     void descinit_(int* desc, const int* m, const int* n, const int* mb, const int* nb,
            const int* irsrc, const int* icsrc, const int* ictxt, const int* lld, int* info);
 

@@ -447,7 +447,7 @@ g2lnoTile(std::vector<int> &grows, int Px, int v) {
 template <class T>
 void LU_rep(lu_params<T>& gv,
             T* C, // C is only used when CONFLUX_WITH_VALIDATION
-            int* ipvt) {
+            int* permutation) {
     PC();
     PE(init);
     int M, N, P, Px, Py, Pz, v, nlayr, Mt, Nt, tA11x, tA11y;
@@ -519,6 +519,7 @@ void LU_rep(lu_params<T>& gv,
     // (pivotIndsBuff and ipvt_g) to recreate local scalapack ipvt
     // Hopefully, it won't impact performance much.
     std::vector<int> ipvt_g(M);
+    std::vector<int> ipvt(Ml);
     // initially, ipvt_g contains consecutive integers (0, 1, ..., M-1)
     // then, we will recreate this ipvt permutations 
     std::iota (std::begin(ipvt_g), std::end(ipvt_g), 0); 
@@ -1952,18 +1953,18 @@ void LU_rep(lu_params<T>& gv,
     MPI_Win_free(&B_Win);
     // std::copy(B.begin(), B.end(), C);
     MPI_Barrier(lu_comm);
-    for (auto i = 0; i < N; ++i) {
+    for (auto i = 0; i < M; ++i) {
         int idx = pivotIndsBuff[i];
         //std::copy(B.begin() + idx * N, B.begin() + (idx + 1) * N, C + i * N);
-        PP[i * N + idx] = 1;
+        PP[i * M + idx] = 1;
     }
 #endif
 
 #ifdef FINAL_SCALAPACK_LAYOUT
+    std::copy(pivotIndsBuff.begin(), pivotIndsBuff.end(), permutation);
     MPI_Win_fence(0, res_Win);
 #else
 #endif
-
 }
 }  // namespace conflux
 

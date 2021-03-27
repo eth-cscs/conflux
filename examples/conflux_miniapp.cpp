@@ -10,30 +10,6 @@
 
 #include "utils.hpp"
 
-MPI_Comm subcommunicator(std::vector<int>& ranks, MPI_Comm comm = MPI_COMM_WORLD) {
-    // original size
-    int P;
-    MPI_Comm_size(comm, &P);
-
-    // original group
-    MPI_Group group;
-    MPI_Comm_group(comm, &group);
-
-    // new comm and new group
-    MPI_Comm newcomm;
-    MPI_Group newcomm_group;
-
-    // create reduced group
-    MPI_Group_incl(group, ranks.size(), ranks.data(), &newcomm_group);
-    // create reduced communicator
-    MPI_Comm_create_group(comm, newcomm_group, 0, &newcomm);
-
-    MPI_Group_free(&group);
-    MPI_Group_free(&newcomm_group);
-
-    return newcomm;
-}
-
 int main(int argc, char *argv[]) {
     cxxopts::Options options("conflux miniapp", 
         "A miniapp computing: LU factorization of A, where dim(A)=N*N");
@@ -103,7 +79,7 @@ int main(int argc, char *argv[]) {
     std::vector<double> C_buff(A_buff.size());
 
     // pivots
-    std::vector<int> ipvt(params.Ml);
+    std::vector<int> pivotIndsBuff(params.M);
     for (int i = 0; i < n_rep; ++i) {
         PC();
         // reinitialize the matrix
@@ -111,7 +87,7 @@ int main(int argc, char *argv[]) {
         conflux::LU_rep<double>(
                                params,
                                C_buff.data(),
-                               ipvt.data()
+                               pivotIndsBuff.data()
                                );
     }
 
@@ -126,13 +102,15 @@ int main(int argc, char *argv[]) {
             ranks.push_back(rank);
         }
     }
-    MPI_Comm comm = subcommunicator(ranks, params.lu_comm);
+    MPI_Comm comm = conflux::create_comm(params.lu_comm, ranks);
+    // MPI_Comm comm = params.k_comm;
 
 // TODO:
 // 1. rank (and its coordinates) in lu_comm might be != rank (and coordinates) in comm
 //    So, make sure to relabel ranks
 // 2. permute rows with ipvt
-    if (comm != MPI_COMM_NULL) {
+    //if (comm != MPI_COMM_NULL) {
+    if (params.pk == 0) {
         // create blacs grid from ranks owning data
         // observe that the ordering in comm might be different than in lu_comm
         int ctxt = Csys2blacs_handle(comm);
@@ -153,42 +131,58 @@ int main(int argc, char *argv[]) {
                                                 'R',
                                                 params.Px, params.Py,
                                                 sub_rank);
+        int k = std::min(params.M, params.N);
 
         // A and C copies in scalapack layout
         std::vector<double> A_scalapack_buff(A_buff.size());
         std::vector<double> C_scalapack_buff(A_buff.size());
 
         // L and U of the result
-        std::vector<double> L_scalapack_buff(A_buff.size());
-        std::vector<double> U_scalapack_buff(A_buff.size());
+        std::vector<double> P_scalapack_buff(params.M * params.M);
+        std::vector<double> PA_scalapack_buff(params.M * params.N);
+        std::vector<double> L_scalapack_buff(params.M * k);
+        std::vector<double> U_scalapack_buff(k * params.N);
 
+        // A-matrix (result): M x N
         auto A_scalapack_layout = conflux::conflux_layout(A_scalapack_buff.data(),
                                                 params.M, params.N, params.v,
                                                 'C',
                                                 params.Px, params.Py,
                                                 sub_rank);
+        // C-matrix (result): M x N
         auto C_scalapack_layout = conflux::conflux_layout(C_scalapack_buff.data(),
                                                 params.M, params.N, params.v,
                                                 'C',
                                                 params.Px, params.Py,
                                                 sub_rank);
 
-        auto L_scalapack_layout = conflux::conflux_layout(L_scalapack_buff.data(),
+        // M x M permutation matrix
+        auto P_scalapack_layout = conflux::conflux_layout(P_scalapack_buff.data(),
+                                                params.M, params.M, params.v,
+                                                'C',
+                                                params.Px, params.Py,
+                                                sub_rank);
+        // M x M permutation matrix
+        auto PA_scalapack_layout = conflux::conflux_layout(PA_scalapack_buff.data(),
                                                 params.M, params.N, params.v,
                                                 'C',
                                                 params.Px, params.Py,
                                                 sub_rank);
+        // L-matrix: M x min(M, N)
+        auto L_scalapack_layout = conflux::conflux_layout(L_scalapack_buff.data(),
+                                                params.M, k, params.v,
+                                                'C',
+                                                params.Px, params.Py,
+                                                sub_rank);
+        // U-matrix: min(M, N) x N
         auto U_scalapack_layout = conflux::conflux_layout(U_scalapack_buff.data(),
-                                                params.M, params.N, params.v,
+                                                k, params.N, params.v,
                                                 'C',
                                                 params.Px, params.Py,
                                                 sub_rank);
 
         // transform initial matrix conflux->scalapack
         costa::transform(A_layout, A_scalapack_layout, comm);
-
-        // transform the resulting matrix conflux->scalapack
-        // costa::transform(C_layout, C_scalapack_layout, comm);
 
         // Let L and U be identical copies of the result matrix C
         costa::transform(C_layout, L_scalapack_layout, comm);
@@ -206,25 +200,45 @@ int main(int argc, char *argv[]) {
         // annulate all elements of U below the diagonal
         auto discard_lower_half = [](int gi, int gj, double prev_value) -> double {
             // if above diagonal, return 0
-            if (gi <= gj) return 0.0;
+            if (gi < gj) return 0.0;
             // otherwise, return the prev_value (i.e. left unchanged)
             return prev_value;
         };
         U_scalapack_layout.apply(discard_lower_half);
 
+        // set the permutation based on ipiv array
+        auto set_permutation = [&pivotIndsBuff](int gi, int gj) -> double {
+            // set (i, ipvt[i]) to 1
+            // however, ipvt array is defined such that
+            // it maps local i to global ipvt[i]
+            return pivotIndsBuff[gi]==gj ? 1 : 0;
+        };
+        P_scalapack_layout.initialize(set_permutation);
+
         // scalapack descriptors
+        std::array<int, 9> desc_P;
+        std::array<int, 9> desc_PA;
         std::array<int, 9> desc_L;
         std::array<int, 9> desc_U;
         std::array<int, 9> desc_A;
 
         int info = 0;
-        int k = std::min(params.M, params.N);
         int zero = 0;
 
+        descinit_(&desc_P[0], &params.M, &params.M, 
+                 &b, &b, &zero, &zero, &ctxt, &params.Ml, &info);
+        if (params.pi == 0 && params.pj == 0 && info != 0) {
+            std::cout << "error: descinit, argument: " << -info << " has an illegal value!" << std::endl;
+        }
+        descinit_(&desc_PA[0], &params.M, &params.N, 
+                 &b, &b, &zero, &zero, &ctxt, &params.Ml, &info);
+        if (params.pi == 0 && params.pj == 0 && info != 0) {
+            std::cout << "error: descinit, argument: " << -info << " has an illegal value!" << std::endl;
+        }
         descinit_(&desc_L[0], &params.M, &k, 
                  &b, &b, &zero, &zero, &ctxt, &params.Ml, &info);
         if (params.pi == 0 && params.pj == 0 && info != 0) {
-            std::cout << "ERROR: descinit, argument: " << -info << " has an illegal value!" << std::endl;
+            std::cout << "error: descinit, argument: " << -info << " has an illegal value!" << std::endl;
         }
         descinit_(&desc_U[0], &k, &params.N,
                  &b, &b, &zero, &zero, &ctxt, &params.Ml, &info);
@@ -241,15 +255,24 @@ int main(int argc, char *argv[]) {
 
         double one = 1.0;
         double minus_one = -1.0;
+        double d_zero = 0.0;
 
         int int_one = 1;
 
-        // compute C = C - L*U
+        // permute rows of A to get: PA
+        pdgemm_(&no_trans, &no_trans,
+                &params.M, &params.N, &M,
+                &one, &P_scalapack_buff[0], &int_one, &int_one, &desc_P[0],
+                &A_scalapack_buff[0], &int_one, &int_one, &desc_A[0], &d_zero,
+                &PA_scalapack_buff[0], &int_one, &int_one, &desc_PA[0]);
+
+
+        // compute PA = PA - L*U
         pdgemm_(&no_trans, &no_trans,
                 &params.M, &params.N, &k,
-                &one, &L_scalapack_buff[0], &int_one, &int_one, &desc_L[0],
-                &U_scalapack_buff[0], &int_one, &int_one, &desc_U[0], &minus_one,
-                &A_scalapack_buff[0], &int_one, &int_one, &desc_A[0]);
+                &minus_one, &L_scalapack_buff[0], &int_one, &int_one, &desc_L[0],
+                &U_scalapack_buff[0], &int_one, &int_one, &desc_U[0], &one,
+                &PA_scalapack_buff[0], &int_one, &int_one, &desc_PA[0]);
 
         // annulate all elements of U below the diagonal
         auto sum_squares = [](double prev_value, double el) -> double {
@@ -259,11 +282,9 @@ int main(int argc, char *argv[]) {
 
         // now we want to compute the Frobenius norm of C
         // first compute the local partial norms:
-        double local_norm = A_scalapack_layout.accumulate(sum_squares, 0.0);
+        double local_norm = PA_scalapack_layout.accumulate(sum_squares, 0.0);
 
         double sum_local_norms = 0.0;
-
-        MPI_Comm_rank(comm, &rank);
 
         int root = 0;
 
@@ -272,7 +293,7 @@ int main(int argc, char *argv[]) {
 
         auto frobenius_norm = std::sqrt(sum_local_norms);
 
-        if (sub_rank == 0) {
+        if (sub_rank == root) {
             std::cout << std::fixed;
             std::cout << std::setprecision(4);
             std::cout << "Total Frobenius norm = " << frobenius_norm << std::endl;
