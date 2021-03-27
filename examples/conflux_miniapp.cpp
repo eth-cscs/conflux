@@ -297,6 +297,7 @@ int main(int argc, char *argv[]) {
         if (params.pi == 0 && params.pj == 0 && info != 0) {
             std::cout << "error: descinit, argument: " << -info << " has an illegal value!" << std::endl;
         }
+
         descinit_(&desc_U[0], &k, &params.N,
                  &b, &b, &zero, &zero, &ctxt, &params.Ml, &info);
         if (params.pi == 0 && params.pj == 0 && info != 0) {
