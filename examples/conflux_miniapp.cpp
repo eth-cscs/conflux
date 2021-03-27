@@ -100,7 +100,7 @@ int main(int argc, char *argv[]) {
                                Perm.data(), 
                                ipvt.data(),
                                params);
-#ifdef CONFLUX_WITH_VALIDATION
+
 
 #ifdef FINAL_SCALAPACK_LAYOUT
         MPI_Barrier(MPI_COMM_WORLD);        
@@ -132,6 +132,8 @@ int main(int argc, char *argv[]) {
             }
         }
 #endif
+
+#ifdef CONFLUX_WITH_VALIDATION
 if (display_global_res == 1) {
         if (rank == 0) {
             auto M = params.M;

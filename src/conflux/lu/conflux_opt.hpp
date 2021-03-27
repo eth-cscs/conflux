@@ -1152,7 +1152,7 @@ std::vector<T> LU_rep(T* C, // C is only used when CONFLUX_WITH_VALIDATION
         }
 #endif
 
-#ifdef CONFLUX_WITH_VALIDATION
+//#ifdef CONFLUX_WITH_VALIDATION
         push_pivots_up<T>(A10resultBuff, A11BuffTemp,
                           Ml, Nl,
                           layout, curPivots,
@@ -1161,7 +1161,7 @@ std::vector<T> LU_rep(T* C, // C is only used when CONFLUX_WITH_VALIDATION
                           early_non_pivots,
                           late_pivots
                           );
-#endif
+//#endif
 
         push_pivots_up<T>(A10Buff, A10BuffTemp,
                           Ml, v,
@@ -1769,7 +1769,7 @@ std::vector<T> LU_rep(T* C, // C is only used when CONFLUX_WITH_VALIDATION
         //
         // the only ranks that need to receive A00 buffer
         // are the one participating in dtrsm(A01Buff)
-#ifdef CONFLUX_WITH_VALIDATION
+
         PE(storingresults)
         if (pj == k % Py && pk == layrK) {
             // condensed A10 to non-condensed result buff
@@ -1813,7 +1813,7 @@ std::vector<T> LU_rep(T* C, // C is only used when CONFLUX_WITH_VALIDATION
         // # ----------------------------------------------------------------- #
         // # ------------------------- DEBUG ONLY ---------------------------- #
         // # ----------- STORING BACK RESULTS FOR VERIFICATION --------------- #
-
+#ifdef CONFLUX_WITH_VALIDATION
         // # -- A10 -- #
         // Storing A10 is funny. Even though A10 contains final results, it is not "finally permuted". The final result
         // will have the same data, but permuted according to future pivots. Therefore, because our final result B is already
