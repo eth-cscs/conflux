@@ -468,7 +468,7 @@ g2lnoTile(std::vector<int> &grows, int Px, int v) {
 
 template <class T>
 void LU_rep(lu_params<T>& gv,
-            T* C, // C is only used when CONFLUX_WITH_VALIDATION
+            T* C,
             int* permutation) {
     PC();
     PE(init);
@@ -1678,18 +1678,6 @@ void LU_rep(lu_params<T>& gv,
             }
         }
 
-        #ifdef DEBUG
-        MPI_Win_fence(0, res_Win);    
-        if (k > 0 && pi == 2 && pj == 0 && pk == layrK && ScaLAPACKResultBuff[3] > -6.4) { 
-                std::cout << "\nk= " << k <<", rank [" << pi << ", " << pj << ", " << pk << "] (" << rank << ") " << 
-                        ", ScaLAPACKResultBuff: \n";
-                        print_matrix(&ScaLAPACKResultBuff[0], 0, Nl,
-                                0, Nl,
-                                Nl);
-        }
-        
-        #endif
-
         // A01 and A00: these are the ranks that own the pivot data in this round
         if (pk == layrK && pi == k % Px) {
             // A01Buff (and therefore, our current v pivots)
@@ -1768,50 +1756,6 @@ void LU_rep(lu_params<T>& gv,
                                  0, v,
                                  0, v,
                                  v);
-                }
-            }
-        }
-#endif
-
-        // # ----------------------------------------------------------------- #
-        // # ------------------------- DEBUG ONLY ---------------------------- #
-        // # ----------- STORING BACK RESULTS FOR VERIFICATION --------------- #
-
-        // # -- A10 -- #
-        // Storing A10 is funny. Even though A10 contains final results, it is not "finally permuted". The final result
-        // will have the same data, but permuted according to future pivots. Therefore, because our final result B is already
-        // L*U*P permuted (so it has pivots already put on the diagonal), we fill B only by columns (we know that after k iterations
-        // top v*k rows of B will contain v*k pivots and will be untouched).
-
-        // Sooo, the plan for A10 is to keep all the data from all the steps in A10resultBuff and keep on permuting it as we proceed
-        // in the next iterations, and flush only top rows of A10resultBuff which correspond to already chosen pivots, so they will
-        // be untouched.
-
-        // in k-th iteration, we look at the PREVIOUS iteration (k-1) and store these rows of A10resultBuff, which correspond to the
-        // pivots which were chosen in this round. Think of it like that:
-        // in round k, we have found v pivot rows, which will be put on the diagonal of B. Now we fill all the data to the right
-        // of this diagonal with current A01Buff, and to the left of this diagonal with previous A10ResultBuff.
-
-#ifdef DEBUG
-        if (k == chosen_step) {
-            if (debug_level > 0) {
-                if (rank == 0) {
-                    std::cout << "GLOBAL result matrix B" << std::endl;
-                }
-                MPI_Barrier(lu_comm);
-                if (rank == 0) {
-                    print_matrix(&C[0], 0, M,
-                                 0, N, N);
-                }
-            }
-        }
-
-        if (debug_level > 0) {
-            if (chosen_step == k) {
-                if (rank == print_rank) {
-                    std::cout << "k = " << k << ", pivotIndsBuff: \n";
-                    print_matrix(pivotIndsBuff.data(), 0, 1, 0, N, N);
-                    std::cout << "\n\n";
                 }
             }
         }
