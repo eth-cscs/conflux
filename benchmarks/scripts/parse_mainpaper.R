@@ -3,7 +3,6 @@ library(ggrepel)
 library(reshape2)
 library(plyr)
 library(hash)
-library(stringr)
 #library("reshape2")
 
 
@@ -11,7 +10,7 @@ exp_name = ""
 exp_filename = "benchmarks.csv"
 scalings = c("weak", "strong")
 
-variantPlots = c("time", "FLOPS")
+variantPlots = c("time", "FLOPS", "commVol")
 algorithms = c("Cholesky", "LU")
 
 sizes_strong = c(16384, 131072)
@@ -28,7 +27,7 @@ libraries[["Cholesky"]] <- libraries_LU
 #annotl = c("CARMA [21]","CTF [49]","COSMA (this work)", "ScaLAPACK [14]")
 #varPlot = "FLOPS"
 
-GFLOPSperCore = 1209/36
+FLOPSperNode = 1209 
 
 
 statistics = 0
@@ -38,6 +37,7 @@ annotCoord = list()
 
 
 #exp_filename = paste(exp_name,'.csv',sep="")
+setwd("C:/gk_pliki/uczelnia/doktorat/performance_modelling/repo/conflux_cpp_2/results/conflux/benchmarks/scripts")
 setwd(paste("../",exp_name,sep =""))
 source(paste(getwd(), "/scripts/SPCL_Stats.R", sep=""))
 
@@ -57,21 +57,39 @@ for (alg in algorithms){
       for (variant in variantPlots){
         print(variant)
         df3 <- df2[str_cmp(df2$unit, variant),]
+        if (variant == "FLOPS") {
+          df3 <- df2[str_cmp(df2$unit, "time"),]
+        }
         
         if (nrow(df3) == 0)
           next
         
+        
+        
+        plot_data <- df3[c("P", "library", "value", "N")]
+        
         if (variant == "time"){
           ylabel = "time [ms]"
-          yscale = scale_y_continuous(labels=function(x) format(x, big.mark = ",", scientific = FALSE))
+          yscale = scale_y_log10(labels=function(x) format(x, big.mark = ",", scientific = FALSE))
         }
-        else {
+        else if(variant == "FLOPS"){
           ylabel = "% peak performance"
           yscale = scale_y_continuous(labels=function(x) format(x, big.mark = ",", scientific = FALSE))
+          if (alg == "Cholesky"){
+            plot_data$percent_peak = 100/3 * (plot_data$N)^3 / (1e6 * plot_data$P * plot_data$value * FLOPSperNode)
+          } else {
+            plot_data$percent_peak = 200/3 * (plot_data$N)^3 / (1e6 * plot_data$P * plot_data$value * FLOPSperNode)
+          }
+          plot_data$value <- plot_data$percent_peak
+        }
+        else{
+          ylabel = "total communication volume [GB]"
+          yscale = scale_y_continuous(labels=function(x) format(x, big.mark = ",", scientific = FALSE))
         }
         
         
-        plot_data <- df3[c("P", "library", "value")]
+        
+        
         #  m = data$m
         #  plot_data$time = 200* data$m * data$n * data$k / (data$time * 1e6) / (GFLOPSperCore * data$p)
         

@@ -1,4 +1,5 @@
 #SPCL_Stats.R
+library(stringr)
 
 #-----------helper functions-------------------------#
 str_cmp <- function(str1, str2){
