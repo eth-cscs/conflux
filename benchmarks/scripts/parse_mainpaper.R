@@ -37,7 +37,7 @@ annotCoord = list()
 
 
 #exp_filename = paste(exp_name,'.csv',sep="")
-setwd("C:/gk_pliki/uczelnia/doktorat/performance_modelling/repo/conflux_cpp_2/results/conflux/benchmarks/scripts")
+#setwd("C:/gk_pliki/uczelnia/doktorat/performance_modelling/repo/conflux_cpp_2/results/conflux/benchmarks/scripts")
 setwd(paste("../",exp_name,sep =""))
 source(paste(getwd(), "/scripts/SPCL_Stats.R", sep=""))
 

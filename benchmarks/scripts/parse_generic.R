@@ -9,7 +9,7 @@ library(gmodels)
 
 #-------------------------SETUP----------------------#
 exp_name = ""
-exp_filename = "benchmarks.csv"
+exp_filename = "/../benchmarks.csv"
 scalings = c("weak", "strong")
 
 variantPlots = c("time", "FLOPS", "commVol")
@@ -26,7 +26,7 @@ libraries_LU = c("MKL [cite]", "SLATE [cite]", "CANDMC [cite]", "CONFLUX (this w
 libraries <- hash()
 libraries[["LU"]] <- libraries_chol
 libraries[["Cholesky"]] <- libraries_LU
-annotl = c("SLATE [cite]","MKL [cite]","COnfLUX / PsyChol (this work)", "CANDMC[cite] / CAPITAL[cite]")
+annotl = c("COnfLUX / PsyChol (this work)", "SLATE [cite]","MKL [cite]","CANDMC[cite] / CAPITAL[cite]")
 #varPlot = "FLOPS"
 
 FLOPSperNode = 1209 
@@ -88,11 +88,11 @@ pointSize = 5
 
 
 
-setwd("C:/gk_pliki/uczelnia/doktorat/performance_modelling/repo/conflux_cpp_2/results/conflux/benchmarks/scripts")
+#setwd("C:/gk_pliki/uczelnia/doktorat/performance_modelling/repo/conflux_cpp_2/results/conflux/benchmarks/scripts")
 # prepare the data 
-setwd(paste("../",exp_name,sep =""))
-source(paste(getwd(), "/scripts/SPCL_Stats.R", sep=""))
-rawData <- read.csv(file=exp_filename, sep=",", stringsAsFactors=FALSE, header=TRUE)
+#setwd(paste("../",exp_name,sep =""))
+source("SPCL_Stats.R")
+rawData <- read.csv(file=paste(getwd(), exp_filename, sep = ""), sep=",", stringsAsFactors=FALSE, header=TRUE)
 
 #-------------annot data points----------------#
 annotXHash = hash()
@@ -422,100 +422,73 @@ annotCoord = list()
 
 
 #--------------generating the violion plot--------------#
+# this is for full paper width
 aspectRatio = 4.4
-hg = 3.5
-pdf("barPlot2.pdf", height = hg, width = hg * aspectRatio)
+# this is for one column width
+aspectRatio = 5.5
+hg = 3
 
 violinData = rawData[rawData$unit == 'time',]
 violinData$case = paste(violinData$algorithm, violinData$N_base,sep ="_")
 #violinData = violinData[violinData$case != "memory_p2_FALSE",]
 #violinData = violinData[violinData$case != "strong_TRUE",]
-if (nrow(violinData[violinData$case == "LU_16384",]) > 0){
-  violinData[violinData$case == "LU_16384",]$case = "LU, strong scaling, N=16,384"
-  violinData[violinData$case == "LU_131072",]$case = "LU, strong scaling, N=131,072"
-  violinData[violinData$case == "LU_8192",]$case = "LU, weak scaling, N=8,192*sqrt(P)"
+if (nrow(violinData[violinData$case == "lu_16384",]) > 0){
+  violinData[violinData$case == "lu_16384",]$case = "LU, N=16,384"
+  violinData[violinData$case == "lu_131072",]$case = "LU, N=131,072"
+  violinData[violinData$case == "lu_8192",]$case = "LU, N=8,192 sqrt(P)"
 }
-violinData[violinData$case == "cholesky_16384",]$case = "Cholesky, strong scaling, N=16,384"
-violinData[violinData$case == "cholesky_131072",]$case = "Cholesky, strong scaling, N=131,072"
-violinData[violinData$case == "cholesky_8192",]$case = "Cholesky, weak scaling, N=8,192*sqrt(P)"
+violinData[violinData$case == "cholesky_16384",]$case = "Cholesky, N=16,384"
+violinData[violinData$case == "cholesky_131072",]$case = "Cholesky, N=131,072"
+violinData[violinData$case == "cholesky_8192",]$case = "Cholesky, N=8,192 sqrt(P)"
 
+violinData$flops = 0
+violinData[str_cmp(violinData$algorithm, "Cholesky"),]$flops = 
+  100/3 * (violinData[str_cmp(violinData$algorithm, "Cholesky"),]$N)^3 / (1e6 * violinData[str_cmp(violinData$algorithm, "Cholesky"),]$P * violinData[str_cmp(violinData$algorithm, "Cholesky"),]$value * FLOPSperNode)
+violinData[str_cmp(violinData$algorithm, "LU"),]$flops = 
+  200/3 * (violinData[str_cmp(violinData$algorithm, "LU"),]$N)^3 / (1e6 * violinData[str_cmp(violinData$algorithm, "LU"),]$P * violinData[str_cmp(violinData$algorithm, "LU"),]$value * FLOPSperNode)
 
-violinData = violinData[complete.cases(violinData),]
+violinData[str_cmp(violinData$library, "capital"),]$library = "CANDMC/CAPITAL"
+violinData[str_cmp(violinData$library, "candmc"),]$library = "CANDMC/CAPITAL"
 
-for (alg in algorithms){
-  print(alg)
-  violinData2 <- violinData[str_cmp(violinData$algorithm, alg),]
-  if (nrow(violinData2) == 0)
-    next
-  if (alg == "Cholesky"){
-    violinData2$flops = 100/3 * (violinData2$N)^3 / (1e6 * violinData2$P * violinData2$value * FLOPSperNode) 
-  } else {
-    violinData2$flops = 200/3 * (violinData2$N)^3 / (1e6 * violinData2$P * violinData2$value * FLOPSperNode)
-  }
-  violinData2$library <- as.factor(violinData2$library)
-  violinData2$library2 = factor(violinData2$library, levels = levels(violinData2$library)[c(2,4,3,1)])
-  
-  
-  p = ggplot(violinData2, aes(x = library2, y = flops, fill = library2)) +
-    geom_violin() +
-    facet_grid(.~case) +
-    scale_y_continuous("% peak performance", limits = c(0,100)) +
-    scale_fill_discrete(labels = annotl)+
-    theme_bw(17) +
-    # annotate("label", x = 0.3, y = 0.8, label = "from left to right: ")  +
-    # ylim(0, 110) +
-    theme(axis.title.x=element_blank(),
-          axis.text.x=element_blank(),
-          axis.ticks.x=element_blank(),
-          legend.position = c(0.6,0.935),
-          legend.title=element_blank(),
-          legend.text=element_text(size=17)
-    ) +
-    guides(fill=guide_legend(nrow=1,byrow=TRUE),
-           keywidth=19.5,
-           keyheight=2.9,
-           default.unit="inch")
-  print(p)
-  dev.off()
+if (nrow(violinData[str_cmp("psychol", violinData$library),]) > 0) {
+  violinData[str_cmp("psychol", violinData$library),]$library = "COnlLUX/PsyChol"
 }
 
-# pdf("barPlot3.pdf", height = hg, width = hg * aspectRatio)
-# 
-# violinData = rawData[rawData$mShape == 'largeK' | rawData$mShape == 'largeM',]
-# violinData$case = paste(violinData$mShape,violinData$scaling,sep ="_")
-# #violinData = violinData[violinData$case != "memory_p2_FALSE",]
-# #violinData = violinData[violinData$case != "strong_TRUE",]
-# violinData[violinData$case == "largeK_memory_p0",]$case = "'largeK', limited memory"
-# violinData[violinData$case == "largeK_memory_p1",]$case = "'largeK', extra memory"
-# violinData[violinData$case == "largeK_strong",]$case = "'largeK', strong scaling"
-# violinData[violinData$case == "largeM_memory_p0",]$case = "'largeM', limited memory"
-# violinData[violinData$case == "largeM_memory_p1",]$case = "'largeM', extra memory"
-# violinData[violinData$case == "largeM_strong",]$case = "'largeM', strong scaling"
+if(nrow(violinData[str_cmp("conflux", violinData$library),]) > 0) {
+  violinData[str_cmp("conflux", violinData$library),]$library = "COnlLUX/PsyChol"
+}
+
 # violinData = violinData[complete.cases(violinData),]
-# 
-# violinData$algorithm <- as.factor(violinData$algorithm)
-# violinData$algorithm2 = factor(violinData$algorithm, levels = levels(violinData$algorithm)[c(2,4,3,1)])
-# 
-# 
-# p = ggplot(violinData, aes(x = algorithm2, y = flops, fill = algorithm2)) +
-#   geom_violin() +
-#   facet_grid(.~case) +
-#   scale_y_continuous("% peak performance", limits = c(0,100)) +
-#   scale_fill_discrete(labels = annotl)+
-#   theme_bw(17) +
-#   # annotate("label", x = 0.3, y = 0.8, label = "from left to right: ")  +
-#   # ylim(0, 110) +
-#   theme(axis.title.x=element_blank(),
-#         axis.text.x=element_blank(),
-#         axis.ticks.x=element_blank(),
-#         legend.position = c(0.6,0.935),
-#         legend.title=element_blank(),
-#         legend.text=element_text(size=17)
-#   ) +
-#   guides(fill=guide_legend(nrow=1,byrow=TRUE),
-#          keywidth=19.5,
-#          keyheight=2.9,
-#          default.unit="inch")
-# print(p)
-# dev.off()
+
+#filter out cases. We don't need strong scaling N = 1024?
+violinData <- violinData[violinData$N_base != 1024,]
+
+
+pdf("barPlot2.pdf", height = hg, width = hg * aspectRatio)
+violinData$library <- as.factor(violinData$library)
+violinData$library2 = factor(violinData$library, levels = levels(violinData$library)[c(2,4,3,1)])
+
+
+p = ggplot(violinData, aes(x = library2, y = flops, fill = library2)) +
+  geom_violin() +
+  facet_grid(.~case) +
+  scale_y_continuous("% peak performance", limits = c(0,100)) +
+  scale_fill_discrete(labels = annotl)+
+  theme_bw(17) +
+  # annotate("label", x = 0.3, y = 0.8, label = "from left to right: ")  +
+  # ylim(0, 110) +
+  theme(axis.title.x=element_blank(),
+        axis.text.x=element_blank(),
+        axis.ticks.x=element_blank(),
+        legend.position = c(0.5,0.85),
+        legend.title=element_blank(),
+        legend.text=element_text(size=17)
+  ) +
+  guides(fill=guide_legend(nrow=1,byrow=TRUE),
+         keywidth=19.5,
+         keyheight=2.9,
+         default.unit="inch")
+print(p)
+dev.off()
+
 #----------end of generating the violion plot-----------
