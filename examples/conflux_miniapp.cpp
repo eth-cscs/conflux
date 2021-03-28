@@ -332,7 +332,6 @@ int main(int argc, char *argv[]) {
                 &U_scalapack_buff[0], &int_one, &int_one, &desc_U[0], &one,
                 &PA_scalapack_buff[0], &int_one, &int_one, &desc_PA[0]);
 
-        // Print full-C-scalapack-matrix
         if (rank == 0) {
             std::cout << "full-C-matrix on rank 0" << std::endl;
             conflux::print_matrix(&full_C_scalapack_buff[0],

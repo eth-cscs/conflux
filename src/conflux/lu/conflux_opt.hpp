@@ -1175,7 +1175,7 @@ void LU_rep(lu_params<T>& gv,
                           early_non_pivots,
                           late_pivots
                           );
-//#endif
+#endif
 
         push_pivots_up<T>(A10Buff, A10BuffTemp,
                           Ml, v,
