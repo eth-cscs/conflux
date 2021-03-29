@@ -541,7 +541,7 @@ void LU_rep(lu_params<T>& gv,
     std::vector<T> A01BuffTemp(v * Nl);
     std::vector<T> A01BuffRcv(nlayr * Nl);
 
-    std::vector<T>& A11Buff = gv.data;
+    std::vector<T> A11Buff = gv.data;
     std::vector<T> A10resultBuff(Ml * Nl);
     std::vector<T> A11BuffTemp(Ml * Nl);
 

@@ -74,6 +74,8 @@ int main(int argc, char *argv[]) {
     auto print_limit = result["print_limit"].as<int>();
     auto p_grid = result["p_grid"].as<std::vector<int>>();
 
+    bool print_full_matrices = std::max(M, N) < print_limit;
+
     MPI_Init(&argc, &argv);
     if (p_grid[0] <= 0 || p_grid[1] <= 0 || p_grid[2] <= 0) {
         int rank;
@@ -115,7 +117,6 @@ int main(int argc, char *argv[]) {
                                );
     }
 
-    //if (comm != MPI_COMM_NULL) {
     if (params.pk == 0) {
         MPI_Comm comm = params.ij_comm;
         int rank, P;
@@ -156,21 +157,74 @@ int main(int argc, char *argv[]) {
                                                 rank);
 
         int k = std::min(params.M, params.N);
+        int kl = std::min(params.Ml, params.Nl);
 
         // A and C copies in scalapack layout
         std::vector<double> A_scalapack_buff(A_buff.size());
         std::vector<double> C_scalapack_buff(A_buff.size());
 
         // L and U of the result
-        std::vector<double> P_scalapack_buff(params.M * params.M);
-        std::vector<double> PA_scalapack_buff(params.M * params.N);
-        std::vector<double> L_scalapack_buff(params.M * k);
-        std::vector<double> U_scalapack_buff(k * params.N);
+        int lld_M = scalapack::max_leading_dimension(params.M, b, params.Px);
+        int lld_N = scalapack::max_leading_dimension(params.N, b, params.Py);
+        int lld_k = std::max(lld_M, lld_N);
 
-        std::vector<double> full_C_scalapack_buff(params.M * params.N);
-        std::vector<double> full_L_scalapack_buff(params.M * params.N);
-        std::vector<double> full_U_scalapack_buff(params.M * params.N);
-        std::vector<double> full_P_scalapack_buff(params.M * params.N);
+        // scalapack descriptors
+        std::array<int, 9> desc_P;
+        std::array<int, 9> desc_PA;
+        std::array<int, 9> desc_L;
+        std::array<int, 9> desc_U;
+        std::array<int, 9> desc_A;
+
+        int info = 0;
+        int zero = 0;
+
+        descinit_(&desc_P[0], &params.M, &params.M, 
+                 &b, &b, &zero, &zero, &ctxt, &lld_M, &info);
+        if (params.pi == 0 && params.pj == 0 && info != 0) {
+            std::cout << "error: descinit, argument: " << -info << " has an illegal value!" << std::endl;
+        }
+        descinit_(&desc_PA[0], &params.M, &params.N, 
+                 &b, &b, &zero, &zero, &ctxt, &lld_M, &info);
+        if (params.pi == 0 && params.pj == 0 && info != 0) {
+            std::cout << "error: descinit, argument: " << -info << " has an illegal value!" << std::endl;
+        }
+        descinit_(&desc_L[0], &params.M, &k, 
+                 &b, &b, &zero, &zero, &ctxt, &lld_M, &info);
+        if (params.pi == 0 && params.pj == 0 && info != 0) {
+            std::cout << "error: descinit, argument: " << -info << " has an illegal value!" << std::endl;
+        }
+
+        descinit_(&desc_U[0], &k, &params.N,
+                 &b, &b, &zero, &zero, &ctxt, &lld_k, &info);
+        if (params.pi == 0 && params.pj == 0 && info != 0) {
+            std::cout << "ERROR: descinit, argument: " << -info << " has an illegal value!" << std::endl;
+        }
+        descinit_(&desc_A[0], &params.M, &params.N,
+                 &b, &b, &zero, &zero, &ctxt, &lld_M, &info);
+        if (params.pi == 0 && params.pj == 0 && info != 0) {
+            std::cout << "ERROR: descinit, argument: " << -info << " has an illegal value!" << std::endl;
+        }
+
+        std::vector<double> L_scalapack_buff(scalapack::local_buffer_size(&desc_L[0]));
+        std::vector<double> U_scalapack_buff(scalapack::local_buffer_size(&desc_U[0]));
+        std::vector<double> P_scalapack_buff(scalapack::local_buffer_size(&desc_P[0]));
+        std::vector<double> PA_scalapack_buff(scalapack::local_buffer_size(&desc_PA[0]));
+
+        std::vector<double> full_A_scalapack_buff;
+        std::vector<double> full_C_scalapack_buff;
+        std::vector<double> full_L_scalapack_buff;
+        std::vector<double> full_U_scalapack_buff;
+        std::vector<double> full_P_scalapack_buff;
+        std::vector<double> full_PA_scalapack_buff;
+
+        if (rank == 0 && print_full_matrices) {
+            full_A_scalapack_buff = std::vector<double>(params.M * params.N);
+            full_C_scalapack_buff = std::vector<double>(params.M * params.N);
+            full_L_scalapack_buff = std::vector<double>(params.M * k);
+            full_U_scalapack_buff = std::vector<double>(k * params.N);
+            full_P_scalapack_buff = std::vector<double>(params.M * params.M);
+            full_PA_scalapack_buff = std::vector<double>(params.M * params.N);
+        }
 
         // A-matrix (result): M x N
         auto A_scalapack_layout = conflux::conflux_layout(A_scalapack_buff.data(),
@@ -210,23 +264,33 @@ int main(int argc, char *argv[]) {
                                                 rank);
 
         // full matrices descriptors
+        auto full_A_scalapack_layout = conflux::conflux_layout(full_A_scalapack_buff.data(),
+                                           params.M, params.N, params.M,
+                                           'C',
+                                           1, 1,
+                                           rank);
         auto full_C_scalapack_layout = conflux::conflux_layout(full_C_scalapack_buff.data(),
-                                                params.M, params.N, params.M,
-                                                'C',
-                                                1, 1,
-                                                rank);
+                                           params.M, params.N, params.M,
+                                           'C',
+                                           1, 1,
+                                           rank);
         auto full_L_scalapack_layout = conflux::conflux_layout(full_L_scalapack_buff.data(),
-                                                params.M, params.N, params.M,
-                                                'C',
-                                                1, 1,
-                                                rank);
+                                           params.M, k, params.M,
+                                           'C',
+                                           1, 1,
+                                           rank);
         auto full_U_scalapack_layout = conflux::conflux_layout(full_U_scalapack_buff.data(),
-                                                params.M, params.N, params.M,
+                                           k, params.N, k,
+                                           'C',
+                                           1, 1,
+                                           rank);
+        auto full_P_scalapack_layout = conflux::conflux_layout(full_P_scalapack_buff.data(),
+                                                params.M, params.M, params.M,
                                                 'C',
                                                 1, 1,
                                                 rank);
-        auto full_P_scalapack_layout = conflux::conflux_layout(full_P_scalapack_buff.data(),
-                                                params.M, params.N, params.M,
+        auto full_PA_scalapack_layout = conflux::conflux_layout(full_PA_scalapack_buff.data(),
+                                                params.M, params.M, params.M,
                                                 'C',
                                                 1, 1,
                                                 rank);
@@ -237,6 +301,13 @@ int main(int argc, char *argv[]) {
         // Let L and U be identical copies of the result matrix C
         costa::transform(C_layout, L_scalapack_layout, comm);
         costa::transform(C_layout, U_scalapack_layout, comm);
+
+        if (print_full_matrices) {
+            // full matrix C
+            costa::transform(C_layout, full_C_scalapack_layout, comm);
+            // full matrix A
+            costa::transform(A_layout, full_A_scalapack_layout, comm);
+        }
 
         // annulate all elements of L above the diagonal
         auto discard_upper_half = [](int gi, int gj, double prev_value) -> double {
@@ -266,47 +337,10 @@ int main(int argc, char *argv[]) {
         };
         P_scalapack_layout.initialize(set_permutation);
 
-        // full matrices
-        costa::transform(C_layout, full_C_scalapack_layout, comm);
-        costa::transform(L_scalapack_layout, full_L_scalapack_layout, comm);
-        costa::transform(U_scalapack_layout, full_U_scalapack_layout, comm);
-        costa::transform(P_scalapack_layout, full_P_scalapack_layout, comm);
-
-        // scalapack descriptors
-        std::array<int, 9> desc_P;
-        std::array<int, 9> desc_PA;
-        std::array<int, 9> desc_L;
-        std::array<int, 9> desc_U;
-        std::array<int, 9> desc_A;
-
-        int info = 0;
-        int zero = 0;
-
-        descinit_(&desc_P[0], &params.M, &params.M, 
-                 &b, &b, &zero, &zero, &ctxt, &params.Ml, &info);
-        if (params.pi == 0 && params.pj == 0 && info != 0) {
-            std::cout << "error: descinit, argument: " << -info << " has an illegal value!" << std::endl;
-        }
-        descinit_(&desc_PA[0], &params.M, &params.N, 
-                 &b, &b, &zero, &zero, &ctxt, &params.Ml, &info);
-        if (params.pi == 0 && params.pj == 0 && info != 0) {
-            std::cout << "error: descinit, argument: " << -info << " has an illegal value!" << std::endl;
-        }
-        descinit_(&desc_L[0], &params.M, &k, 
-                 &b, &b, &zero, &zero, &ctxt, &params.Ml, &info);
-        if (params.pi == 0 && params.pj == 0 && info != 0) {
-            std::cout << "error: descinit, argument: " << -info << " has an illegal value!" << std::endl;
-        }
-
-        descinit_(&desc_U[0], &k, &params.N,
-                 &b, &b, &zero, &zero, &ctxt, &params.Ml, &info);
-        if (params.pi == 0 && params.pj == 0 && info != 0) {
-            std::cout << "ERROR: descinit, argument: " << -info << " has an illegal value!" << std::endl;
-        }
-        descinit_(&desc_A[0], &params.M, &params.N,
-                 &b, &b, &zero, &zero, &ctxt, &params.Ml, &info);
-        if (params.pi == 0 && params.pj == 0 && info != 0) {
-            std::cout << "ERROR: descinit, argument: " << -info << " has an illegal value!" << std::endl;
+        if (print_full_matrices) {
+            costa::transform(L_scalapack_layout, full_L_scalapack_layout, comm);
+            costa::transform(U_scalapack_layout, full_U_scalapack_layout, comm);
+            costa::transform(P_scalapack_layout, full_P_scalapack_layout, comm);
         }
 
         char no_trans = 'N';
@@ -317,42 +351,79 @@ int main(int argc, char *argv[]) {
 
         int int_one = 1;
 
+        MPI_Barrier(comm);
+
         // permute rows of A to get: PA
         pdgemm_(&no_trans, &no_trans,
-                &params.M, &params.N, &M,
-                &one, &P_scalapack_buff[0], &int_one, &int_one, &desc_P[0],
-                &A_scalapack_buff[0], &int_one, &int_one, &desc_A[0], &d_zero,
+                &params.M, &params.N, &params.M,
+                &minus_one, // alpha
+                &P_scalapack_buff[0], &int_one, &int_one, &desc_P[0],
+                &A_scalapack_buff[0], &int_one, &int_one, &desc_A[0], 
+                &d_zero, // beta
                 &PA_scalapack_buff[0], &int_one, &int_one, &desc_PA[0]);
-
 
         // compute PA = PA - L*U
         pdgemm_(&no_trans, &no_trans,
                 &params.M, &params.N, &k,
-                &minus_one, &L_scalapack_buff[0], &int_one, &int_one, &desc_L[0],
-                &U_scalapack_buff[0], &int_one, &int_one, &desc_U[0], &one,
+                &one,  // alpha
+                &L_scalapack_buff[0], &int_one, &int_one, &desc_L[0],
+                &U_scalapack_buff[0], &int_one, &int_one, &desc_U[0], 
+                &one, // beta
                 &PA_scalapack_buff[0], &int_one, &int_one, &desc_PA[0]);
 
-        if (rank == 0) {
-            std::cout << "full-C-matrix on rank 0" << std::endl;
-            conflux::print_matrix(&full_C_scalapack_buff[0],
-                                  0, params.M, 0, params.N,
-                                  params.M, 'C');
-            std::cout << "======================" << std::endl;
-            std::cout << "full-L-matrix on rank 0" << std::endl;
-            conflux::print_matrix(&full_L_scalapack_buff[0],
-                                  0, params.M, 0, params.N,
-                                  params.M, 'C');
-            std::cout << "======================" << std::endl;
-            std::cout << "full-U-matrix on rank 0" << std::endl;
-            conflux::print_matrix(&full_U_scalapack_buff[0],
-                                  0, params.M, 0, params.N,
-                                  params.M, 'C');
-            std::cout << "======================" << std::endl;
-            std::cout << "full-P-matrix on rank 0" << std::endl;
-            conflux::print_matrix(&full_P_scalapack_buff[0],
-                                  0, params.M, 0, params.N,
-                                  params.M, 'C');
-            std::cout << "======================" << std::endl;
+        if (print_full_matrices) {
+            costa::transform(PA_scalapack_layout, full_PA_scalapack_layout, comm);
+        }
+
+        if (print_full_matrices) {
+            // local buffers
+            for (int pii = 0; pii < params.Px; pii++) {
+                for (int pjj = 0; pjj < params.Py; pjj++) {
+                    int cur_rank = pii * params.Px + pjj;
+                    if (rank == cur_rank) {
+                        std::cout << "Rank [" << pii << ", " << pjj << "], local final result:\n";
+                        conflux::print_matrix(C_buff.data(), 0, params.Ml, 0, params.Nl, params.Nl);
+                        std::cout << std::flush;
+                    }
+                    MPI_Barrier(comm);
+                }
+            }
+
+            MPI_Barrier(comm);
+
+            if (rank == 0) {
+                // full matrix A
+                std::cout << "full-A-matrix on rank 0" << std::endl;
+                conflux::print_matrix(&full_A_scalapack_buff[0],
+                                      0, params.M, 0, params.N,
+                                      params.M, 'C');
+                std::cout << "======================" << std::endl;
+                // full matrix C
+                std::cout << "full-C-matrix on rank 0" << std::endl;
+                conflux::print_matrix(&full_C_scalapack_buff[0],
+                                      0, params.M, 0, params.N,
+                                      params.M, 'C');
+                std::cout << "======================" << std::endl;
+                std::cout << "full-L-matrix on rank 0" << std::endl;
+                conflux::print_matrix(&full_L_scalapack_buff[0],
+                                      0, params.M, 0, params.N,
+                                      params.M, 'C');
+                std::cout << "======================" << std::endl;
+                std::cout << "full-U-matrix on rank 0" << std::endl;
+                conflux::print_matrix(&full_U_scalapack_buff[0],
+                                      0, params.M, 0, params.N,
+                                      params.M, 'C');
+                std::cout << "======================" << std::endl;
+                std::cout << "full-P-matrix on rank 0" << std::endl;
+                conflux::print_matrix(&full_P_scalapack_buff[0],
+                                      0, params.M, 0, params.N,
+                                      params.M, 'C');
+                std::cout << "======================" << std::endl;
+                std::cout << "full-Remainder-matrix on rank 0" << std::endl;
+                conflux::print_matrix(&full_PA_scalapack_buff[0],
+                                      0, params.M, 0, params.N,
+                                      params.M, 'C');
+            }
         }
 
         // compute local frobenius norm
@@ -367,14 +438,12 @@ int main(int argc, char *argv[]) {
 
         double sum_local_norms = 0.0;
 
-        int root = 0;
-
         MPI_Reduce(&local_norm, &sum_local_norms, 1, MPI_DOUBLE, 
-                   MPI_SUM, root, comm);
+                   MPI_SUM, 0, comm);
 
         auto frobenius_norm = std::sqrt(sum_local_norms);
 
-        if (rank == root) {
+        if (rank == 0) {
             std::cout << std::fixed;
             std::cout << std::setprecision(4);
             std::cout << "Total Frobenius norm = " << frobenius_norm << std::endl;
