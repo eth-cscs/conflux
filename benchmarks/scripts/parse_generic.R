@@ -13,7 +13,7 @@ exp_filename = "/../benchmarks.csv"
 scalings = c("weak", "strong")
 
 variantPlots = c("time", "FLOPS", "commVol")
-algorithms = c("Cholesky", "LU")
+algorithms = c("LU", "Cholesky")
 
 sizes_strong = c(16384, 131072)
 sizes_weak = c(1024, 8192)
@@ -442,21 +442,24 @@ violinData[violinData$case == "cholesky_131072",]$case = "Cholesky, N=131,072"
 violinData[violinData$case == "cholesky_8192",]$case = "Cholesky, N=8,192 sqrt(P)"
 
 violinData$flops = 0
-violinData[str_cmp(violinData$algorithm, "Cholesky"),]$flops = 
-  100/3 * (violinData[str_cmp(violinData$algorithm, "Cholesky"),]$N)^3 / (1e6 * violinData[str_cmp(violinData$algorithm, "Cholesky"),]$P * violinData[str_cmp(violinData$algorithm, "Cholesky"),]$value * FLOPSperNode)
 violinData[str_cmp(violinData$algorithm, "LU"),]$flops = 
   200/3 * (violinData[str_cmp(violinData$algorithm, "LU"),]$N)^3 / (1e6 * violinData[str_cmp(violinData$algorithm, "LU"),]$P * violinData[str_cmp(violinData$algorithm, "LU"),]$value * FLOPSperNode)
 
+violinData[str_cmp(violinData$algorithm, "Cholesky"),]$flops = 
+  100/3 * (violinData[str_cmp(violinData$algorithm, "Cholesky"),]$N)^3 / (1e6 * violinData[str_cmp(violinData$algorithm, "Cholesky"),]$P * violinData[str_cmp(violinData$algorithm, "Cholesky"),]$value * FLOPSperNode)
+
 violinData[str_cmp(violinData$library, "capital"),]$library = "CANDMC/CAPITAL"
 violinData[str_cmp(violinData$library, "candmc"),]$library = "CANDMC/CAPITAL"
+
+if(nrow(violinData[str_cmp("conflux", violinData$library),]) > 0) {
+  violinData[str_cmp("conflux", violinData$library),]$library = "COnlLUX/PsyChol"
+}
+
 
 if (nrow(violinData[str_cmp("psychol", violinData$library),]) > 0) {
   violinData[str_cmp("psychol", violinData$library),]$library = "COnlLUX/PsyChol"
 }
 
-if(nrow(violinData[str_cmp("conflux", violinData$library),]) > 0) {
-  violinData[str_cmp("conflux", violinData$library),]$library = "COnlLUX/PsyChol"
-}
 
 # violinData = violinData[complete.cases(violinData),]
 
@@ -464,15 +467,17 @@ if(nrow(violinData[str_cmp("conflux", violinData$library),]) > 0) {
 violinData <- violinData[violinData$N_base != 1024,]
 
 
-pdf("barPlot2.pdf", height = hg, width = hg * aspectRatio)
+pdf(paste(getwd(), "/../barPlot2.pdf", sep = ""), height = hg, width = hg * aspectRatio)
 violinData$library <- as.factor(violinData$library)
 violinData$library2 = factor(violinData$library, levels = levels(violinData$library)[c(2,4,3,1)])
 
+confluxData = violinData[violinData$library == "COnlLUX/PsyChol",]
 
 p = ggplot(violinData, aes(x = library2, y = flops, fill = library2)) +
-  geom_violin() +
+  #geom_violin() +
+  geom_boxplot(notch=TRUE) +
   facet_grid(.~case) +
-  scale_y_continuous("% peak performance", limits = c(0,100)) +
+  scale_y_continuous("% peak performance", limits = c(0,45)) +
   scale_fill_discrete(labels = annotl)+
   theme_bw(17) +
   # annotate("label", x = 0.3, y = 0.8, label = "from left to right: ")  +

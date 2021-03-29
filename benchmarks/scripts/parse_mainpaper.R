@@ -10,7 +10,7 @@ exp_name = ""
 exp_filename = "benchmarks.csv"
 scalings = c("weak", "strong")
 
-variantPlots = c("time", "FLOPS", "commVol")
+variantPlots = c("time", "FLOPS", "bytes")
 algorithms = c("Cholesky", "LU")
 
 sizes_strong = c(16384, 131072)
@@ -37,7 +37,7 @@ annotCoord = list()
 
 
 #exp_filename = paste(exp_name,'.csv',sep="")
-#setwd("C:/gk_pliki/uczelnia/doktorat/performance_modelling/repo/conflux_cpp_2/results/conflux/benchmarks/scripts")
+setwd("C:/gk_pliki/uczelnia/doktorat/performance_modelling/repo/conflux_cpp_2/results/conflux/benchmarks/scripts")
 setwd(paste("../",exp_name,sep =""))
 source(paste(getwd(), "/scripts/SPCL_Stats.R", sep=""))
 
@@ -84,6 +84,7 @@ for (alg in algorithms){
         }
         else{
           ylabel = "total communication volume [GB]"
+          plot_data$value <- plot_data$value / 1e9
           yscale = scale_y_continuous(labels=function(x) format(x, big.mark = ",", scientific = FALSE))
         }
         
@@ -98,7 +99,7 @@ for (alg in algorithms){
         
         # print(plot_data[c("algorithm","p","time")])
         
-        aspRatio = 0.75
+        aspRatio = 0.65
         w = 10
         textSize = 30
         pointSize = 5
@@ -178,19 +179,20 @@ for (alg in algorithms){
         }
         
         
-        p <- ggplot(mapping=aes(x=P, y=mean, ymin=min, ymax=max, fill=library, color=library, shape=library)) +
-          geom_ribbon(data=data3[data3$library != "CARMA [21] ",], alpha=0.3, show.legend=TRUE)+
-          shapes + 
-          geom_point(data=data3, size = 4, show.legend=TRUE) +
-          geom_errorbar(data=data3[data3$library == "CARMA [21] ",], width=0.1, size=1, show.legend=TRUE) +
-          scale_x_continuous(trans='log2',labels=function(x) format(x, big.mark = ",", scientific = FALSE)) +
-          #scale_x_log2("# of cores", breaks=c(128, 256, 512, 1024, 2048, 4096, 8192, 16384)) +
-          # scale_y_log10(ylabel) +
-          xlab("# of nodes") +
-          yscale +
-          ggtitle(paste(alg, scaling, size, sep=" ")) +
-          ylab(ylabel) +
-          theme_bw(27)
+        if (variant == "bytes") {
+          p <- ggplot(mapping=aes(x=P, y=min, fill=library, color=library, shape=library)) +
+           # geom_ribbon(data=data3[data3$library != "CARMA [21] ",], alpha=0.3, show.legend=TRUE)+
+            shapes + 
+            geom_point(data=data3, size = 4, show.legend=TRUE) +
+            geom_errorbar(data=data3[data3$library == "CARMA [21] ",], width=0.1, size=1, show.legend=TRUE) +
+            scale_x_continuous(trans='log2',labels=function(x) format(x, big.mark = ",", scientific = FALSE)) +
+            #scale_x_log2("# of cores", breaks=c(128, 256, 512, 1024, 2048, 4096, 8192, 16384)) +
+            # scale_y_log10(ylabel) +
+            xlab("# of nodes") +
+            yscale +
+            ggtitle(paste(alg, scaling, size, sep=" ")) +
+            ylab(ylabel) +
+            theme_bw(27)
           # annotate("text", x = annotx, y = annoty, label = annotl, size=textSize/3) +
           # annotate("segment", x = annotPointX2[1], xend = annotPointX1[1],
           #          y = annotPointY2[1], yend = annotPointY1[1]) +
@@ -200,6 +202,31 @@ for (alg in algorithms){
           #          y = annotPointY2[3], yend = annotPointY1[3]) +
           # annotate("segment", x = annotPointX2[4], xend = annotPointX1[4],
           #          y = annotPointY2[4], yend = annotPointY1[4]) 
+        }
+        else {
+          p <- ggplot(mapping=aes(x=P, y=mean, ymin=min, ymax=max, fill=library, color=library, shape=library)) +
+            geom_ribbon(data=data3[data3$library != "CARMA [21] ",], alpha=0.3, show.legend=TRUE)+
+            shapes + 
+            geom_point(data=data3, size = 4, show.legend=TRUE) +
+            geom_errorbar(data=data3[data3$library == "CARMA [21] ",], width=0.1, size=1, show.legend=TRUE) +
+            scale_x_continuous(trans='log2',labels=function(x) format(x, big.mark = ",", scientific = FALSE)) +
+            #scale_x_log2("# of cores", breaks=c(128, 256, 512, 1024, 2048, 4096, 8192, 16384)) +
+            # scale_y_log10(ylabel) +
+            xlab("# of nodes") +
+            yscale +
+            ggtitle(paste(alg, scaling, size, sep=" ")) +
+            ylab(ylabel) +
+            theme_bw(27)
+            # annotate("text", x = annotx, y = annoty, label = annotl, size=textSize/3) +
+            # annotate("segment", x = annotPointX2[1], xend = annotPointX1[1],
+            #          y = annotPointY2[1], yend = annotPointY1[1]) +
+            # annotate("segment", x = annotPointX2[2], xend = annotPointX1[2],
+            #          y = annotPointY2[2], yend = annotPointY1[2]) +
+            # annotate("segment", x = annotPointX2[3], xend = annotPointX1[3],
+            #          y = annotPointY2[3], yend = annotPointY1[3]) +
+            # annotate("segment", x = annotPointX2[4], xend = annotPointX1[4],
+            #          y = annotPointY2[4], yend = annotPointY1[4]) 
+        }
         print(p)
         
         dev.off()
