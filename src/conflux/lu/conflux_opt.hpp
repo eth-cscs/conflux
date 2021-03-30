@@ -547,7 +547,7 @@ void LU_rep(lu_params<T>& gv,
 
     //TODO: can we handle such a big global pivots vector?
     std::vector<int> pivotIndsBuff(M);
-#ifdef FINAL_SCALAPACK_LAYOUT
+#ifdef CONFLUX_WITH_VALIDATION
     MPI_Win res_Win = create_window(lu_comm,
                                     C,
                                     Ml*Nl,
@@ -1166,7 +1166,7 @@ void LU_rep(lu_params<T>& gv,
         }
 #endif
 
-#ifdef FINAL_SCALAPACK_LAYOUT
+#ifdef CONFLUX_WITH_VALIDATION
         push_pivots_up<T>(A10resultBuff, A11BuffTemp,
                           Ml, Nl,
                           layout, curPivots,
@@ -1676,7 +1676,7 @@ void LU_rep(lu_params<T>& gv,
         }
 #endif
 
-#ifdef FINAL_SCALAPACK_LAYOUT
+#ifdef CONFLUX_WITH_VALIDATION
         // INEFFICIENT! But should be cheap
         for (int i = 0; i < v; i++) {
             std::swap(ipvt_g[k*v + i], ipvt_g[pivotIndsBuff[k*v + i]]);            
@@ -1837,7 +1837,7 @@ void LU_rep(lu_params<T>& gv,
     MPI_Comm_free(&i_comm);
 #endif
 
-#ifdef FINAL_SCALAPACK_LAYOUT
+#ifdef CONFLUX_WITH_VALIDATION
     std::copy(pivotIndsBuff.begin(), pivotIndsBuff.end(), permutation);
     MPI_Win_fence(0, res_Win);
 #else

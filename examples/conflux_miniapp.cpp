@@ -8,7 +8,9 @@
 
 #include <costa/grid2grid/transform.hpp>
 
+#ifdef CONFLUX_WITH_VALIDATION
 #include "utils.hpp"
+#endif
 
 std::tuple<int, int> rank_to_coord(MPI_Comm comm2D, int rank) {
     int coords[] = {-1, -1};
@@ -117,6 +119,7 @@ int main(int argc, char *argv[]) {
                                );
     }
 
+#ifdef CONFLUX_WITH_VALIDATION
     if (params.pk == 0) {
         MPI_Comm comm = params.ij_comm;
         int rank, P;
@@ -391,7 +394,7 @@ int main(int argc, char *argv[]) {
 
             MPI_Barrier(comm);
 
-            if (rank == 0) {
+            if (rank == 0 && print_full_matrices) {
                 // full matrix A
                 std::cout << "full-A-matrix on rank 0" << std::endl;
                 conflux::print_matrix(&full_A_scalapack_buff[0],
@@ -454,6 +457,7 @@ int main(int argc, char *argv[]) {
         Cblacs_exit(dont_finalize_mpi);
         MPI_Comm_free(&comm);
     }
+#endif
 
 
     // print the profiler data
