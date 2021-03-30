@@ -1,7 +1,8 @@
 set(INSTALLED_TARGETS_LIST "")
 if(NOT TARGET conflux-lu)
     set(conflux_lu_src_files conflux_opt.cpp
-                          blas.cpp)
+                             layout.cpp
+                             blas.cpp)
 
     add_library(conflux-lu ${conflux_lu_src_files})
 
@@ -19,10 +20,6 @@ if(NOT TARGET conflux-lu)
 
     if(CONFLUX_WITH_VALIDATION)
         target_compile_definitions(conflux-lu PUBLIC CONFLUX_WITH_VALIDATION)
-    endif()
-
-    if(FINAL_SCALAPACK_LAYOUT)
-        target_compile_definitions(conflux-lu PUBLIC FINAL_SCALAPACK_LAYOUT)
     endif()
 
     if(CONFLUX_WITH_PROFILING)
