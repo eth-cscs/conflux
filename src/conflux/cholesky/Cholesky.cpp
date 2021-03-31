@@ -39,6 +39,7 @@
 #include <random>
 #include <iostream>
 #include <sstream>
+#include <unordered_set>
 
 #ifdef DEBUG
 #include <unistd.h>
@@ -236,55 +237,80 @@ void updateA10(const conflux::TileIndex k, const MPI_Comm &world)
     // 1.) post receive statements to later receive sub-tile representatives
 
     // post to later receive representatives of A10
+    std::unordered_set<conflux::ProcRank> sentSet;
     for (conflux::TileIndex iLoc = k / prop->PX; iLoc < proc->maxIndexA11i; ++iLoc) {
         // compute processor to receive from
         conflux::TileIndices glob = prop->localToGlobal(proc->px, proc->py, iLoc, iLoc);
         conflux::ProcRank pSnd = (prop->globalToLocal(glob.i)).p;
+        uint64_t numSenderTilesInA10 = (prop->Kappa - 1 - k) / prop->P
+                        + ((prop->Kappa - 1 - k) % prop->P > pSnd ? 1 : 0);
+        // we need to figure out how much we receive from the sending processor
 
         // continue with next iteration if this row has a global index <= k
         // because in this case the tile is irrelevant (above the diagonal)
         if (glob.i <= k) continue;
 
+        if(sentSet.find(pSnd) != sentSet.end()) {
+            continue;
+        }
+
+        sentSet.insert(pSnd);
+
         //PE(updatea10_postIRecvA10);
         // receive the tile and store it in A10 receive buffer
         MPI_Request req;
-        MPI_Irecv(proc->A10rcv->get(iLoc), prop->v * prop->l, MPI_DOUBLE, pSnd, glob.i,
+        MPI_Irecv(proc->A10rcv->get(iLoc), prop->v * prop->l * numSenderTilesInA10, MPI_DOUBLE, pSnd, glob.i,
                  world, &req);
         proc->reqUpdateA10[proc->cntUpdateA10++] = req;  
+        if (proc->rank == 2) {
+            std::cout << "Processor " << proc->rank << " wants to receive " << numSenderTilesInA10 << " from " << pSnd << " in round " << k << std::endl;
+        }
         //PL();      
     }
 
     // post to later receive representatives of A01
+    sentSet.clear();
+    /*
     for (conflux::TileIndex jLoc = k / prop->PY; jLoc < proc->maxIndexA11j; ++jLoc) {
         // compute processor to receive from
         conflux::TileIndices glob = prop->localToGlobal(proc->px, proc->py, jLoc, jLoc);
         conflux::ProcRank pSnd = (prop->globalToLocal(glob.j)).p;
+        uint64_t numSenderTilesInA10 = (prop->Kappa - 1 - k) / prop->P
+                        + ((prop->Kappa - 1 - k) % prop->P > pSnd ? 1 : 0);
 
         // continue with next iteration if this col has a global index <= k,
         // because in this case the tile has already been handled.
         if (glob.j <= k) continue;
 
+        if(sentSet.find(pSnd) != sentSet.end()) {
+            continue;
+        }
+
+        sentSet.insert(pSnd);
+
         //PE(updatea10_postIrecvA01);
         // receive the tile and store it in A01 receive buffer
         MPI_Request req;
-        MPI_Irecv(proc->A01rcv->get(jLoc), prop->v * prop->l, MPI_DOUBLE, pSnd, glob.j,
+        MPI_Irecv(proc->A01rcv->get(jLoc), prop->v * prop->l * numSenderTilesInA10, MPI_DOUBLE, pSnd, glob.j,
                  world, &req);
         proc->reqUpdateA10[proc->cntUpdateA10++] = req; 
         //PL();       
     }
+    */
 
     // 2-3.) update local tiles, split them into sub-tiles and distribute
     // them among z-layers
 
     // iterate over processor's local tiles in A10
-    // iLocRecv is needed for the reception of the scattering
-    conflux::TileIndex iLocRecv = (k+1)/prop->P;
-    for (conflux::TileIndex iLoc = k / prop->P; iLoc < proc->maxIndexA10; ++iLoc, ++iLocRecv) {
 
-        conflux::TileIndex iGlob = prop->localToGlobal(proc->rank, iLoc);
-        conflux::TileIndex iGlobRecv = prop->localToGlobal(proc->rank, iLocRecv);
+    // we use this counter as a helper to how know how much we are sending
+    conflux::TileIndex iGlob;
+    uint64_t tilesToBeSent = (prop->Kappa - 1 - k) / prop->P
+                        + ((prop->Kappa - 1 - k) % prop->P > proc->rank ? 1 : 0);
 
-        // skip tiles that were already handled or out-of-bounds
+    for (conflux::TileIndex iLoc = k / prop->P; iLoc < proc->maxIndexA10; ++iLoc) {
+        iGlob = prop->localToGlobal(proc->rank, iLoc);
+     // skip tiles that were already handled or out-of-bounds
         if (iGlob <= k) continue;
         if (iGlob >= prop->Kappa) break;
         
@@ -296,33 +322,45 @@ void updateA10(const conflux::TileIndex k, const MPI_Comm &world)
         cblas_dtrsm(CblasRowMajor, CblasRight, CblasLower, CblasTrans, CblasNonUnit,
                     prop->v, prop->v, 1.0, proc->A00, prop->v, tile, prop->v);
         //PL();
+    }
 
-        // determine processors that own tile-rows or -cols with index iGlob
-        conflux::ProcIndexPair2D tileOwners = prop->globalToLocal(iGlob, iGlob);
-
+    // we make use of the fact that this value does not change over the course of the full run
+    // but for when it fails the boundary checks
+    iGlob = prop->localToGlobal(proc->rank, k/prop->P);
+    conflux::ProcIndexPair2D tileOwners = prop->globalToLocal(iGlob, iGlob);
+    double *tile = proc->A10->get(k/prop->P);
         // send tile synchronously as representative of A10 to all processors 
         // that own tile-rows with index iGlob, split into subtiles among Z-layer
+    if (tilesToBeSent > 0) {
         for (conflux::ProcCoord pyRcv = 0; pyRcv < prop->PY; ++pyRcv) {
             for (conflux::ProcCoord pzRcv = 0; pzRcv < prop->PZ; ++pzRcv) {
                 //PE(updatea10_sendA10);
                 conflux::ProcRank pRcv = prop->gridToGlobal(tileOwners.px, pyRcv, pzRcv);
-                MPI_Ssend(tile + pzRcv * prop->l, 1, MPI_SUBTILE, pRcv, iGlob, world);
+                if (pRcv == 0) {
+                    std::cout << "Processor " << proc->rank << " sends " << tilesToBeSent << " to processor " << pRcv  << " in round " << k << std::endl;
+                }
+                MPI_Ssend(tile + prop->l, tilesToBeSent, MPI_SUBTILE, pRcv, iGlob, world);
                 //PL();
             }
         }
 
         // send tile synchronously as representative of A01 to all processors 
         // that own tile-cols with index iGlob, split into subtiles along Z-layer
+        /*
         for (conflux::ProcCoord pxRcv = 0; pxRcv < prop->PX; ++pxRcv) {
             for (conflux::ProcCoord pzRcv = 0; pzRcv < prop->PZ; ++pzRcv) {
                 //PE(updatea10_sendA01);
-                conflux::ProcRank pRcv = prop->gridToGlobal(pxRcv, tileOwners.py, pzRcv);
-                MPI_Ssend(tile + pzRcv * prop->l, 1, MPI_SUBTILE, pRcv, iGlob, world);
+                 conflux::ProcRank pRcv = prop->gridToGlobal(pxRcv, tileOwners.py, pzRcv);
+                //if (proc->rank == 0) {
+                    //std::cout << "Processor " << proc->rank << " sends " << sendCounter << " to processor " << pRcv << std::endl;
+                //}
+                MPI_Ssend(tile + prop->l, tilesToBeSent, MPI_SUBTILE, pRcv, iGlob, world);
                 //PL();        
             }
         }
+        */
     }
-
+    MPI_Barrier(world);
     // wait until all the data transfers have been completed
     // @ TODO: investigate if this wait all is still necessary
     //PE(updatea10_waitall);

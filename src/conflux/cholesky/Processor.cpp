@@ -200,6 +200,9 @@ void conflux::Processor::updateBroadcastCommunicator(TileIndex rem)
     // indicating whether a rank belongs to the communicator or not
     _curBcastIdx++;
     bcastComm = _bcastComms[_curBcastIdx];
+    if(rank == 0) {
+        std::cout << _bcastSizes[_curBcastIdx] << std::endl;
+    }
     inBcastComm = (rank < _bcastSizes[_curBcastIdx] || px == py) ? true : false;
 
 }
