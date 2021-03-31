@@ -1099,6 +1099,7 @@ void LU_rep(lu_params<T>& gv,
         // TODO: NOW: reduce pivot rows: curPivots[0] x (Nl-loff)
         //
       //  if (n_local_active_rows > 0) {
+        if (Pz > 1) {
             PE(step2_localcopy);
             // we have curPivots[0] pivot rows to copy from A11Buff to A01Buff
             // But - the precise row location in A01Buff is determined by the curPivOrder,
@@ -1136,6 +1137,7 @@ void LU_rep(lu_params<T>& gv,
                            MPI_DOUBLE, MPI_SUM, layrK, k_comm);
             }
             PL();
+        }
   //      }
 
         // MPI_Barrier(lu_comm);
@@ -1181,9 +1183,11 @@ void LU_rep(lu_params<T>& gv,
                 int curPivOrder = curPivots[v+1+i];
                 assert(curPivOrder >= 0 && curPivOrder < v);
                 auto dest_dspls = curPivOrder * (Nl - loff);
-                MPI_Put(&A01BuffTemp[i * (Nl - loff)], Nl - loff, MPI_DOUBLE,
+                int pivot_row = first_non_pivot_row - curPivots[0] + i;
+                T* src_ptr = Pz > 1 ? &A01BuffTemp[i* (Nl-loff)] : &A11Buff[pivot_row * Nl + loff];
+                MPI_Put(src_ptr, Nl - loff, MPI_DOUBLE,
                         p_rcv, dest_dspls, Nl - loff, MPI_DOUBLE,
-                        A01Win);                
+                        A01Win);
             }
         }
         MPI_Win_fence(0, A01Win);
@@ -1297,7 +1301,6 @@ void LU_rep(lu_params<T>& gv,
                       0, n_local_active_rows, 0, nlayr, nlayr);
             }
             PL();
-
         }
 
         auto root_trsm_1 = X2p(jk_comm, k % Py, layrK);
