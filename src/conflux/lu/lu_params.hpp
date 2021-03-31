@@ -75,6 +75,10 @@ class lu_params {
         int keep_dims_jk[] = {0, 1, 1};
         MPI_Cart_sub(lu_comm, keep_dims_jk, &jk_comm);
 
+        // ik communicator
+        int keep_dims_ik[] = {1, 0, 1};
+        MPI_Cart_sub(lu_comm, keep_dims_ik, &ik_comm);
+
         // k-communicator
         int keep_dims_k[] = {0, 0, 1};
         MPI_Cart_sub(lu_comm, keep_dims_k, &k_comm);
@@ -363,6 +367,7 @@ public:
 
     MPI_Comm lu_comm = MPI_COMM_NULL;
     MPI_Comm jk_comm = MPI_COMM_NULL;
+    MPI_Comm ik_comm = MPI_COMM_NULL;
     MPI_Comm ij_comm = MPI_COMM_NULL;
     MPI_Comm k_comm = MPI_COMM_NULL;
     int rank;
@@ -403,6 +408,8 @@ public:
             MPI_Comm_free(&ij_comm);
         if (jk_comm != MPI_COMM_NULL)
             MPI_Comm_free(&jk_comm);
+        if (ik_comm != MPI_COMM_NULL)
+            MPI_Comm_free(&ik_comm);
         if (lu_comm != MPI_COMM_NULL)
             MPI_Comm_free(&lu_comm);
     }

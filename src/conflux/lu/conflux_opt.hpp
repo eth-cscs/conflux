@@ -60,6 +60,7 @@ void g2l(int gind, int sqrtp1,
          int &out1, int &out2);
 
 std::tuple<int, int, int> p2X(MPI_Comm comm3D, int rank);
+std::tuple<int, int> p2X_2d(MPI_Comm comm2D, int rank);
 
 int X2p(MPI_Comm comm3D, int pi, int pj, int pk);
 
@@ -360,6 +361,7 @@ void LU_rep(lu_params<T>& gv,
 
     MPI_Comm lu_comm = gv.lu_comm;
     MPI_Comm jk_comm = gv.jk_comm;
+    MPI_Comm ik_comm = gv.ik_comm;
     MPI_Comm k_comm = gv.k_comm;
 
 #ifdef DEBUG
@@ -1222,23 +1224,6 @@ void LU_rep(lu_params<T>& gv,
 
         // if (n_local_active_rows <= 0) continue;
 
-        MPI_Request reqs[Pz * (Px + Py) + 2];
-        int req_id = 0;
-
-     //   if (n_local_active_rows > 0) {
-            // RECEIVE FROM STEP 4
-            auto p_send = X2p(lu_comm, pi, k % Py, layrK);
-            int size = nlayr * n_local_active_rows;  // nlayr = v / c
-
-            if (p_send != rank) {
-                PE(step4_comm);
-                MPI_Irecv(&A10BuffRcv[0], size, MPI_DOUBLE,
-                          p_send, 5, lu_comm, &reqs[req_id]);
-                ++req_id;
-                PL();
-            }
-    //    }
-
         // # ---------------------------------------------- #
         // # 4. compute A10 and broadcast it to A10BuffRecv #
         // # ---------------------------------------------- #
@@ -1303,38 +1288,40 @@ void LU_rep(lu_params<T>& gv,
             }
             PL();
 
-            PE(step4_comm);
-            for (int pk_rcv = 0; pk_rcv < Pz; ++pk_rcv) {
-                // # for the receive layer pk_rcv, its A10BuffRcv is formed by the following columns of A11Buff[p]
-                auto colStart = pk_rcv * nlayr;
-                // auto colEnd   = (pk_rcv+1)*nlayr;
-
-                int offset = colStart * n_local_active_rows;
-                int size = nlayr * n_local_active_rows;  // nlayr = v / c
-
-                // # all pjs receive the same data A11Buff[p, rows, colStart : colEnd]
-                for (int pj_rcv = 0; pj_rcv < Py; ++pj_rcv) {
-                    auto p_rcv = X2p(lu_comm, pi, pj_rcv, pk_rcv);
-                    if (rank != p_rcv) {
-                        MPI_Isend(&A10BuffTemp[offset], size, MPI_DOUBLE,
-                                  p_rcv, 5, lu_comm, &reqs[req_id]);
-                        ++req_id;
-                    }
-                }
-            }
-            auto colStart = pk * nlayr;
-            int offset = colStart * n_local_active_rows;
-            /*
-                parallel_mcopy(nlayr, n_local_active_rows,
-                              &A10BuffTemp[offset], v,
-                              &A10BuffRcv[0], nlayr);
-                              */
-            std::copy_n(&A10BuffTemp[offset], nlayr * n_local_active_rows, &A10BuffRcv[0]);
-            PL();
         }
 
-        te = std::chrono::high_resolution_clock::now();
-        timers[4] += std::chrono::duration_cast<std::chrono::microseconds>(te - ts).count();
+        auto root_trsm_1 = X2p(jk_comm, k % Py, layrK);
+        std::vector<int> trsm_1_dspls(Py * Pz);
+        std::vector<int> trsm_1_counts(Py * Pz);
+
+        for (int p = 0; p < trsm_1_dspls.size(); ++p) {
+            int ppj, ppk;
+            std::tie(ppj, ppk) = p2X_2d(jk_comm, p);
+
+            // # for the receive layer pk_rcv, its A10BuffRcv is formed by the following columns of A11Buff[p]
+            auto colStart = ppk * nlayr;
+            // auto colEnd   = (pk_rcv+1)*nlayr;
+
+            int offset = colStart * n_local_active_rows;
+            int size = nlayr * n_local_active_rows;  // nlayr = v / c
+
+            trsm_1_dspls[p] = offset;
+            trsm_1_counts[p] = size;
+        }
+
+        int jk_rank = X2p(jk_comm, pj, pk);
+
+        PE(step4_comm);
+        MPI_Scatterv(&A10BuffTemp[0], 
+                     &trsm_1_counts[0], 
+                     &trsm_1_dspls[0], 
+                     MPI_DOUBLE, 
+                     &A10BuffRcv[0],
+                     trsm_1_counts[jk_rank],
+                     MPI_DOUBLE,
+                     root_trsm_1,
+                     jk_comm);
+        PL();
 
 #ifdef DEBUG
         MPI_Barrier(lu_comm);
@@ -1352,19 +1339,6 @@ void LU_rep(lu_params<T>& gv,
             }
         }
 #endif
-        // RECEIVE FROM STEP 5
-        p_send = X2p(lu_comm, k % Px, pj, layrK);
-        size = nlayr * (Nl - loff);  // nlayr = v / c
-        // if non-local, receive it
-        if (p_send != rank) {
-            PE(step5_irecv);
-            MPI_Irecv(&A01BuffRcv[0], size, MPI_DOUBLE,
-                      p_send, 6, lu_comm, &reqs[req_id]);
-            ++req_id;
-            PL();
-        }
-
-        ts = te;
 
         auto lld_A01 = Nl - loff;
 
@@ -1415,51 +1389,38 @@ void LU_rep(lu_params<T>& gv,
             }
 #endif
 
-            PE(step5_reshuffling);
-            // # -- BROADCAST -- #
-            // # after compute, send it to sqrt(p1) * c processors
-            for (int pk_rcv = 0; pk_rcv < Pz; ++pk_rcv) {
-                // # for the receive layer pk_rcv, its A01BuffRcv is formed by the following rows of A01Buff[p]
-                auto rowStart = pk_rcv * nlayr;
-                // auto rowEnd = (pk_rcv + 1) * nlayr;
-                // # all pjs receive the same data A11Buff[p, rows, colStart : colEnd]
-                const int n_cols = Nl - loff;
-                for (int pi_rcv = 0; pi_rcv < Px; ++pi_rcv) {
-                    auto p_rcv = X2p(lu_comm, pi_rcv, pj, pk_rcv);
-                    if (rank != p_rcv) {
-                        PL();
-                        PE(step5_isend);
-                        MPI_Isend(&A01Buff[rowStart * n_cols],
-                                  nlayr * n_cols, MPI_DOUBLE,
-                                  p_rcv, 6, lu_comm, &reqs[req_id]);
-                        ++req_id;
-                        PL();
-                        PE(step5_reshuffling);
-                    }
-                }
-            }
-            // perform the local copy outside of MPI
-            PL();
-            PE(step5_localreshuffling)
-            const int row_start = pk * nlayr;
-            const int n_cols = Nl - loff;
-            parallel_mcopy(nlayr, n_cols,
-                           &A01Buff[row_start * n_cols], n_cols,
-                           &A01BuffRcv[0], n_cols);
-            /*
-                std::copy_n(&A01Buff[row_start*n_cols],
-                            nlayr*n_cols,
-                            &A01BuffRcv[0]);
-                            */
-            PL();
         }
 
-        PE(step5_waitall);
-        MPI_Waitall(req_id, reqs, MPI_STATUSES_IGNORE);
-        PL();
+        auto root_trsm_2 = X2p(ik_comm, k % Px, layrK);
+        std::vector<int> trsm_2_dspls(Px * Pz);
+        std::vector<int> trsm_2_counts(Px * Pz);
 
-        te = std::chrono::high_resolution_clock::now();
-        timers[5] += std::chrono::duration_cast<std::chrono::microseconds>(te - ts).count();
+        int ik_rank = X2p(ik_comm, pi, pk);
+
+        for (int p = 0; p < trsm_2_dspls.size(); ++p) {
+            int ppi, ppk;
+            std::tie(ppi, ppk) = p2X_2d(ik_comm, p);
+
+            const int n_cols = Nl - loff;
+            auto rowStart = ppk * nlayr;
+            int offset = rowStart * n_cols;
+            int size = nlayr * n_cols;
+
+            trsm_2_dspls[p] = offset;
+            trsm_2_counts[p] = size;
+        }
+
+        PE(step5_comm);
+        MPI_Scatterv(&A01Buff[0], 
+                     &trsm_2_counts[0], 
+                     &trsm_2_dspls[0], 
+                     MPI_DOUBLE, 
+                     &A01BuffRcv[0],
+                     trsm_2_counts[ik_rank],
+                     MPI_DOUBLE,
+                     root_trsm_2,
+                     ik_comm);
+        PL();
 
 #ifdef DEBUG
         if (debug_level > 0) {

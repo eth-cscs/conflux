@@ -32,6 +32,12 @@ std::tuple<int, int, int> conflux::p2X(MPI_Comm comm3D, int rank) {
     return {coords[0], coords[1], coords[2]};
 }
 
+std::tuple<int, int> conflux::p2X_2d(MPI_Comm comm2D, int rank) {
+    int coords[] = {-1, -1};
+    MPI_Cart_coords(comm2D, rank, 2, coords);
+    return {coords[0], coords[1]};
+}
+
 int conflux::X2p(MPI_Comm comm3D, int pi, int pj, int pk) {
     int coords[] = {pi, pj, pk};
     int rank;
