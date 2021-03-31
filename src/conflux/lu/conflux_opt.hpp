@@ -1232,6 +1232,7 @@ void LU_rep(lu_params<T>& gv,
         PL();
 
         // if (n_local_active_rows <= 0) continue;
+        MPI_Request reqs[2];
 
         // # ---------------------------------------------- #
         // # 4. compute A10 and broadcast it to A10BuffRecv #
@@ -1316,7 +1317,7 @@ void LU_rep(lu_params<T>& gv,
         }
 
         PE(step4_comm);
-        MPI_Scatterv(&A10BuffTemp[0], 
+        MPI_Iscatterv(&A10BuffTemp[0], 
                      &trsm_1_counts[0], 
                      &trsm_1_dspls[0], 
                      MPI_DOUBLE, 
@@ -1324,7 +1325,9 @@ void LU_rep(lu_params<T>& gv,
                      trsm_1_counts[jk_rank],
                      MPI_DOUBLE,
                      root_trsm_1,
-                     jk_comm);
+                     jk_comm,
+                     &reqs[0]
+                     );
         PL();
 
 #ifdef DEBUG
@@ -1411,7 +1414,7 @@ void LU_rep(lu_params<T>& gv,
         }
 
         PE(step5_comm);
-        MPI_Scatterv(&A01Buff[0], 
+        MPI_Iscatterv(&A01Buff[0], 
                      &trsm_2_counts[0], 
                      &trsm_2_dspls[0], 
                      MPI_DOUBLE, 
@@ -1419,7 +1422,8 @@ void LU_rep(lu_params<T>& gv,
                      trsm_2_counts[ik_rank],
                      MPI_DOUBLE,
                      root_trsm_2,
-                     ik_comm);
+                     ik_comm,
+                     &reqs[1]);
         PL();
 
 #ifdef DEBUG
@@ -1441,6 +1445,8 @@ void LU_rep(lu_params<T>& gv,
 #endif
 
         ts = te;
+
+        MPI_Waitall(2, &reqs[0], MPI_STATUSES_IGNORE);
 
         // # ---------------------------------------------- #
         // # 7. compute A11  ------------------------------ #
