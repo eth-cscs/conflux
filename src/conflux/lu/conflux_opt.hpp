@@ -330,7 +330,7 @@ void tournament_rounds(
 std::pair<
     std::unordered_map<int, std::vector<int>>,
     std::unordered_map<int, std::vector<int>>>
-g2lnoTile(std::vector<int> &grows, int Px, int v);
+g2lnoTile(std::vector<int> &grows, int size, int Px, int v);
 
 template <class T>
 void LU_rep(lu_params<T>& gv,
@@ -459,10 +459,13 @@ void LU_rep(lu_params<T>& gv,
     // 1..v+1 = pivots
     // v+1 .. 2v+1 = curPivOrder
     // 2v+1 .. 3v+1 = pivotIndsBuff
-    std::vector<int> curPivots(3*v+1);
-    for (int i = v + 1; i < curPivots.size(); ++i) {
-        curPivots[i] = i;
+    std::vector<int> curPivots(v+1);
+    std::vector<int> curPivOrder(v);
+    for (int i = 0; i < curPivOrder.size(); ++i) {
+        curPivOrder[i] = i;
     }
+    // global pivot indices
+    std::vector<int> gpivots(v);
 
     // GLOBAL result buffer
     // For debug only!
@@ -667,8 +670,8 @@ void LU_rep(lu_params<T>& gv,
         MPI_Request A00_req[2];
         int n_A00_reqs = 0;
         assert(n_local_active_rows + first_non_pivot_row == Ml);
+        auto min_perm_size = std::min(N - k * v, v);
         if (pj == k % Py && pk == layrK) {
-            auto min_perm_size = std::min(N - k * v, v);
             auto max_perm_size = std::max(n_local_active_rows, v);
 
           //  if (n_local_active_rows > 0) {
@@ -783,40 +786,16 @@ void LU_rep(lu_params<T>& gv,
             // v+1 is the number of cols
             // std::cout << "candidatePivotBuff:" << std::endl;;
             // print_matrix(candidatePivotBuff.data(), 0, v, 0, v+1, v+1);
-            
+
             //if (n_local_active_rows > 0) {
-                auto gpivots = column<T, int>(matrix_view<T>(&candidatePivotBuff[0],
-                                                             min_perm_size, v + 1, v + 1,
-                                                             layout),
-                                              0);
-
-                std::unordered_map<int, std::vector<int>> lpivots;
-                std::unordered_map<int, std::vector<int>> loffsets;
-                std::tie(lpivots, loffsets) = g2lnoTile(gpivots, Px, v);
-
-                // locally set curPivots
-                /*
-                     because the thing is that n_local_active_rows is BEFORE tournament pivoting
-                     so you entered the tournnament with empty hands but at least 
-                     you should tell others what was the outcome of the tournament. 
-                     So other ranks produced A00, gpivots, etc. and this information has to be propagated further
-                     */
-                curPivots[0] = lpivots[pi].size();
-                // if (curPivots[0] > 0) {
-                std::copy_n(&lpivots[pi][0], curPivots[0], &curPivots[1]);
-                std::copy_n(&loffsets[pi][0], curPivots[0], &curPivots[v + 1]);
-                // curPivOrder = loffsets[pi];
-                // std::copy_n(&gpivots[0], v, &pivotIndsBuff[k * v]);
-                // curPivots[2*v+1] holds the pivotIndsBuff
-                std::copy_n(&gpivots[0], v, &curPivots[2*v+1]);
-               //  }
-           // } else {
-            // if (n_local_active_rows > 0) {
-            //     curPivots[0] = 0;
-            // }
+            column<T, int>(matrix_view<T>(&candidatePivotBuff[0],
+                                         min_perm_size, v + 1, v + 1,
+                                         layout
+                                         ),
+                           0,
+                           &gpivots[0]);
             PL();
 
-            
 #ifdef DEBUG
                 if (k == chosen_step && debug_level > -1 && rank == print_rank) {
                     std::cout << "Rank [" << pi << ", " << pj << ", " << pk << "], k: " << k << ", n_local_active_rows: "
@@ -891,18 +870,27 @@ void LU_rep(lu_params<T>& gv,
         // the one who entered this is the root
         auto root = X2p(jk_comm, k % Py, layrK);
 
-        /*
-        // # Sending A00Buff:
-            PE(step1_A00Buff_bcast);
-            MPI_Request A00_bcast_req;
-            MPI_Ibcast(&A00Buff[0], v * v, MPI_DOUBLE, root, jk_comm, &A00_bcast_req);
-            PL();
-            */
-
         PE(step1_curPivots);
-        MPI_Bcast(&curPivots[0], 3 * v + 1, MPI_INT, root, jk_comm);
-        std::copy_n(&curPivots[2*v+1], v, &pivotIndsBuff[k*v]);
+        MPI_Bcast(&gpivots[0], min_perm_size, MPI_INT, root, jk_comm);
         PL();
+
+        std::unordered_map<int, std::vector<int>> lpivots;
+        std::unordered_map<int, std::vector<int>> loffsets;
+        std::tie(lpivots, loffsets) = g2lnoTile(gpivots, min_perm_size, Px, v);
+
+        // locally set curPivots
+        /*
+             because the thing is that n_local_active_rows is BEFORE tournament pivoting
+             so you entered the tournnament with empty hands but at least 
+             you should tell others what was the outcome of the tournament. 
+             So other ranks produced A00, gpivots, etc. and this information has to be propagated further
+             */
+        curPivots[0] = lpivots[pi].size();
+        // if (curPivots[0] > 0) {
+        std::copy_n(&lpivots[pi][0], curPivots[0], &curPivots[1]);
+        std::copy_n(&loffsets[pi][0], curPivots[0], &curPivOrder[0]);
+        // curPivOrder = loffsets[pi];
+        std::copy_n(&gpivots[0], v, &pivotIndsBuff[k * v]);
 
         // PL();
 
@@ -1180,9 +1168,9 @@ void LU_rep(lu_params<T>& gv,
             //     }
 
             for (int i = 0; i < curPivots[0]; ++i) {
-                int curPivOrder = curPivots[v+1+i];
-                assert(curPivOrder >= 0 && curPivOrder < v);
-                auto dest_dspls = curPivOrder * (Nl - loff);
+                int piv_order = curPivOrder[i];
+                assert(piv_order >= 0 && piv_order < v);
+                auto dest_dspls = piv_order * (Nl - loff);
                 int pivot_row = first_non_pivot_row - curPivots[0] + i;
                 T* src_ptr = Pz > 1 ? &A01BuffTemp[i* (Nl-loff)] : &A11Buff[pivot_row * Nl + loff];
                 MPI_Put(src_ptr, Nl - loff, MPI_DOUBLE,
@@ -1515,7 +1503,7 @@ void LU_rep(lu_params<T>& gv,
                 // our rank pi has curPivots[0] pivots in this round. Therefore, it has to store curPivots[0] rows from A10Buff
                 // from previous iteration.
                 for (int ii = 0; ii < curPivots[0]; ii++) {
-                    int i = curPivots[v + 1 + ii];  // ii sis the ii'th pivot in this round. i is its row location
+                    int i = curPivOrder[ii];  // ii sis the ii'th pivot in this round. i is its row location
                     int A10_row_offset = (ii + first_non_pivot_row - curPivots[0]) * Nl;
                     int g_dest_row = i + k * v;
                     // check which rank will be the owner of this pivot row after row swapping

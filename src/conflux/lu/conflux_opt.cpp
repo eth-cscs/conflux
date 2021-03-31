@@ -74,11 +74,11 @@ int conflux::butterfly_pair(int pi, int r, int Px) {
 std::pair<
     std::unordered_map<int, std::vector<int>>,
     std::unordered_map<int, std::vector<int>>>
-conflux::g2lnoTile(std::vector<int> &grows, int Px, int v) {
+conflux::g2lnoTile(std::vector<int> &grows, int size, int Px, int v) {
     std::unordered_map<int, std::vector<int>> lrows;
     std::unordered_map<int, std::vector<int>> loffsets;
 
-    for (unsigned i = 0u; i < grows.size(); ++i) {
+    for (unsigned i = 0u; i < size; ++i) {
         auto growi = grows[i];
         // # we are in the global tile:
         auto gT = growi / v;
