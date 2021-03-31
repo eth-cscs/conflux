@@ -446,6 +446,15 @@ void LU_rep(lu_params<T>& gv,
     std::vector<int> late_pivots;
     late_pivots.reserve(v);
 
+    std::vector<int> trsm_1_dspls(Py * Pz);
+    std::vector<int> trsm_1_counts(Py * Pz);
+
+    std::vector<int> trsm_2_dspls(Px * Pz);
+    std::vector<int> trsm_2_counts(Px * Pz);
+
+    int jk_rank = X2p(jk_comm, pj, pk);
+    int ik_rank = X2p(ik_comm, pi, pk);
+
     // 0 = num of pivots
     // 1..v+1 = pivots
     // v+1 .. 2v+1 = curPivOrder
@@ -1291,9 +1300,6 @@ void LU_rep(lu_params<T>& gv,
         }
 
         auto root_trsm_1 = X2p(jk_comm, k % Py, layrK);
-        std::vector<int> trsm_1_dspls(Py * Pz);
-        std::vector<int> trsm_1_counts(Py * Pz);
-
         for (int p = 0; p < trsm_1_dspls.size(); ++p) {
             int ppj, ppk;
             std::tie(ppj, ppk) = p2X_2d(jk_comm, p);
@@ -1308,8 +1314,6 @@ void LU_rep(lu_params<T>& gv,
             trsm_1_dspls[p] = offset;
             trsm_1_counts[p] = size;
         }
-
-        int jk_rank = X2p(jk_comm, pj, pk);
 
         PE(step4_comm);
         MPI_Scatterv(&A10BuffTemp[0], 
@@ -1392,10 +1396,6 @@ void LU_rep(lu_params<T>& gv,
         }
 
         auto root_trsm_2 = X2p(ik_comm, k % Px, layrK);
-        std::vector<int> trsm_2_dspls(Px * Pz);
-        std::vector<int> trsm_2_counts(Px * Pz);
-
-        int ik_rank = X2p(ik_comm, pi, pk);
 
         for (int p = 0; p < trsm_2_dspls.size(); ++p) {
             int ppi, ppk;
