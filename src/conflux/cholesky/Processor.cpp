@@ -33,6 +33,7 @@
 
 #include <sstream>
 #include <mpi.h>
+#include <math.h>
 
 #include "Processor.h"
 
@@ -103,6 +104,9 @@ conflux::Processor::Processor(CholeskyProperties *prop)
     // we define color = px * PY + py, i.e. rank on XY-plane in row-major order
     // and rank as the pz coordinate.
     MPI_Comm_split(MPI_COMM_WORLD, this->px * prop->PY + this->py, this->pz, &this->zAxisComm);
+
+    // set the private pointer to the properties object
+    m_prop = prop;
 }
 
 /**
@@ -125,4 +129,63 @@ conflux::Processor::~Processor()
     if (this->pz == 0) {
         MPI_Comm_free(&this->zAxisComm);
     }
+}
+
+/**
+ * @brief updates the broadcast communicator
+ * @param remTiles the remaining number of tiles in A10
+ */
+void conflux::Processor::updateBcastComm(uint32_t remTiles)
+{
+    // TODO: implement
+}
+
+/**
+ * @brief initializes the broadcast communicators
+ */
+void conflux::Processor::initializeBroadcastComms()
+{
+    // if we have 8 or less processors, it's not worth it to generate new communicators
+    if (m_prop->P <= 8) {
+        // inser the global communicator into the lists
+        m_bcastComms.push_back(MPI_COMM_WORLD);
+        m_bcastSizes.push_back(m_prop->P);
+        m_membershipFlags.push_back(true);
+        m_curIdx = 0;
+        std::set<ProcRank> tO;
+        for (size_t i = 0; i < m_prop->P; ++i) {
+            tO.insert((ProcRank) i);
+        }
+        m_tileOwners.push_back(tO);
+
+        // update the public variables
+        bcastComm = m_bcastComms[0];
+        inBcastComm = true;
+
+        return;
+    }
+
+    // there are PX * PZ processors potentially owning tiles that become A00
+    uint32_t numBcastProcessors = m_prop->PX * m_prop->PZ;
+    uint32_t maxBcastSize = std::min(m_prop->P, m_prop->Kappa); // this is a power of two in our case
+    uint8_t numComms = 0;
+
+    int idx = 0;
+    // if the maxBcast size is P (i.e. num processors) then use MPI_COMM_WORLD
+    if (maxBcastSize == m_prop->P) {
+        
+    }
+
+
+
+
+
+
+
+
+
+
+
+
+
 }
