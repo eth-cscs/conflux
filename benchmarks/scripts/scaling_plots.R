@@ -37,7 +37,7 @@ annotCoord = list()
 
 
 #exp_filename = paste(exp_name,'.csv',sep="")
-# setwd("C:/gk_pliki/uczelnia/doktorat/performance_modelling/repo/conflux_cpp_2/results/conflux/benchmarks/scripts")
+setwd("C:/gk_pliki/uczelnia/doktorat/performance_modelling/repo/conflux_cpp_2/results/conflux/benchmarks/scripts")
 setwd(paste("../",exp_name,sep =""))
 source(paste(getwd(), "/scripts/SPCL_Stats.R", sep=""))
 
@@ -45,25 +45,31 @@ source(paste(getwd(), "/scripts/SPCL_Stats.R", sep=""))
 # prepare the data 
 rawData <- read.csv(file=exp_filename, sep=",", stringsAsFactors=FALSE, header=TRUE)
 
-for (alg in algorithms){
-  print(alg)
-  df1 <- rawData[str_cmp(rawData$algorithm, alg),]
-  for (scaling in scalings){
-    print(scaling)
-    for (size in sizes[[scaling]]){
-      print(size)
-      df2 <- df1[df1$N_base == size, ]
-      
-      for (variant in variantPlots){
-        print(variant)
-        df3 <- df2[str_cmp(df2$unit, variant),]
-        if (variant == "FLOPS") {
-          df3 <- df2[str_cmp(df2$unit, "time"),]
-        }
+rawData[rawData$N_base == "-" & rawData$type == "strong",]$N_base <- rawData[rawData$N_base == "-" & rawData$type == "strong",]$N
+rawData[rawData$N_base == "-" & rawData$type == "weak",]$N_base <- rawData[rawData$N_base == "-" & rawData$type == "weak",]$N / sqrt(rawData[rawData$N_base == "-" & rawData$type == "weak",]$P)
+
+filtered_time_data <- find_optimal_blocks(rawData)
+
+for (variant in variantPlots){
+  print(variant)
+  if (variant == "FLOPS" | variant == "time") {
+    df1 <- filtered_time_data
+  }
+  if (variant == "bytes"){
+    df1 <- rawData[rawData$unit == "bytes",]
+  }
+  
+  for (alg in algorithms){
+    print(alg)
+    df2 <- df1[str_cmp(df1$algorithm, alg),]
+    for (scaling in scalings){
+      print(scaling)
+      for (size in sizes[[scaling]]){
+        print(size)
+        df3 <- df2[df2$N_base == size, ]
         
         if (nrow(df3) == 0)
           next
-        
         
         
         plot_data <- df3[c("P", "library", "value", "N")]

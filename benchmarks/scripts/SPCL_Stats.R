@@ -2,6 +2,28 @@
 library(stringr)
 
 #-----------helper functions-------------------------#
+find_optimal_blocks <- function(rawData) {
+  time_data <- rawData[rawData$unit == "time",]
+  time_data <- time_data[complete.cases(time_data),]
+  best_blocks <- as.data.frame(time_data %>% group_by(algorithm, library, N, P) %>% summarise_each(list(min), value))
+  rows_to_remove = c()
+  
+  for (row in 1:nrow(time_data)) {
+    cur_blocksize = time_data[row, "blocksize"]
+    cur_p = time_data[row, "P"]
+    cur_n = time_data[row, "N"]
+    cur_lib = time_data[row, "library"]
+    cur_val = time_data[row, "value"]
+    cur_alg = time_data[row, "algorithm"]
+    all_values = time_data[time_data$algorithm == cur_alg & time_data$library == cur_lib & time_data$N == cur_n & time_data$P == cur_p & time_data$blocksize == cur_blocksize,]$value
+    best_block_value = best_blocks[best_blocks$algorithm == cur_alg & best_blocks$library == cur_lib & best_blocks$N == cur_n &best_blocks$P == cur_p, ]$value
+    if (min(all_values) != best_block_value | cur_val > 1.3 * best_block_value){
+      rows_to_remove <- c(rows_to_remove, row)
+    }
+  }
+  filtered_data = time_data[-rows_to_remove, ]
+}
+
 str_cmp <- function(str1, str2){
   str_detect(str1, regex(str2, ignore_case = TRUE))
 }

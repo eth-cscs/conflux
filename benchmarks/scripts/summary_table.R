@@ -61,7 +61,7 @@
 # interesting_columns = c("case", "library", "N", "P", "value")
 # data <- rawData[interesting_columns]
 # data <- data[complete.cases(data),]
-# meanMeasrs <- as.data.frame(data %>% group_by(case, library, N, P) %>% summarise_each(list(mean)))
+#meanMeasrs <- as.data.frame(data %>% group_by(case, library, N, P) %>% summarise_each(list(mean)))
 # 
 # 
 
@@ -113,14 +113,20 @@ annotCoord = list()
 
 #--------------------PREPROCESSING-----------------------------#
 
-rawData = read.table(exp_filename, header = T, sep = ',',fill = TRUE, stringsAsFactors=TRUE)
+rawData = read.table(exp_filename, header = T, sep = ',',fill = TRUE, stringsAsFactors=FALSE)
 
+rawData[rawData$N_base == "-" & rawData$type == "strong",]$N_base <- rawData[rawData$N_base == "-" & rawData$type == "strong",]$N
+rawData[rawData$N_base == "-" & rawData$type == "weak",]$N_base <- rawData[rawData$N_base == "-" & rawData$type == "weak",]$N / sqrt(rawData[rawData$N_base == "-" & rawData$type == "weak",]$P)
 rawData[str_cmp(rawData$library, "capital"),]$library = "candmc"
 if (nrow(rawData[str_cmp("psychol", rawData$library),]) > 0) {
   rawData[str_cmp("psychol", rawData$library),]$library = "conflux"
 }
 
 rawData$case = paste(rawData$algorithm, rawData$N_base,sep ="_")
+
+
+filtered_time_data <- find_optimal_blocks(rawData)
+
 
 
 # rawData = rawData[rawData$S < Inf,]
@@ -177,7 +183,7 @@ rawData$scaling = ifelse(rawData$N_base == 16384, 'strong 16384',
 
 rawrawData <- rawData
 
-rawData <- rawData[rawData$unit == "time",]
+rawData <- filtered_time_data
 rawData <- rawData[complete.cases(rawData),]
 rawData <- as.data.frame(rawData %>% group_by(algorithm, library, N, N_base, P, grid, unit, type, blocksize, case, algLabel, mShape, scaling) %>% summarise_each(list(mean)))
 

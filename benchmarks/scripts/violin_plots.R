@@ -88,11 +88,14 @@ pointSize = 5
 
 
 
-#setwd("C:/gk_pliki/uczelnia/doktorat/performance_modelling/repo/conflux_cpp_2/results/conflux/benchmarks/scripts")
+setwd("C:/gk_pliki/uczelnia/doktorat/performance_modelling/repo/conflux_cpp_2/results/conflux/benchmarks/scripts")
 # prepare the data 
 #setwd(paste("../",exp_name,sep =""))
 source("SPCL_Stats.R")
 rawData <- read.csv(file=paste(getwd(), exp_filename, sep = ""), sep=",", stringsAsFactors=FALSE, header=TRUE)
+
+rawData[rawData$N_base == "-" & rawData$type == "strong",]$N_base <- rawData[rawData$N_base == "-" & rawData$type == "strong",]$N
+rawData[rawData$N_base == "-" & rawData$type == "weak",]$N_base <- rawData[rawData$N_base == "-" & rawData$type == "weak",]$N / sqrt(rawData[rawData$N_base == "-" & rawData$type == "weak",]$P)
 
 #-------------annot data points----------------#
 annotXHash = hash()
@@ -428,7 +431,8 @@ aspectRatio = 4.4
 aspectRatio = 5.5
 hg = 3
 
-violinData = rawData[rawData$unit == 'time',]
+#violinData = rawData[rawData$unit == 'time',]
+violinData <- find_optimal_blocks(rawData)
 violinData$case = paste(violinData$algorithm, violinData$N_base,sep ="_")
 #violinData = violinData[violinData$case != "memory_p2_FALSE",]
 #violinData = violinData[violinData$case != "strong_TRUE",]
