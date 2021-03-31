@@ -232,7 +232,7 @@ void tournament_rounds(
     std::tie(pi, pj, pk) = p2X(lu_comm, rank);
 
     int req_id = 0;
-    int n_reqs = (Px & (Px - 1) == 0) ? 2 : (Px + 2);
+    int n_reqs = ((Px & (Px - 1)) == 0) ? 2 : (Px + 2);
     // int n_reqs = Px+2;
     MPI_Request reqs[n_reqs];
 
@@ -259,7 +259,7 @@ void tournament_rounds(
         // rank pi = Px - 1.
         // first, check who wants something from us:
         // if Px not a power of 2
-        if (Px & (Px - 1) != 0) {
+        if ((Px & (Px - 1)) != 0) {
             for (int ppi = 0; ppi < Px; ppi++) {
                 //then it means that ppi wants something from us
                 if (butterfly_pair(ppi, r, Px) == pi && ppi != src_pi) {
