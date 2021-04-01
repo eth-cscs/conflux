@@ -1137,6 +1137,11 @@ void LU_rep(lu_params<T>& gv,
         }
         PL();
 
+        // # -------------------------------------------------- #
+        // # 3. distribute v pivot rows from A11buff to A01Buff #
+        // # here, only processors pk == layrK participate      #
+        // # -------------------------------------------------- #
+        PE(step3_put);
         MPI_Request pivot_reqs[Px+1];
         int pivot_reqs_idx = 0;
         if (pk == layrK) {
@@ -1174,6 +1179,7 @@ void LU_rep(lu_params<T>& gv,
                     int received_size = 0;
                     MPI_Get_count(&status, MPI_DOUBLE, &received_size);
                     int n_received_rows = received_size / (Nl - loff + 1);
+#pragma omp parallel for shared(A11BuffTemp, Nl, loff, A01Buff)
                     for (int row = 0; row < n_received_rows; ++row) {
                         int offset = pi_send * v * (Nl - loff + 1);
                         int piv_order = (int) A11BuffTemp[offset + row * (Nl-loff+1)];
@@ -1186,6 +1192,7 @@ void LU_rep(lu_params<T>& gv,
             }
             MPI_Wait(&pivot_reqs[0], MPI_STATUS_IGNORE);
         }
+        PL();
 
         te = std::chrono::high_resolution_clock::now();
         timers[2] += std::chrono::duration_cast<std::chrono::microseconds>(te - ts).count();
@@ -1207,37 +1214,6 @@ void LU_rep(lu_params<T>& gv,
             }
         }
 #endif
-
-        /*
-        // # -------------------------------------------------- #
-        // # 3. distribute v pivot rows from A11buff to A01Buff #
-        // # here, only processors pk == layrK participate      #
-        // # -------------------------------------------------- #
-        PE(step3_put);
-        if (pk == layrK) {
-            // curPivOrder[i] refers to the target
-
-            // if (pi == 1 && pj == 1 && pk == 0 && (k % Px) == 0){
-            //         std::cout << "Sending A01Buff. Rank [" << pi << ", " << pj << ", " << pk << "] -> ["
-            //               << k % Px << ", " << pj << ", " << layrK << "], Sender's A01Buff: " << std::endl;
-            //         print_matrix(A01Buff.data(), 0, v, 0, Nl, Nl);
-
-            //     }
-
-            for (int i = 0; i < curPivots[0]; ++i) {
-                int piv_order = curPivOrder[i];
-                assert(piv_order >= 0 && piv_order < v);
-                auto dest_dspls = piv_order * (Nl - loff);
-                T* src_ptr = &A01BuffTemp[i* (Nl-loff)];
-                MPI_Put(src_ptr, Nl - loff, MPI_DOUBLE,
-                        p_rcv, dest_dspls, Nl - loff, MPI_DOUBLE,
-                        A01Win);
-            }
-            MPI_Win_fence(0, A01Win);
-        }
-        */
-
-        PL();
 
         // MPI_Barrier(lu_comm);
         te = std::chrono::high_resolution_clock::now();
