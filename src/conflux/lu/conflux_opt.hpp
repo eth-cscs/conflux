@@ -184,7 +184,9 @@ void push_pivots_up(std::vector<T> &in, std::vector<T> &temp,
     if (n_rows == 0 || n_cols == 0 || first_non_pivot_row >= n_rows)
         return;
 
-#pragma omp parallel for shared(curPivots, in, n_cols, temp)
+#pragma omp parallel shared(curPivots, in, n_cols, temp, late_pivots, early_non_pivots, first_non_pivot_row)
+    {
+#pragma omp for
     // copy first v pivots to temporary buffer
     for (int i = 0; i < curPivots[0]; ++i) {
         int pivot_row = curPivots[i + 1];
@@ -194,7 +196,7 @@ void push_pivots_up(std::vector<T> &in, std::vector<T> &temp,
     }
 
     // copy early non_pivots to late pivots positions
-#pragma omp parallel for shared(late_pivots, early_non_pivots, in, n_cols)
+#pragma omp for
     for (int i = 0; i < early_non_pivots.size(); ++i) {
         int row = early_non_pivots[i];
         std::copy_n(&in[row * n_cols],
@@ -202,13 +204,14 @@ void push_pivots_up(std::vector<T> &in, std::vector<T> &temp,
                     &in[late_pivots[i] * n_cols]);
     }
 
-#pragma omp parallel for shared(first_non_pivot_row, curPivots, temp, n_cols, in)
+#pragma omp for
     // overwrites first v rows with pivots
     for (int i = 0; i < curPivots[0]; ++i) {
         int pivot_row = curPivots[i + 1];
         std::copy_n(&temp[i * n_cols],
                     n_cols,
                     &in[(first_non_pivot_row + i) * n_cols]);
+    }
     }
 }
 
