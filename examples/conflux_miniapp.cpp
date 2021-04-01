@@ -104,7 +104,10 @@ int main(int argc, char *argv[]) {
 
     // A = input, C = output
     std::vector<double>& A_buff = params.data;
-    std::vector<double> C_buff(A_buff.size());
+    std::vector<double> C_buff;
+#ifdef CONFLUX_WITH_VALIDATION
+    C_buff = std::vector<double>(A_buff.size());
+#endif
 
     // pivots
     std::vector<int> pivotIndsBuff(params.M);

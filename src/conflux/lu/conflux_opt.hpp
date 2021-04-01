@@ -392,12 +392,12 @@ void LU_rep(lu_params<T>& gv,
     std::vector<T> A01BuffRcv(nlayr * Nl);
 
     std::vector<T> A11Buff = gv.data;
-    std::vector<T> A10resultBuff(Ml * Nl);
     std::vector<T> A11BuffTemp(Ml * Nl);
 
     //TODO: can we handle such a big global pivots vector?
     std::vector<int> pivotIndsBuff(M);
 #ifdef CONFLUX_WITH_VALIDATION
+    std::vector<T> A10resultBuff(Ml * Nl);
     MPI_Win res_Win = create_window(lu_comm,
                                     C,
                                     Ml*Nl,
@@ -597,7 +597,7 @@ void LU_rep(lu_params<T>& gv,
 
         // # reduce first tile column. In this part, only pj == k % sqrtp1 participate:
 
-       // if (pj == k % Py && n_local_active_rows > 0) {
+       if (pj == k % Py) {
             PE(step0_copy);
             parallel_mcopy<T>(n_local_active_rows, v,
                               &A11Buff[first_non_pivot_row * Nl + loff], Nl,
@@ -616,6 +616,7 @@ void LU_rep(lu_params<T>& gv,
 
             PE(step0_reduce);
             if (pk == layrK) {
+                // the root of the reduction is rank: layrK
                 MPI_Reduce(MPI_IN_PLACE, &A10Buff[first_non_pivot_row * v],
                            n_local_active_rows * v,
                            MPI_DOUBLE, MPI_SUM, layrK, k_comm);
@@ -626,7 +627,7 @@ void LU_rep(lu_params<T>& gv,
                            MPI_DOUBLE, MPI_SUM, layrK, k_comm);
             }
             PL();
-     //   }
+       }
 
 #ifdef DEBUG
         if (debug_level > 1) {
