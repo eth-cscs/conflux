@@ -1,71 +1,3 @@
-# library(ggplot2)
-# library(ggrepel)
-# library(reshape2)
-# library(plyr)
-# library(hash)
-# #library("reshape2")
-# 
-# 
-# exp_name = ""
-# exp_filename = "benchmarks.csv"
-# scalings = c("weak", "strong")
-# 
-# variantPlots = c("time", "FLOPS", "bytes")
-# algorithms = c("Cholesky", "LU")
-# 
-# sizes_strong = c(16384, 131072)
-# sizes_weak = c(1024, 8192)
-# sizes <- hash()
-# sizes[["strong"]] <- sizes_strong
-# sizes[["weak"]] <- sizes_weak
-# 
-# libraries_chol = c("MKL [cite]", "SLATE [cite]", "CAPITAL [cite]", "PsyChol (this work)")
-# libraries_LU = c("MKL [cite]", "SLATE [cite]", "CANDMC [cite]", "CONFLUX (this work)")
-# libraries <- hash()
-# libraries[["LU"]] <- libraries_chol
-# libraries[["Cholesky"]] <- libraries_LU
-# #annotl = c("candmc [21]","CTF [49]","conflux (this work)", "mkl [14]")
-# #varPlot = "FLOPS"
-# 
-# FLOPSperNode = 1209 
-# 
-# 
-# 
-# #exp_filename = paste(exp_name,'.csv',sep="")
-# setwd("C:/gk_pliki/uczelnia/doktorat/performance_modelling/repo/conflux_cpp_2/results/conflux/benchmarks/scripts")
-# setwd(paste("../",exp_name,sep =""))
-# source(paste(getwd(), "/scripts/SPCL_Stats.R", sep=""))
-# 
-# # prepare the data 
-# rawData <- read.csv(file=exp_filename, sep=",", stringsAsFactors=FALSE, header=TRUE)
-# 
-# rawData <- rawData[rawData$unit == "time",]
-# 
-# rawData[str_cmp(rawData$library, "capital"),]$library = "candmc"
-# # rawData[str_cmp(rawData$library, "capital"),]$library = "CANDMC/CAPITAL"
-# # rawData[str_cmp(rawData$library, "candmc"),]$library = "CANDMC/CAPITAL"
-# 
-# # if(nrow(rawData[str_cmp("conflux", rawData$library),]) > 0) {
-# #   rawData[str_cmp("conflux", rawData$library),]$library = "COnlLUX/PsyChol"
-# # }
-# 
-# # if (nrow(rawData[str_cmp("psychol", rawData$library),]) > 0) {
-# #   rawData[str_cmp("psychol", rawData$library),]$library = "COnlLUX/PsyChol"
-# # }
-# if (nrow(rawData[str_cmp("psychol", rawData$library),]) > 0) {
-#   rawData[str_cmp("psychol", rawData$library),]$library = "conflux"
-# }
-# 
-# rawData$case = paste(rawData$algorithm, rawData$N_base,sep ="_")
-# 
-# interesting_columns = c("case", "library", "N", "P", "value")
-# data <- rawData[interesting_columns]
-# data <- data[complete.cases(data),]
-#meanMeasrs <- as.data.frame(data %>% group_by(case, library, N, P) %>% summarise_each(list(mean)))
-# 
-# 
-
-
 
 library(ggplot2)
 library(ggrepel)
@@ -83,8 +15,8 @@ exp_filename = "benchmarks.csv"
 setwd(path)
 source(paste(path, "scripts/SPCL_Stats.R", sep="/"))
 scalings = c("strong_131072", "strong_16384", "weak_8192")
-matrixShapes = c("LU","Cholesky")
-variantPlots = c("commVol", "time", "flops")
+matrixShapes = c("lu","cholesky")
+variantPlots = c("commVol", "time")
 algorithms = c("conflux","mkl","slate","candmc")
 annotl = c("COnfLUX/PsyChol (this work) ", "MKL [cite] ","SLATE [cite] ","CANDMC/CAPITAL [cite] ")
 importantCols = c("algorithm","N_base","library", "P","N","value","unit") #, "V","commVolModel","commModelRatio")
@@ -103,11 +35,10 @@ S = 5e+09
 statistics = 0
 
 annotCoord = list()
-#annotCoordX[["square_memory_p1_time"]] = 
-
-
-#exp_filename = paste(exp_name,'.csv',sep="")
-#setwd(paste(path,exp_name,sep =""))
+DataColumnsHash = hash()
+DataColumnsHash['commVol'] = c("P", "algLabel", "V")
+DataColumnsHash['time'] = c("P", "algLabel", "value")
+DataColumnsHash['flops'] = c("P", "algLabel", "flops")
 
 
 
@@ -125,10 +56,6 @@ if (nrow(rawData[str_cmp("psychol", rawData$library),]) > 0) {
 rawData$case = paste(rawData$algorithm, rawData$N_base,sep ="_")
 
 
-filtered_time_data <- find_optimal_blocks(rawData)
-
-
-
 # rawData = rawData[rawData$S < Inf,]
 # rawData$V = rawData$V/3
 
@@ -143,9 +70,9 @@ write.table(setups, file = "setups.csv",sep = " ",col.names = FALSE, row.names =
 
 
 #filtering candmc by non powers of two
-rawDataTmp = rawData
-rawData = rawDataTmp[rawDataTmp$library != "candmc",]
-rawData = rbind(rawData,rawDataTmp[rawDataTmp$library == "candmc" & (0.5 - abs(0.5-log2(rawDataTmp$P)%%1)) < 0.05, ])
+# rawDataTmp = rawData
+# rawData = rawDataTmp[rawDataTmp$library != "candmc",]
+# rawData = rbind(rawData,rawDataTmp[rawDataTmp$library == "candmc" & (0.5 - abs(0.5-log2(rawDataTmp$P)%%1)) < 0.05, ])
 
 rawData$algLabel = ifelse(rawData$library == "mkl", annotl[2],
                           ifelse(rawData$library == "candmc", annotl[4],
@@ -163,10 +90,10 @@ rawData$mShape = rawData$algorithm
 rawData$scaling = 'type 1 ERROR!'
 
 
-rawData$scaling = ifelse(rawData$N_base == 16384, 'strong 16384',
-                        ifelse(rawData$N_base == 131072, 'strong 131072',
-                               ifelse(rawData$N_base == 8192, 'weak 8192',
-                                      ifelse(rawData$N_base == 1024, 'weak 1024', 'ERROR!')
+rawData$scaling = ifelse(rawData$N_base == 16384, 'strong_16384',
+                        ifelse(rawData$N_base == 131072, 'strong_131072',
+                               ifelse(rawData$N_base == 8192, 'weak_8192',
+                                      ifelse(rawData$N_base == 1024, 'weak_1024', 'ERROR!')
                                )
                         )
 )
@@ -183,29 +110,29 @@ rawData$scaling = ifelse(rawData$N_base == 16384, 'strong 16384',
 
 rawrawData <- rawData
 
-rawData <- filtered_time_data
-rawData <- rawData[complete.cases(rawData),]
+rawData <- find_optimal_blocks(rawData)
+# rawData <- rawData[complete.cases(rawData),]
 rawData <- as.data.frame(rawData %>% group_by(algorithm, library, N, N_base, P, grid, unit, type, blocksize, case, algLabel, mShape, scaling) %>% summarise_each(list(mean)))
 
 
 #rawData$time = apply(rawData[c('t1','t2','t3')], 1, FUN=min)
 rawData$time = rawData$value
 
-rawData = rawData[complete.cases(rawData),]
+# rawData = rawData[complete.cases(rawData),]
 
 rawData$flops = 0
 rawData[str_cmp(rawData$algorithm, "lu"),]$flops = 
-  200/3 * (rawData[str_cmp(rawData$algorithm, "lu"),]$N)^3 / (1e6 * rawData[str_cmp(rawData$algorithm, "lu"),]$P * rawData[str_cmp(rawData$algorithm, "lu"),]$value * GFLOPSperNode)
+  200/3 * (rawData[str_cmp(rawData$algorithm, "lu"),]$N)^3 / (1e6 * (rawData[str_cmp(rawData$algorithm, "lu"),]$P/2) * rawData[str_cmp(rawData$algorithm, "lu"),]$value * GFLOPSperNode)
 
 rawData[str_cmp(rawData$algorithm, "cholesky"),]$flops = 
-  100/3 * (rawData[str_cmp(rawData$algorithm, "cholesky"),]$N)^3 / (1e6 * rawData[str_cmp(rawData$algorithm, "cholesky"),]$P * rawData[str_cmp(rawData$algorithm, "cholesky"),]$value * GFLOPSperNode)
+  100/3 * (rawData[str_cmp(rawData$algorithm, "cholesky"),]$N)^3 / (1e6 * (rawData[str_cmp(rawData$algorithm, "cholesky"),]$P/2) * rawData[str_cmp(rawData$algorithm, "cholesky"),]$value * GFLOPSperNode)
 
 
 #
-# detach("package:reshape2",unload = TRUE)
-# detach("package:ggrepel",unload = TRUE)
-# detach("package:ggplot2",unload = TRUE)
-# detach("package:plyr",unload = TRUE)
+detach("package:reshape2",unload = TRUE)
+detach("package:ggrepel",unload = TRUE)
+detach("package:ggplot2",unload = TRUE)
+#detach("package:plyr",unload = TRUE)
 
 if (!('plyr' %in% (.packages()))) {
   #finding median and confidence intervals
@@ -252,27 +179,33 @@ rawData = rawData[!(rawData$mShape == 'square' & rawData$scaling == 'memory_p0' 
 
 #-------------communication model part---------#
 #fixing comm vol per process
-rawData$V = ifelse(rawData$library == "candmc", rawData$V / 2^floor(log2(rawData$P)) * 1e-6 / 2, rawData$V / rawData$P * 1e-6 / 2)
+#rawData <- rawrawData[rawrawData$unit == "bytes", ]
+#rawData$V = ifelse(rawData$library == "candmc", rawData$V / 2^floor(log2(rawData$P)) * 1e-6 / 2, rawData$value / rawData$P * 1e-6 / 2)
+#rawData$V = rawData$value / rawData$P * 1e-6
+# 
+# rawData$domSize_mn = (rawData$m / rawData$P * rawData$N * rawData$k)^(1/3)
+# apply(data.frame((rawData$m / rawData$P * rawData$N * rawData$k)^(1/3), sqrt(rawData$S)), 1, FUN=min)
+# 
+# rawData$domSize_mn = ifelse(rawData$library == "mkl", (rawData$m / rawData$P * rawData$N)^(1/2),
+#                             ifelse(rawData$library == "candmc",
+#                                    apply(data.frame((rawData$m / rawData$P * rawData$N * rawData$k)^(1/3), (sqrt(S/3))), 1, FUN=min),
+#                                    ifelse(rawData$library == "conflux", 
+#                                           apply(data.frame((rawData$m / rawData$P * rawData$N * rawData$k)^(1/3), sqrt(S)), 1, FUN=min),
+#                                           apply(data.frame((rawData$m / rawData$P * rawData$N * rawData$k)^(1/3), sqrt(S/2)), 1, FUN=min))
+#                             )
+# )
+# 
+# rawData$domSize_k = rawData$m / rawData$P * rawData$N /  (rawData$domSize_mn)^2 * rawData$k
+# rawData$commVolModel =  ifelse(rawData$library == "mkl",2*rawData$domSize_mn*rawData$domSize_k,
+#                                ifelse(rawData$domSize_k == rawData$k, 2*rawData$domSize_mn*rawData$domSize_k,
+#                                       (rawData$domSize_mn)^2 + 2*rawData$domSize_mn*rawData$domSize_k))*1e-6*8
 
-rawData$domSize_mn = (rawData$m / rawData$P * rawData$N * rawData$k)^(1/3)
-apply(data.frame((rawData$m / rawData$P * rawData$N * rawData$k)^(1/3), sqrt(rawData$S)), 1, FUN=min)
+rawData$commVolModel =  ifelse(rawData$library == "mkl" | rawData$library == "slate", (rawData$N)^2 / sqrt(rawData$P),
+                               ifelse(rawData$library == "conflux", (rawData$N)^2 / (rawData$P)^(2/3),
+                                      5*(rawData$N)^2 / (rawData$P)^(2/3)))*1e-6*8
 
-rawData$domSize_mn = ifelse(rawData$library == "mkl", (rawData$m / rawData$P * rawData$N)^(1/2),
-                            ifelse(rawData$library == "candmc",
-                                   apply(data.frame((rawData$m / rawData$P * rawData$N * rawData$k)^(1/3), (sqrt(S/3))), 1, FUN=min),
-                                   ifelse(rawData$library == "conflux", 
-                                          apply(data.frame((rawData$m / rawData$P * rawData$N * rawData$k)^(1/3), sqrt(S)), 1, FUN=min),
-                                          apply(data.frame((rawData$m / rawData$P * rawData$N * rawData$k)^(1/3), sqrt(S/2)), 1, FUN=min))
-                            )
-)
-
-rawData$domSize_k = rawData$m / rawData$P * rawData$N /  (rawData$domSize_mn)^2 * rawData$k
-rawData$commVolModel =  ifelse(rawData$library == "mkl",2*rawData$domSize_mn*rawData$domSize_k,
-                               ifelse(rawData$domSize_k == rawData$k, 2*rawData$domSize_mn*rawData$domSize_k,
-                                      (rawData$domSize_mn)^2 + 2*rawData$domSize_mn*rawData$domSize_k))*1e-6*8
 rawData$commModelRatio = rawData$V /rawData$commVolModel
 
-rawData$checkDomSize = (rawData$domSize_mn)^2 * rawData$domSize_k  - (rawData$m / rawData$P * rawData$N  * rawData$k )
 
 #filtering incorrect data
 #rawData = na.omit(rawData[rawData$commModelRatio > 0.5, ])
@@ -283,7 +216,7 @@ library(plyr)
 
 for (i1 in 1:length(matrixShapes)) {
   mShape = matrixShapes[i1]
-  dataFirst = rawData[rawData$mShape == mShape,]
+  dataFirst = rawData[rawData$algorithm == mShape,]
   for (i2 in 1:length(scalings)) {
     scaling = scalings[i2]
     data = dataFirst[dataFirst$scaling == scaling, ]
@@ -295,7 +228,7 @@ for (i1 in 1:length(matrixShapes)) {
       variant = variantPlots[i3]
       
       finalData = data[DataColumnsHash[[variant]]]
-      finalData = finalData[complete.cases(finalData),]
+   #   finalData = finalData[complete.cases(finalData),]
       
       if (mShape == 'largeK' & scaling == 'strong' & variant == 'flops'){
         aaa = 1

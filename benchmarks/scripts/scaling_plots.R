@@ -82,9 +82,9 @@ for (variant in variantPlots){
           ylabel = "% peak performance"
           yscale = scale_y_continuous(labels=function(x) format(x, big.mark = ",", scientific = FALSE))
           if (alg == "Cholesky"){
-            plot_data$percent_peak = 100/3 * (plot_data$N)^3 / (1e6 * plot_data$P * plot_data$value * FLOPSperNode)
+            plot_data$percent_peak = 100/3 * (plot_data$N)^3 / (1e6 * (plot_data$P/2) * plot_data$value * FLOPSperNode)
           } else {
-            plot_data$percent_peak = 200/3 * (plot_data$N)^3 / (1e6 * plot_data$P * plot_data$value * FLOPSperNode)
+            plot_data$percent_peak = 200/3 * (plot_data$N)^3 / (1e6 * (plot_data$P/2) * plot_data$value * FLOPSperNode)
           }
           plot_data$value <- plot_data$percent_peak
         }

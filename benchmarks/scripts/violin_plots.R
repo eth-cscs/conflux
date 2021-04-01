@@ -447,10 +447,10 @@ violinData[violinData$case == "cholesky_8192",]$case = "Cholesky, N=8,192 sqrt(P
 
 violinData$flops = 0
 violinData[str_cmp(violinData$algorithm, "LU"),]$flops = 
-  200/3 * (violinData[str_cmp(violinData$algorithm, "LU"),]$N)^3 / (1e6 * violinData[str_cmp(violinData$algorithm, "LU"),]$P * violinData[str_cmp(violinData$algorithm, "LU"),]$value * FLOPSperNode)
+  200/3 * (violinData[str_cmp(violinData$algorithm, "LU"),]$N)^3 / (1e6 * (violinData[str_cmp(violinData$algorithm, "LU"),]$P/2) * violinData[str_cmp(violinData$algorithm, "LU"),]$value * FLOPSperNode)
 
 violinData[str_cmp(violinData$algorithm, "Cholesky"),]$flops = 
-  100/3 * (violinData[str_cmp(violinData$algorithm, "Cholesky"),]$N)^3 / (1e6 * violinData[str_cmp(violinData$algorithm, "Cholesky"),]$P * violinData[str_cmp(violinData$algorithm, "Cholesky"),]$value * FLOPSperNode)
+  100/3 * (violinData[str_cmp(violinData$algorithm, "Cholesky"),]$N)^3 / (1e6 * (violinData[str_cmp(violinData$algorithm, "Cholesky"),]$P/2) * violinData[str_cmp(violinData$algorithm, "Cholesky"),]$value * FLOPSperNode)
 
 violinData[str_cmp(violinData$library, "capital"),]$library = "CANDMC/CAPITAL"
 violinData[str_cmp(violinData$library, "candmc"),]$library = "CANDMC/CAPITAL"
@@ -480,7 +480,7 @@ p = ggplot(violinData, aes(x = library2, y = flops, fill = library2)) +
   #geom_violin() +
   geom_boxplot(notch=TRUE) +
   facet_grid(.~case) +
-  scale_y_continuous("% peak performance", limits = c(0,45)) +
+  scale_y_continuous("% peak performance", limits = c(0,55)) +
   scale_fill_discrete(labels = annotl)+
   theme_bw(17) +
   # annotate("label", x = 0.3, y = 0.8, label = "from left to right: ")  +
@@ -488,7 +488,7 @@ p = ggplot(violinData, aes(x = library2, y = flops, fill = library2)) +
   theme(axis.title.x=element_blank(),
         axis.text.x=element_blank(),
         axis.ticks.x=element_blank(),
-        legend.position = c(0.5,0.85),
+        legend.position = c(0.5,0.90),
         legend.title=element_blank(),
         legend.text=element_text(size=17)
   ) +
