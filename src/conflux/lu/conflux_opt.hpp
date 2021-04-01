@@ -29,6 +29,8 @@
 #include <conflux/lu/profiler.hpp>
 #include <conflux/lu/utils.hpp>
 
+#include <costa/grid2grid/memory_utils.hpp>
+
 namespace conflux {
 
 template <typename T>
@@ -397,6 +399,8 @@ void LU_rep(lu_params<T>& gv,
 
     std::vector<T> A11Buff = gv.data;
     std::vector<T> A11BuffTemp(Ml * Nl);
+
+    costa::memory::threads_workspace<T> workspace(128);
 
     //TODO: can we handle such a big global pivots vector?
     std::vector<int> pivotIndsBuff(M);
@@ -1280,22 +1284,19 @@ void LU_rep(lu_params<T>& gv,
 
             PE(step4_reshuffling);
 
-            // # -- BROADCAST -- #
             // # after compute, send it to sqrt(p1) * c processors
-#pragma omp parallel for shared(A10Buff, A10BuffTemp, first_non_pivot_row, Ml, v, n_local_active_rows, nlayr)
-            for (int pk_rcv = 0; pk_rcv < Pz; ++pk_rcv) {
-                // # for the receive layer pk_rcv, its A10BuffRcv is formed by the following columns of A11Buff[p]
-                auto colStart = pk_rcv * nlayr;
-                auto colEnd = (pk_rcv + 1) * nlayr;
-
-                int offset = colStart * n_local_active_rows;
-                mcopy(A10Buff.data(), &A10BuffTemp[offset],
-                      first_non_pivot_row, Ml, colStart, colEnd, v,
-                      0, n_local_active_rows, 0, nlayr, nlayr);
-            }
+#pragma omp parallel shared(A10Buff, A10BuffTemp, first_non_pivot_row, Ml, v, n_local_active_rows, nlayr)
+            costa::memory::transpose(n_local_active_rows, v, // nlayr * Pz = v
+                                     &A10Buff[first_non_pivot_row * v], v,
+                                     &A10BuffTemp[0], n_local_active_rows, 
+                                     false,
+                                     1.0, 0.0,
+                                     false,
+                                     workspace);
             PL();
         }
 
+        // # -- BROADCAST -- #
         auto root_trsm_1 = X2p(jk_comm, k % Py, layrK);
         for (int p = 0; p < trsm_1_dspls.size(); ++p) {
             int ppj, ppk;
