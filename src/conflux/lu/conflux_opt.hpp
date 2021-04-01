@@ -1285,8 +1285,8 @@ void LU_rep(lu_params<T>& gv,
             PE(step4_reshuffling);
 
             // # after compute, send it to sqrt(p1) * c processors
-#pragma omp parallel shared(A10Buff, A10BuffTemp, first_non_pivot_row, Ml, v, n_local_active_rows, nlayr)
-            costa::memory::transpose(n_local_active_rows, v, // nlayr * Pz = v
+            costa::memory::transpose_parallel(
+                                     n_local_active_rows, v, // nlayr * Pz = v
                                      &A10Buff[first_non_pivot_row * v], v,
                                      &A10BuffTemp[0], n_local_active_rows, 
                                      false,
