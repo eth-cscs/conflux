@@ -29,7 +29,7 @@
 #include <conflux/lu/profiler.hpp>
 #include <conflux/lu/utils.hpp>
 
-#include <costa/grid2grid/memory_utils.hpp>
+// #include <costa/grid2grid/memory_utils.hpp>
 
 namespace conflux {
 
@@ -400,7 +400,7 @@ void LU_rep(lu_params<T>& gv,
     std::vector<T> A11Buff = gv.data;
     std::vector<T> A11BuffTemp(Ml * (Nl+1));
 
-    costa::memory::threads_workspace<T> workspace(128);
+    // costa::memory::threads_workspace<T> workspace(128);
 
     //TODO: can we handle such a big global pivots vector?
     std::vector<int> pivotIndsBuff(M);
@@ -1143,7 +1143,6 @@ void LU_rep(lu_params<T>& gv,
         // # -------------------------------------------------- #
         PE(step3_put);
         MPI_Request pivot_reqs[Px+1];
-        int pivot_reqs_idx = 0;
         if (pk == layrK) {
             auto p_rcv = X2p(ij_comm, k % Px, pj);
             // append the curPivOrder of this row that will be used by receiver
@@ -1151,13 +1150,6 @@ void LU_rep(lu_params<T>& gv,
                 int piv_order = curPivOrder[i];
                 A01BuffTemp[i * (Nl - loff + 1)] = piv_order;
             }
-
-            MPI_Isend(&A01BuffTemp[0], 
-                      curPivots[0] * (Nl - loff + 1),
-                      MPI_DOUBLE, 
-                      p_rcv, 33, 
-                      ij_comm, 
-                      &pivot_reqs[pivot_reqs_idx++]);
 
             // if I am the receiver
             if (pi == k % Px) {
@@ -1169,10 +1161,18 @@ void LU_rep(lu_params<T>& gv,
                               MPI_ANY_SOURCE,
                               33,
                               ij_comm,
-                              &pivot_reqs[pivot_reqs_idx++]
+                              &pivot_reqs[ppi+1]
                               );
                 }
             }
+
+            // I might also be a sender (if curPivots[0]>0)
+            MPI_Isend(&A01BuffTemp[0], 
+                      curPivots[0] * (Nl - loff + 1),
+                      MPI_DOUBLE, 
+                      p_rcv, 33, 
+                      ij_comm, 
+                      &pivot_reqs[0]);
         }
         PL();
 
@@ -1193,9 +1193,6 @@ void LU_rep(lu_params<T>& gv,
         }
 #endif
 
-        // MPI_Barrier(lu_comm);
-        te = std::chrono::high_resolution_clock::now();
-        timers[3] += std::chrono::duration_cast<std::chrono::microseconds>(te - ts).count();
 
 #ifdef DEBUG
         MPI_Barrier(lu_comm);
@@ -1212,8 +1209,6 @@ void LU_rep(lu_params<T>& gv,
             }
         }
 #endif
-
-        ts = te;
 
         /*
             PE(step1_A00Buff_bcast);
@@ -1495,11 +1490,11 @@ void LU_rep(lu_params<T>& gv,
         // 3. A01BuffTemp is densified and leading dimensions = Nl-loff, row-major
         PE(step6_dgemm);
     //    if (n_local_active_rows > 0) {
-            cblas_dgemm(CblasRowMajor, CblasNoTrans, CblasNoTrans,
-                        n_local_active_rows, Nl - loff, nlayr,
-                        -1.0, &A10BuffRcv[0], nlayr,
-                        &A01BuffRcv[0], Nl - loff,
-                        1.0, &A11Buff[first_non_pivot_row * Nl + loff], Nl);
+        cblas_dgemm(CblasRowMajor, CblasNoTrans, CblasNoTrans,
+                    n_local_active_rows, Nl - loff, nlayr,
+                    -1.0, &A10BuffRcv[0], nlayr,
+                    &A01BuffRcv[0], Nl - loff,
+                    1.0, &A11Buff[first_non_pivot_row * Nl + loff], Nl);
       //  }
         PL();
 
