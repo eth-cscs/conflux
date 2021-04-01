@@ -34,7 +34,7 @@
 #include <sstream>
 #include <mpi.h>
 #include <math.h>
-
+#include <iostream>
 #include "Processor.h"
 
 /**
@@ -107,6 +107,10 @@ conflux::Processor::Processor(CholeskyProperties *prop)
 
     // set the private pointer to the properties object
     m_prop = prop;
+
+    initializeBroadcastComms();
+
+
 }
 
 /**
@@ -137,7 +141,17 @@ conflux::Processor::~Processor()
  */
 void conflux::Processor::updateBcastComm(uint32_t remTiles)
 {
-    // TODO: implement
+    if (m_alwaysUseWorld || m_curIdx + 1 >= m_bcastComms.size() || remTiles > m_bcastSizes[m_curIdx + 1]) {
+        return;
+    }
+
+        this->isWorldBroadcast = false;
+        m_curIdx++;
+        bcastComm = m_bcastComms[m_curIdx];
+        inBcastComm = m_inCurrentBcastComm[m_curIdx];
+        if (inBcastComm) {
+            //std::cout << rank << " in round " << m_prop->Kappa - 2 - remTiles << std::endl;
+        }
 }
 
 /**
@@ -146,46 +160,107 @@ void conflux::Processor::updateBcastComm(uint32_t remTiles)
 void conflux::Processor::initializeBroadcastComms()
 {
     // if we have 8 or less processors, it's not worth it to generate new communicators
-    if (m_prop->P <= 8) {
-        // inser the global communicator into the lists
+    if (true) {
+        m_alwaysUseWorld = true;
         m_bcastComms.push_back(MPI_COMM_WORLD);
-        m_bcastSizes.push_back(m_prop->P);
-        m_membershipFlags.push_back(true);
-        m_curIdx = 0;
-        std::set<ProcRank> tO;
-        for (size_t i = 0; i < m_prop->P; ++i) {
-            tO.insert((ProcRank) i);
-        }
-        m_tileOwners.push_back(tO);
-
-        // update the public variables
-        bcastComm = m_bcastComms[0];
-        inBcastComm = true;
-
+        m_inCurrentBcastComm.push_back(true);
+        this->bcastComm = m_bcastComms[0];
+        this->m_curIdx = 0;
+        this->inBcastComm = m_inCurrentBcastComm[0];
+        this->isWorldBroadcast = true;
         return;
     }
 
-    // there are PX * PZ processors potentially owning tiles that become A00
-    uint32_t numBcastProcessors = m_prop->PX * m_prop->PZ;
-    uint32_t maxBcastSize = std::min(m_prop->P, m_prop->Kappa); // this is a power of two in our case
-    uint8_t numComms = 0;
 
-    int idx = 0;
-    // if the maxBcast size is P (i.e. num processors) then use MPI_COMM_WORLD
-    if (maxBcastSize == m_prop->P) {
-        
+    m_alwaysUseWorld = false;
+    uint64_t maxBroadcastSize = std::min(m_prop->P, m_prop->Kappa-2);
+    if (maxBroadcastSize == m_prop->P) {
+        maxBroadcastSize = 1 << (uint64_t)ceil(log2(maxBroadcastSize));
+        m_inCurrentBcastComm.push_back(true);
+        m_bcastComms.push_back(MPI_COMM_WORLD);
+
+        std::set<ProcRank> dummySet;
+        dummySet.insert(this->rank);
+        m_tileOwners.push_back(dummySet);
+
+        m_bcastSizes.push_back(m_prop->P);
+        maxBroadcastSize /= 2;
+        this->isWorldBroadcast = true;
+    }  
+
+    else {
+        maxBroadcastSize = 1 << (uint64_t)ceil(log2(m_prop->P));
+        if (maxBroadcastSize >= m_prop->P) {
+            //if (rank == 0) std::cout << "Second branch" << std::endl;
+            m_inCurrentBcastComm.push_back(true);
+            m_bcastComms.push_back(MPI_COMM_WORLD);
+
+            std::set<ProcRank> dummySet;
+            dummySet.insert(this->rank);
+
+            m_tileOwners.push_back(dummySet);
+            m_bcastSizes.push_back(m_prop->P);
+            maxBroadcastSize /= 2;
+            this->isWorldBroadcast = true;
+
+        }
+
+        else {
+            //if (rank == 0) std::cout << "Third branch" << std::endl;
+            this->isWorldBroadcast = false;
+            createNewComm(maxBroadcastSize);
+        }
     }
 
-
-
-
-
-
-
-
-
-
-
-
-
+    while (maxBroadcastSize >= 8) {
+        //if (rank == 0) std::cout << maxBroadcastSize << std::endl;
+        createNewComm(maxBroadcastSize);
+    }
+    this->bcastComm = m_bcastComms[0];
+    this->m_curIdx = 0;
+    this->inBcastComm = m_inCurrentBcastComm[0];
 }
+
+
+
+
+void conflux::Processor::createNewComm(uint64_t &broadCastSize) {
+    TileIndex glob = m_prop->Kappa - 1;
+    //if(rank == 0) std::cout << glob << std::endl;
+    std::set<ProcRank> tmp_set;
+    // we iterate backwards to find all owners in the current column
+    for (int i = 0; i < broadCastSize; i++) {
+        ProcRank owner = m_prop->globalToLocal(glob).p;
+        tmp_set.insert(owner);
+        glob--;
+    }
+
+    // we add everything on the diagonal to the communicator
+    for (TileIndex j = 0; j < m_prop->Kappa; j++) {
+        ProcIndexPair2D r = m_prop->globalToLocal(j,j);
+        for (ProcRank k = 0; k < m_prop->PZ; k++) {
+            tmp_set.insert(m_prop->gridToGlobal(r.px,r.py,k));
+        }
+    }
+
+    MPI_Comm tmpComm;
+    bool inBroadcast = tmp_set.find(this->rank) != tmp_set.end();
+    int newRank = this->px == this->py ? this->px + m_prop->PX * this->pz : m_prop-> P + this->rank;
+    MPI_Comm_split(MPI_COMM_WORLD, inBroadcast, newRank, &tmpComm);
+    m_tileOwners.push_back(tmp_set);
+    m_bcastSizes.push_back(broadCastSize);
+    m_inCurrentBcastComm.push_back(inBroadcast);
+    m_bcastComms.push_back(tmpComm);
+    broadCastSize /= 2;
+}
+
+
+
+
+
+
+
+
+
+
+

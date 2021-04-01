@@ -233,7 +233,6 @@ void choleskyA00(const conflux::TileIndex k, const MPI_Comm &world)
 void updateA10(const conflux::TileIndex k, const MPI_Comm &world)
 {
     // 1.) post receive statements to later receive sub-tile representatives
-
     // post to later receive representatives of A10
     for (conflux::TileIndex iLoc = k / prop->PX; iLoc < proc->maxIndexA11i; ++iLoc) {
         // compute processor to receive from
@@ -291,6 +290,9 @@ void updateA10(const conflux::TileIndex k, const MPI_Comm &world)
         // update tile in A10 by solving X*A=B system for X where A = A00
         // is an upper triangular matrix and B = A10. Result is written
         // back to B, i.e. into the A10 tile.
+        //if (!proc->inBcastComm) {
+            //std::cout << "Processor " << proc->rank << " wants to update A10 but has not received it in round " << k << " and global tile " << iGlob << std::endl;
+        //}
         double *tile = proc->A10->get(iLoc);
         cblas_dtrsm(CblasRowMajor, CblasRight, CblasLower, CblasTrans, CblasNonUnit,
                     prop->v, prop->v, 1.0, proc->A00, prop->v, tile, prop->v);
@@ -497,12 +499,16 @@ void scatterA11(const conflux::TileIndex k, const MPI_Comm &world)
             PL();
         }
     }
-
+    //MPI_Barrier(world);
     // brodcast and receive A00 tile for next iteration
     PE(scatterA11_bcast);
     MPI_Request req;
-    MPI_Ibcast(proc->A00, prop->vSquare, MPI_DOUBLE, rootProcessorRank, world, &req);
-    proc->reqScatterA11[proc->cntScatterA11++] = req;
+    if (proc->inBcastComm) {
+        conflux::GridProc rootCord = prop->globalToGrid(rootProcessorRank);
+        int newRoot = proc->isWorldBroadcast ? rootProcessorRank : rootCord.px + rootCord.pz * prop->PX;
+        MPI_Bcast(proc->A00, prop->vSquare, MPI_DOUBLE, newRoot, proc->bcastComm);
+    }
+    //proc->reqScatterA11[proc->cntScatterA11++] = req;
     PL();
 
     // wait for the scattering to be completed
@@ -510,6 +516,8 @@ void scatterA11(const conflux::TileIndex k, const MPI_Comm &world)
     PE(scatterA11_waitall);
     MPI_Waitall(proc->cntScatterA11, &(proc->reqScatterA11[0]), MPI_STATUSES_IGNORE);
     PL();
+
+    //MPI_Barrier(world);
 }
 
 /** 
@@ -540,7 +548,7 @@ void conflux::parallelCholesky()
     // in debug mode, write the matrix back into a file in every round
     #ifdef DEBUG
     std::stringstream tmp;
-    tmp << "data/output_" << prop->N << ".bin";
+    tmp << "../data/output_" << prop->N << ".bin";
     io->openFile(tmp.str());
     #endif //DEBUG
     /********************** START OF THE FACTORIZATION ***********************/
@@ -580,6 +588,10 @@ void conflux::parallelCholesky()
 
         /************************ (4) REDUCE A11 *****************************/
         reduceA11(k, world);
+
+        if (prop->Kappa-k > 2) {
+            proc->updateBcastComm(prop->Kappa - k - 2);
+        }
 
         /************************ (5) SCATTER A10, A00 ***********************/
         scatterA11(k, world);
