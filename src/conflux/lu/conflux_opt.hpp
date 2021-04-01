@@ -364,6 +364,7 @@ void LU_rep(lu_params<T>& gv,
 
     MPI_Comm lu_comm = gv.lu_comm;
     MPI_Comm jk_comm = gv.jk_comm;
+    MPI_Comm ij_comm = gv.ij_comm;
     MPI_Comm ik_comm = gv.ik_comm;
     MPI_Comm k_comm = gv.k_comm;
 
@@ -483,7 +484,7 @@ void LU_rep(lu_params<T>& gv,
     // # ------------------------------------------------------------------- #
 
     PE(fence_create);
-    MPI_Win A01Win = create_window(lu_comm,
+    MPI_Win A01Win = create_window(ij_comm,
                                    A01Buff.data(),
                                    A01Buff.size(),
                                    true);
@@ -1162,7 +1163,7 @@ void LU_rep(lu_params<T>& gv,
         PE(step3_put);
         if (pk == layrK) {
             // curPivOrder[i] refers to the target
-            auto p_rcv = X2p(lu_comm, k % Px, pj, layrK);
+            auto p_rcv = X2p(ij_comm, k % Px, pj);
 
             // if (pi == 1 && pj == 1 && pk == 0 && (k % Px) == 0){
             //         std::cout << "Sending A01Buff. Rank [" << pi << ", " << pj << ", " << pk << "] -> ["
@@ -1181,8 +1182,8 @@ void LU_rep(lu_params<T>& gv,
                         p_rcv, dest_dspls, Nl - loff, MPI_DOUBLE,
                         A01Win);
             }
+            MPI_Win_fence(0, A01Win);
         }
-        MPI_Win_fence(0, A01Win);
 
         PL();
 
