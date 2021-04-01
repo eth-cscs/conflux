@@ -1172,32 +1172,10 @@ void LU_rep(lu_params<T>& gv,
                               &pivot_reqs[pivot_reqs_idx++]
                               );
                 }
-                for (int i = 0; i < Px; ++i) {
-                    MPI_Status status;
-                    int pi_send = -1;
-                    MPI_Waitany(Px, &pivot_reqs[1], &pi_send, &status);
-                    int received_size = 0;
-                    MPI_Get_count(&status, MPI_DOUBLE, &received_size);
-                    int n_received_rows = received_size / (Nl - loff + 1);
-#pragma omp parallel for shared(A11BuffTemp, Nl, loff, A01Buff)
-                    for (int row = 0; row < n_received_rows; ++row) {
-                        int offset = pi_send * v * (Nl - loff + 1);
-                        int piv_order = (int) A11BuffTemp[offset + row * (Nl-loff+1)];
-                        auto dspls = piv_order * (Nl - loff);
-                        std::copy_n(&A11BuffTemp[offset + row * (Nl-loff+1) + 1], 
-                                    Nl-loff,
-                                    &A01Buff[dspls]);
-                    }
-                }
             }
-            MPI_Wait(&pivot_reqs[0], MPI_STATUS_IGNORE);
         }
         PL();
 
-        te = std::chrono::high_resolution_clock::now();
-        timers[2] += std::chrono::duration_cast<std::chrono::microseconds>(te - ts).count();
-
-        ts = te;
 #ifdef DEBUG
         MPI_Barrier(lu_comm);
         if (k == chosen_step && rank == print_rank) {
@@ -1384,6 +1362,28 @@ void LU_rep(lu_params<T>& gv,
 #endif
 
         auto lld_A01 = Nl - loff;
+
+        // receive A01Buff before the next step
+        if (pk == layrK && pi == k % Px) {
+            for (int i = 0; i < Px; ++i) {
+                MPI_Status status;
+                int pi_send = -1;
+                MPI_Waitany(Px, &pivot_reqs[1], &pi_send, &status);
+                int received_size = 0;
+                MPI_Get_count(&status, MPI_DOUBLE, &received_size);
+                int n_received_rows = received_size / (Nl - loff + 1);
+#pragma omp parallel for shared(A11BuffTemp, Nl, loff, A01Buff)
+                for (int row = 0; row < n_received_rows; ++row) {
+                    int offset = pi_send * v * (Nl - loff + 1);
+                    int piv_order = (int) A11BuffTemp[offset + row * (Nl-loff+1)];
+                    auto dspls = piv_order * (Nl - loff);
+                    std::copy_n(&A11BuffTemp[offset + row * (Nl-loff+1) + 1], 
+                                Nl-loff,
+                                &A01Buff[dspls]);
+                }
+            }
+            MPI_Wait(&pivot_reqs[0], MPI_STATUS_IGNORE);
+        }
 
         // # ---------------------------------------------- #
         // # 5. compute A01 and broadcast it to A01BuffRecv #
