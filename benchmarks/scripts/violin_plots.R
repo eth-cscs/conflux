@@ -500,3 +500,37 @@ print(p)
 dev.off()
 
 #----------end of generating the violion plot-----------
+
+
+#--------- 1st page bat plot ----------------
+
+pdf(paste(getwd(), "/../barPlot2.pdf", sep = ""), height = hg, width = hg * aspectRatio)
+violinData$library <- as.factor(violinData$library)
+violinData$library2 = factor(violinData$library, levels = levels(violinData$library)[c(2,4,3,1)])
+
+confluxData = violinData[violinData$library == "COnlLUX/PsyChol",]
+
+final_data <- rbind(peak_flops, mean_flops)
+
+p = ggplot(final_data, aes(x = library, y = flops, fill = library)) +
+  geom_bar(stat="metric") +
+  facet_grid(.~case) +
+  scale_y_continuous("% peak performance", limits = c(0,55)) +
+  scale_fill_discrete(labels = annotl)+
+  theme_bw(17) +
+  # annotate("label", x = 0.3, y = 0.8, label = "from left to right: ")  +
+  # ylim(0, 110) +
+  theme(axis.title.x=element_blank(),
+        axis.text.x=element_blank(),
+        axis.ticks.x=element_blank(),
+        legend.position = c(0.5,0.90),
+        legend.title=element_blank(),
+        legend.text=element_text(size=17)
+  ) +
+  guides(fill=guide_legend(nrow=1,byrow=TRUE),
+         keywidth=19.5,
+         keyheight=2.9,
+         default.unit="inch")
+print(p)
+dev.off()
+# --------end of 1st page bar plot----------

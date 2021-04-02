@@ -10,11 +10,12 @@ library(gmodels)
 
 #-------------------------SETUP----------------------#
 path = "C:/gk_pliki/uczelnia/doktorat/performance_modelling/repo/conflux_cpp_2/results/conflux/benchmarks" #getwd()
+#path = "/mnt/c/gk_pliki/uczelnia/doktorat/performance_modelling/repo/conflux_cpp_2/results/conflux/benchmarks" #getwd()
 exp_filename = "benchmarks.csv"
 #exp_filename = "rawData_old.csv"
 setwd(path)
 source(paste(path, "scripts/SPCL_Stats.R", sep="/"))
-scalings = c("strong_131072", "strong_16384", "weak_8192")
+scalings = c("$2^{17}$", "$2^{14}$", '$2^{13} \\cdot \\sqrt{P}$')
 matrixShapes = c("lu","cholesky")
 variantPlots = c("commVol", "time")
 algorithms = c("conflux","mkl","slate","candmc")
@@ -90,35 +91,56 @@ rawData$mShape = rawData$algorithm
 rawData$scaling = 'type 1 ERROR!'
 
 
-rawData$scaling = ifelse(rawData$N_base == 16384, 'strong_16384',
-                        ifelse(rawData$N_base == 131072, 'strong_131072',
-                               ifelse(rawData$N_base == 8192, 'weak_8192',
-                                      ifelse(rawData$N_base == 1024, 'weak_1024', 'ERROR!')
+rawData$scaling = ifelse(rawData$N_base == 16384, '$2^{14}$',
+                        ifelse(rawData$N_base == 131072, '$2^{17}$',
+                               ifelse(rawData$N_base == 8192, '$2^{13} \\cdot \\sqrt{P}$',
+                                      ifelse(rawData$N_base == 1024, '$2^{10} \\cdot \\sqrt{P}$', 'ERROR!')
                                )
                         )
 )
 
-
-# rawData$scaling = ifelse((rawData$m == strong1DShort & rawData$k == strong1Dlong) |
-#         (rawData$m == strong1Dlong & rawData$k == strong1DShort) |
-#         (rawData$m == strongFlatLong & rawData$k == strongFlatShort) |
-#         (rawData$m == strongSquare & rawData$k == strongSquare), 'strong',
-#         ifelse(rawData$m/rawData$S * rawData$N + rawData$m/rawData$S * rawData$k + rawData$k /rawData$S * rawData$N > 0.9 * rawData$P, 'memory_p0',
-#             ifelse(rawData$m /rawData$S * rawData$N + rawData$m /rawData$S * rawData$k + rawData$k /rawData$S * rawData$N < 1.1*rawData$S * rawData$P^(3/2), 'memory_p1','ERROR!')
-#      )
-# )
-
 rawrawData <- rawData
 
+####################### 
+
+rawData[rawData$blocksize == "", ]$blocksize = 1
+time_data <- rawData[rawData$unit == "time",]
+time_data <- time_data[complete.cases(time_data),]
+comm_data <- rawData[rawData$unit == "bytes",]
+comm_data <- comm_data[complete.cases(comm_data),]
+fastest_blocks <- as.data.frame(time_data %>% group_by(algorithm, library, N, P) %>% summarise_each(list(min), value))
+comm_min_blocks <- as.data.frame(comm_data %>% group_by(algorithm, library, N, P) %>% summarise_each(list(min), value))
+rows_to_remove = c()
+
+for (row in 1:nrow(time_data)) {
+  cur_blocksize = time_data[row, "blocksize"]
+  cur_p = time_data[row, "P"]
+  cur_n = time_data[row, "N"]
+  cur_lib = time_data[row, "library"]
+  cur_val = time_data[row, "value"]
+  cur_alg = time_data[row, "algorithm"]
+  all_values = time_data[time_data$algorithm == cur_alg & time_data$library == cur_lib & time_data$N == cur_n & time_data$P == cur_p & time_data$blocksize == cur_blocksize,]$value
+  best_block_value = fastest_blocks[fastest_blocks$algorithm == cur_alg & fastest_blocks$library == cur_lib & fastest_blocks$N == cur_n &fastest_blocks$P == cur_p, ]$value
+  
+  smallest_com_vol = comm_min_blocks[comm_min_blocks$algorithm == cur_alg & comm_min_blocks$library == cur_lib & comm_min_blocks$N == cur_n & comm_min_blocks$P == cur_p, ]$value
+  if (!identical(smallest_com_vol, numeric(0))){
+    time_data[row, "V"] = smallest_com_vol / cur_p * 1e-6
+  }
+  if (min(all_values) != best_block_value | cur_val > 1.3 * best_block_value){
+    rows_to_remove <- c(rows_to_remove, row)
+  }
+}
+filtered_data = time_data[-rows_to_remove, ]
+
+
+####################
+
+
+
 rawData <- find_optimal_blocks(rawData)
-# rawData <- rawData[complete.cases(rawData),]
 rawData <- as.data.frame(rawData %>% group_by(algorithm, library, N, N_base, P, grid, unit, type, blocksize, case, algLabel, mShape, scaling) %>% summarise_each(list(mean)))
-
-
-#rawData$time = apply(rawData[c('t1','t2','t3')], 1, FUN=min)
 rawData$time = rawData$value
 
-# rawData = rawData[complete.cases(rawData),]
 
 rawData$flops = 0
 rawData[str_cmp(rawData$algorithm, "lu"),]$flops = 
@@ -132,45 +154,48 @@ rawData[str_cmp(rawData$algorithm, "cholesky"),]$flops =
 detach("package:reshape2",unload = TRUE)
 detach("package:ggrepel",unload = TRUE)
 detach("package:ggplot2",unload = TRUE)
-#detach("package:plyr",unload = TRUE)
 
-if (!('plyr' %in% (.packages()))) {
-  #finding median and confidence intervals
-  dataSummary =
-    rawData %>%
-    group_by(N,P,library, mShape, scaling) %>%
-    summarise(med_time = median(time)) %>% #, lci = ci(time)["CI lower"], uci = ci(time)["CI upper"], count = N()) %>%
-    ungroup() %>%
-    # filter(library == "conflux (this work) ") %>%
-    as.data.frame()
-  
-  remAlgs = c('candmc', 'slate', 'mkl')
-  
-  #second-best library
-  dataSummary2 = reshape(dataSummary,timevar="library",idvar=c("N","P","mShape", "scaling"),direction="wide")
-  dataSummary2[is.na(dataSummary2)] <- 99999999
-  dataSummary2<-dataSummary2[!(dataSummary2$"med_time.conflux"==99999999),]
-  dataSummary2$secondBestTime = apply(dataSummary2[, c('med_time.candmc','med_time.slate','med_time.mkl')], 1, min)
-  dataSummary2$secondBestAlg = remAlgs[apply(dataSummary2[, c('med_time.candmc','med_time.slate','med_time.mkl')], 1, which.min)]
-  dataSummary2<-dataSummary2[!(dataSummary2$secondBestTime==99999999),]
-  dataSummary2$maxSpeedup = dataSummary2$secondBestTime / dataSummary2$"med_time.conflux"
-  
-  if(nrow(dataSummary2[dataSummary2$maxSpeedup < 1,])) {
-    print('!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!')
-    print('!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!')
-    print('!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!')
-    print('!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!')
-    print('Suspicious data!')
-    print(dataSummary2[dataSummary2$maxSpeedup < 1,])
-    print('!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!')
-    print('!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!')
-    print('!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!')
-    print('!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!')
-  }
-  suspicious = dataSummary2[dataSummary2$maxSpeedup < 1,]
-  
-  statSummary = setNames(data.frame(matrix(ncol = 9, nrow = 0)), c("shape", "scaling", algorithms, "mean", "min", "max"))
+if (('plyr' %in% (.packages()))) {
+  detach("package:plyr",unload = TRUE)
 }
+
+
+#finding median and confidence intervals
+dataSummary =
+  rawData %>%
+  group_by(N,P,library, mShape, scaling) %>%
+  summarise(med_time = median(time)) %>% #, lci = ci(time)["CI lower"], uci = ci(time)["CI upper"], count = N()) %>%
+  ungroup() %>%
+  # filter(library == "conflux (this work) ") %>%
+  as.data.frame()
+
+remAlgs = c('candmc', 'slate', 'mkl')
+
+#second-best library
+dataSummary2 = reshape(dataSummary,timevar="library",idvar=c("N","P","mShape", "scaling"),direction="wide")
+dataSummary2[is.na(dataSummary2)] <- 99999999
+dataSummary2<-dataSummary2[!(dataSummary2$"med_time.conflux"==99999999),]
+dataSummary2$secondBestTime = apply(dataSummary2[, c('med_time.candmc','med_time.slate','med_time.mkl')], 1, min)
+dataSummary2$secondBestAlg = remAlgs[apply(dataSummary2[, c('med_time.candmc','med_time.slate','med_time.mkl')], 1, which.min)]
+dataSummary2<-dataSummary2[!(dataSummary2$secondBestTime==99999999),]
+dataSummary2$maxSpeedup = dataSummary2$secondBestTime / dataSummary2$"med_time.conflux"
+
+if(nrow(dataSummary2[dataSummary2$maxSpeedup < 1,])) {
+  print('!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!')
+  print('!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!')
+  print('!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!')
+  print('!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!')
+  print('Suspicious data!')
+  print(dataSummary2[dataSummary2$maxSpeedup < 1,])
+  print('!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!')
+  print('!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!')
+  print('!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!')
+  print('!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!')
+}
+suspicious = dataSummary2[dataSummary2$maxSpeedup < 1,]
+
+statSummary = setNames(data.frame(matrix(ncol = 9, nrow = 0)), c("shape", "scaling", algorithms, "mean", "min", "max"))
+
 statSummary = statSummary[0,]
 rawData = rawData[!(rawData$mShape == 'square' & rawData$scaling == 'memory_p0' & rawData$time > 100000),]
 
@@ -228,9 +253,8 @@ for (i1 in 1:length(matrixShapes)) {
       variant = variantPlots[i3]
       
       finalData = data[DataColumnsHash[[variant]]]
-   #   finalData = finalData[complete.cases(finalData),]
       
-      if (mShape == 'largeK' & scaling == 'strong' & variant == 'flops'){
+      if (mShape == 'cholesky' & variant == 'commVol'){
         aaa = 1
       }
       
@@ -240,7 +264,7 @@ for (i1 in 1:length(matrixShapes)) {
         scaAvg = mean(na.omit((finalData[finalData$algLabel == annotl[2],]$V)))
         slateAvg = mean(na.omit((finalData[finalData$algLabel == annotl[3],]$V)))
         candmcAvg = mean(na.omit((finalData[finalData$algLabel == annotl[4],]$V)))
-        statSummary[nrow(statSummary)+1,c('shape','scaling',algorithms)] = list(mShape, scaling, candmcAvg,slateAvg,confluxAvg,scaAvg)
+        statSummary[nrow(statSummary)+1,c('shape','scaling',algorithms)] = list(mShape, scaling, confluxAvg, scaAvg, slateAvg, candmcAvg)
       } else if (variant == "time"){
         gmMeanSpeedup = gm_mean(dataSummary2[dataSummary2$mShape == mShape & dataSummary2$scaling == scaling,]$maxSpeedup)
         maxSpeedup    =     max(dataSummary2[dataSummary2$mShape == mShape & dataSummary2$scaling == scaling,]$maxSpeedup)
@@ -251,4 +275,5 @@ for (i1 in 1:length(matrixShapes)) {
   }    
 }
 
+write.csv(statSummary, file = "statSummary.csv")
 write.csv(rawData, file = "res.csv")

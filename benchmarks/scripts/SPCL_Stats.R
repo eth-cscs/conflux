@@ -1,8 +1,10 @@
 #SPCL_Stats.R
 library(stringr)
+library(dplyr)
 
 #-----------helper functions-------------------------#
 find_optimal_blocks <- function(rawData) {
+  rawData[rawData$blocksize == "", ]$blocksize = 1
   time_data <- rawData[rawData$unit == "time",]
   time_data <- time_data[complete.cases(time_data),]
   comm_data <- rawData[rawData$unit == "bytes",]
@@ -31,6 +33,25 @@ find_optimal_blocks <- function(rawData) {
   }
   filtered_data = time_data[-rows_to_remove, ]
 }
+
+
+
+
+find_statistics <- function(filtered_data) {
+  time_data <- filtered_data[filtered_data$unit == "time",]
+  
+  relevant_cols <- c("algorithm", "library", "N", "case", "P", "flops")
+  time_data <- time_data[relevant_cols]
+  
+  peak_flops <- as.data.frame(time_data %>% group_by(algorithm, library, N, P) %>% summarise_each(list(max), flops))
+  peak_flops$metric = "peak"
+  mean_flops <- as.data.frame(time_data %>% group_by(algorithm, library, N, P) %>% summarise_each(list(mean), flops))
+  mean_flops$metric = "mean"
+  final_data <- rbind(peak_flops, mean_flops)
+}
+
+
+
 
 str_cmp <- function(str1, str2){
   str_detect(str1, regex(str2, ignore_case = TRUE))
