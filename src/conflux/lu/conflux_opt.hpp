@@ -462,6 +462,7 @@ void LU_rep(lu_params<T>& gv,
 
     int jk_rank = X2p(jk_comm, pj, pk);
     int ik_rank = X2p(ik_comm, pi, pk);
+    int ij_rank = X2p(ij_comm, pi, pj);
 
     // 0 = num of pivots
     // 1..v+1 = pivots
@@ -866,7 +867,6 @@ void LU_rep(lu_params<T>& gv,
             }
         }
         PL();
-
 #ifdef DEBUG
         MPI_Barrier(lu_comm);
         
@@ -880,6 +880,12 @@ void LU_rep(lu_params<T>& gv,
         // MPI_Request reqs_pivots[4];
         // the one who entered this is the root
         auto root = X2p(jk_comm, k % Py, layrK);
+        /*
+        PE(step1_A00Buff_bcast);
+        MPI_Request A00_bcast_req;
+        MPI_Ibcast(&A00Buff[0], v * v, MPI_DOUBLE, root, jk_comm, &A00_bcast_req);
+        PL();
+        */
 
         PE(step1_curPivots);
         MPI_Bcast(&gpivots[0], min_perm_size, MPI_INT, root, jk_comm);
@@ -1151,6 +1157,14 @@ void LU_rep(lu_params<T>& gv,
                 A01BuffTemp[i * (Nl - loff + 1)] = piv_order;
             }
 
+            // I might also be a sender (if curPivots[0]>0)
+            MPI_Isend(&A01BuffTemp[0], 
+                      curPivots[0] * (Nl - loff + 1),
+                      MPI_DOUBLE, 
+                      p_rcv, 33, 
+                      ij_comm, 
+                      &pivot_reqs[0]);
+
             // if I am the receiver
             if (pi == k % Px) {
                 for (int ppi = 0; ppi < Px; ++ppi) {
@@ -1165,14 +1179,6 @@ void LU_rep(lu_params<T>& gv,
                               );
                 }
             }
-
-            // I might also be a sender (if curPivots[0]>0)
-            MPI_Isend(&A01BuffTemp[0], 
-                      curPivots[0] * (Nl - loff + 1),
-                      MPI_DOUBLE, 
-                      p_rcv, 33, 
-                      ij_comm, 
-                      &pivot_reqs[0]);
         }
         PL();
 
@@ -1214,7 +1220,7 @@ void LU_rep(lu_params<T>& gv,
             PE(step1_A00Buff_bcast);
             MPI_Wait(&A00_bcast_req, MPI_STATUS_IGNORE);
             PL();
-        */
+            */
         PE(step1_A00Buff_waitall);
         if (n_A00_reqs > 0) {
             MPI_Waitall(n_A00_reqs, &A00_req[0], MPI_STATUSES_IGNORE);
@@ -1294,17 +1300,19 @@ void LU_rep(lu_params<T>& gv,
                                  */
             // # -- BROADCAST -- #
             // # after compute, send it to sqrt(p1) * c processors
+            // if (Pz > 1) {
 #pragma omp parallel for shared(A10Buff, A10BuffTemp, first_non_pivot_row, Ml, v, n_local_active_rows, nlayr)
-            for (int pk_rcv = 0; pk_rcv < Pz; ++pk_rcv) {
-                // # for the receive layer pk_rcv, its A10BuffRcv is formed by the following columns of A11Buff[p]
-                auto colStart = pk_rcv * nlayr;
-                auto colEnd = (pk_rcv + 1) * nlayr;
+                for (int pk_rcv = 0; pk_rcv < Pz; ++pk_rcv) {
+                    // # for the receive layer pk_rcv, its A10BuffRcv is formed by the following columns of A11Buff[p]
+                    auto colStart = pk_rcv * nlayr;
+                    auto colEnd = (pk_rcv + 1) * nlayr;
 
-                int offset = colStart * n_local_active_rows;
-                mcopy(A10Buff.data(), &A10BuffTemp[offset],
-                      first_non_pivot_row, Ml, colStart, colEnd, v,
-                      0, n_local_active_rows, 0, nlayr, nlayr);
-            }
+                    int offset = colStart * n_local_active_rows;
+                    mcopy(A10Buff.data(), &A10BuffTemp[offset],
+                          first_non_pivot_row, Ml, colStart, colEnd, v,
+                          0, n_local_active_rows, 0, nlayr, nlayr);
+                }
+            //}
             PL();
         }
 
@@ -1325,10 +1333,12 @@ void LU_rep(lu_params<T>& gv,
             trsm_1_counts[p] = size;
         }
 
+        // T* A10_src = (Pz > 1) ? &A10BuffTemp[0] : &A10Buff[first_non_pivot_row * v];
+
         PE(step4_comm);
-        MPI_Iscatterv(&A10BuffTemp[0], 
-                     &trsm_1_counts[0], 
-                     &trsm_1_dspls[0], 
+        MPI_Iscatterv(&A10BuffTemp[0],
+                     &trsm_1_counts[0],
+                     &trsm_1_dspls[0],
                      MPI_DOUBLE, 
                      &A10BuffRcv[0],
                      trsm_1_counts[jk_rank],
@@ -1377,6 +1387,10 @@ void LU_rep(lu_params<T>& gv,
                                 &A01Buff[dspls]);
                 }
             }
+            // wait for all pending requests in this round
+            // practically, we do not need these requests
+            // but, it's important to ensure that the send buffer A01BuffTemp
+            // is ready to be used in the next round
             MPI_Wait(&pivot_reqs[0], MPI_STATUS_IGNORE);
         }
 
