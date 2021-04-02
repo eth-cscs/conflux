@@ -160,7 +160,7 @@ void conflux::Processor::updateBcastComm(uint32_t remTiles)
 void conflux::Processor::initializeBroadcastComms()
 {
     // if we have 8 or less processors, it's not worth it to generate new communicators
-    if (true) {
+    if (m_prop->P <= 8) {
         m_alwaysUseWorld = true;
         m_bcastComms.push_back(MPI_COMM_WORLD);
         m_inCurrentBcastComm.push_back(true);
