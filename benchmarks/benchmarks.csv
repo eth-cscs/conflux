@@ -1010,7 +1010,7 @@ cholesky,psychol,16384,8192,4,2x2,time,weak,1491,512
 cholesky,psychol,16384,8192,4,2x2,time,weak,1520,512
 cholesky,psychol,16384,8192,4,2x2,time,weak,1564,512
 cholesky,psychol,32768,8192,16,4x4,time,weak,3596,512
-cholesky,psychol,32768,8192,16,4x4,time,weak,2613,512
+cholesky,psychol,32768,8192,16,4x4,time,weak,3613,512
 cholesky,psychol,32768,8192,16,4x4,time,weak,3604,512
 cholesky,psychol,32768,8192,16,4x4,time,weak,3617,512
 cholesky,psychol,32768,8192,16,4x4,time,weak,3581,512
