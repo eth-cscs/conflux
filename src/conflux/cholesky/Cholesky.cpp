@@ -234,6 +234,9 @@ void updateA10(const conflux::TileIndex k, const MPI_Comm &world)
 {
     // 1.) post receive statements to later receive sub-tile representatives
     // post to later receive representatives of A10
+    PE(scatterA11_waitall);
+    MPI_Waitall(proc->cntScatterA11, &(proc->reqScatterA11[0]), MPI_STATUSES_IGNORE);
+    PL();
     for (conflux::TileIndex iLoc = k / prop->PX; iLoc < proc->maxIndexA11i; ++iLoc) {
         // compute processor to receive from
         conflux::TileIndices glob = prop->localToGlobal(proc->px, proc->py, iLoc, iLoc);
@@ -513,9 +516,6 @@ void scatterA11(const conflux::TileIndex k, const MPI_Comm &world)
 
     // wait for the scattering to be completed
     // @TODO investigate if this still needed (maybe blocking broadcast)
-    PE(scatterA11_waitall);
-    MPI_Waitall(proc->cntScatterA11, &(proc->reqScatterA11[0]), MPI_STATUSES_IGNORE);
-    PL();
 
     //MPI_Barrier(world);
 }
@@ -556,8 +556,6 @@ void conflux::parallelCholesky()
     // We perform the factorization tile-column-wise, hence loop over tile cols
     for (TileIndex k = 0; k < prop->Kappa; ++k) {
         // reset the request counters
-        proc->cntUpdateA10 = 0;
-        proc->cntScatterA11 = 0;
 
         /************************ (1) CHOLESKY OF A00 ************************/
         //std::cout << "Rank " << proc->rank << " started cholesky A00 in round " << k << std::endl;
@@ -577,6 +575,8 @@ void conflux::parallelCholesky()
 
         /************************ (2) UPDATE A10 *****************************/
         updateA10(k, world);
+        proc->cntUpdateA10 = 0;
+        proc->cntScatterA11 = 0;
 
         // dump current tile column in DEBUG mode
         #ifdef DEBUG
