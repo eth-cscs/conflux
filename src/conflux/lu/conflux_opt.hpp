@@ -506,6 +506,7 @@ void LU_rep(lu_params<T>& gv,
 #ifdef DEBUG
     std::vector<int> activeRows(Px);
 #endif
+    PL();
 
     /*
 # ---------------------------------------------- #
@@ -889,7 +890,6 @@ void LU_rep(lu_params<T>& gv,
 
         PE(step1_curPivots);
         MPI_Bcast(&gpivots[0], min_perm_size, MPI_INT, root, jk_comm);
-        PL();
 
         std::unordered_map<int, std::vector<int>> lpivots;
         std::unordered_map<int, std::vector<int>> loffsets;
@@ -909,9 +909,7 @@ void LU_rep(lu_params<T>& gv,
         // curPivOrder = loffsets[pi];
         std::copy_n(&gpivots[0], v, &pivotIndsBuff[k * v]);
 
-        // PL();
-
-        // assert(curPivots[0] <= v && curPivots[0] >= 0);
+        assert(curPivots[0] <= v && curPivots[0] >= 0);
 
         // wait for both broadcasts
         // MPI_Waitall(4, reqs_pivots, MPI_STATUSES_IGNORE);
@@ -992,7 +990,6 @@ void LU_rep(lu_params<T>& gv,
         }
 #endif
 
-        PE(step1_curPivots);
         // MPI_Wait(&curPivots_bcast_req, MPI_STATUS_IGNORE);
         for (int i = 0; i < curPivots[0]; ++i) {
             auto pivot_row = igri[curPivots[i+1]];
@@ -1316,6 +1313,7 @@ void LU_rep(lu_params<T>& gv,
             PL();
         }
 
+        PE(step4_comm);
         // # -- BROADCAST -- #
         auto root_trsm_1 = X2p(jk_comm, k % Py, layrK);
         for (int p = 0; p < trsm_1_dspls.size(); ++p) {
@@ -1335,7 +1333,6 @@ void LU_rep(lu_params<T>& gv,
 
         // T* A10_src = (Pz > 1) ? &A10BuffTemp[0] : &A10Buff[first_non_pivot_row * v];
 
-        PE(step4_comm);
         MPI_Iscatterv(&A10BuffTemp[0],
                      &trsm_1_counts[0],
                      &trsm_1_dspls[0],
@@ -1368,6 +1365,7 @@ void LU_rep(lu_params<T>& gv,
 
         auto lld_A01 = Nl - loff;
 
+        PE(step3_put);
         // receive A01Buff before the next step
         if (pk == layrK && pi == k % Px) {
             for (int i = 0; i < Px; ++i) {
@@ -1393,6 +1391,7 @@ void LU_rep(lu_params<T>& gv,
             // is ready to be used in the next round
             MPI_Wait(&pivot_reqs[0], MPI_STATUS_IGNORE);
         }
+        PL();
 
         // # ---------------------------------------------- #
         // # 5. compute A01 and broadcast it to A01BuffRecv #
@@ -1443,6 +1442,7 @@ void LU_rep(lu_params<T>& gv,
 
         }
 
+        PE(step5_comm);
         auto root_trsm_2 = X2p(ik_comm, k % Px, layrK);
 
         for (int p = 0; p < trsm_2_dspls.size(); ++p) {
@@ -1458,7 +1458,6 @@ void LU_rep(lu_params<T>& gv,
             trsm_2_counts[p] = size;
         }
 
-        PE(step5_comm);
         MPI_Iscatterv(&A01Buff[0], 
                      &trsm_2_counts[0], 
                      &trsm_2_dspls[0], 
@@ -1489,9 +1488,9 @@ void LU_rep(lu_params<T>& gv,
         }
 #endif
 
-        ts = te;
-
+        PE(step45_waitall);
         MPI_Waitall(2, &reqs[0], MPI_STATUSES_IGNORE);
+        PL();
 
         // # ---------------------------------------------- #
         // # 7. compute A11  ------------------------------ #
