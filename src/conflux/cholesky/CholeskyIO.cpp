@@ -79,7 +79,7 @@ conflux::CholeskyIO::CholeskyIO(CholeskyProperties *prop, Processor *proc)
 
     // set the name of the potential matrix input file
     std::stringstream tmp;
-    tmp << "data/input_" << prop->N << ".bin";
+    tmp << "../data/input_" << prop->N << ".bin";
     this->inputFilePath = tmp.str();
 }
 

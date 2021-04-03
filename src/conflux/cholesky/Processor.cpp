@@ -201,7 +201,7 @@ void conflux::Processor::updateBroadcastCommunicator(TileIndex rem)
     _curBcastIdx++;
     bcastComm = _bcastComms[_curBcastIdx];
     if(rank == 0) {
-        std::cout << _bcastSizes[_curBcastIdx] << std::endl;
+        //std::cout << _bcastSizes[_curBcastIdx] << std::endl;
     }
     inBcastComm = (rank < _bcastSizes[_curBcastIdx] || px == py) ? true : false;
 

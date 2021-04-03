@@ -171,8 +171,8 @@ double compare(uint32_t dim)
 {
     // create strings for matrix paths
     std::stringstream res, out;
-    res << "data/result_" << dim << ".bin";
-    out << "data/output_" << dim << ".bin";
+    res << "../data/result_" << dim << ".bin";
+    out << "../data/output_" << dim << ".bin";
 
     // read result matrix if it exists, otherwise compute it
     double *result = new double[((uint64_t) dim) * dim]();
@@ -195,7 +195,7 @@ double compare(uint32_t dim)
 
         // read the input file
         std::stringstream inp;
-        inp << "data/input_" << dim << ".bin";
+        inp << "../data/input_" << dim << ".bin";
         std::ifstream input(inp.str().c_str(), std::ios::in | std::ios::binary);
         if (input.fail()) {
             throw std::logic_error("Reading result input matrix failed. Check the path or if matrix of given size exists.");
@@ -254,8 +254,8 @@ void generate(uint32_t dim, bool computeCholesky)
 {
     // define file names
     std::stringstream inp, res;
-    inp << "data/input_" << dim << ".bin";
-    res << "data/result_" << dim << ".bin";
+    inp << "../data/input_" << dim << ".bin";
+    res << "../data/result_" << dim << ".bin";
 
     // create a random matrix and the matrix that will store A^T * A + dim * I
     // the dim * I is added since we want our matrix to be diagonally dominant,
