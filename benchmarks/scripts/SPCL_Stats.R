@@ -9,21 +9,22 @@ find_optimal_blocks <- function(rawData) {
   time_data <- time_data[complete.cases(time_data),]
   comm_data <- rawData[rawData$unit == "bytes",]
   comm_data <- comm_data[complete.cases(comm_data),]
-  fastest_blocks <- as.data.frame(time_data %>% group_by(algorithm, library, N, P) %>% summarise_each(list(min), value))
-  comm_min_blocks <- as.data.frame(comm_data %>% group_by(algorithm, library, N, P) %>% summarise_each(list(min), value))
+  fastest_blocks <- as.data.frame(time_data %>% group_by(algorithm, library, N, N_base, P) %>% summarise_each(list(min), value))
+  comm_min_blocks <- as.data.frame(comm_data %>% group_by(algorithm, library, N, N_base, P) %>% summarise_each(list(min), value))
   rows_to_remove = c()
   
   for (row in 1:nrow(time_data)) {
     cur_blocksize = time_data[row, "blocksize"]
     cur_p = time_data[row, "P"]
     cur_n = time_data[row, "N"]
+    cur_n_base = time_data[row, "N_base"]
     cur_lib = time_data[row, "library"]
     cur_val = time_data[row, "value"]
     cur_alg = time_data[row, "algorithm"]
-    all_values = time_data[time_data$algorithm == cur_alg & time_data$library == cur_lib & time_data$N == cur_n & time_data$P == cur_p & time_data$blocksize == cur_blocksize,]$value
-    best_block_value = fastest_blocks[fastest_blocks$algorithm == cur_alg & fastest_blocks$library == cur_lib & fastest_blocks$N == cur_n &fastest_blocks$P == cur_p, ]$value
+    all_values = time_data[time_data$algorithm == cur_alg & time_data$library == cur_lib & time_data$N == cur_n & time_data$N_base == cur_n_base & time_data$P == cur_p & time_data$blocksize == cur_blocksize,]$value
+    best_block_value = fastest_blocks[fastest_blocks$algorithm == cur_alg & fastest_blocks$library == cur_lib & fastest_blocks$N == cur_n & fastest_blocks$N_base == cur_n_base  &fastest_blocks$P == cur_p, ]$value
     
-    smallest_com_vol = comm_min_blocks[comm_min_blocks$algorithm == cur_alg & comm_min_blocks$library == cur_lib & comm_min_blocks$N == cur_n & comm_min_blocks$P == cur_p, ]$value
+    smallest_com_vol = comm_min_blocks[comm_min_blocks$algorithm == cur_alg & comm_min_blocks$library == cur_lib & comm_min_blocks$N == cur_n & comm_min_blocks$N_base == cur_n_base  & comm_min_blocks$P == cur_p, ]$value
     if (!identical(smallest_com_vol, numeric(0))){
       time_data[row, "V"] = smallest_com_vol / cur_p * 1e-6
     }
@@ -43,9 +44,9 @@ find_statistics <- function(filtered_data) {
   relevant_cols <- c("algorithm", "library", "N", "case", "P", "flops")
   time_data <- time_data[relevant_cols]
   
-  peak_flops <- as.data.frame(time_data %>% group_by(algorithm, library, N, P) %>% summarise_each(list(max), flops))
+  peak_flops <- as.data.frame(time_data %>% group_by(algorithm, case, library, N, P) %>% summarise_each(list(max), flops))
   peak_flops$metric = "peak"
-  mean_flops <- as.data.frame(time_data %>% group_by(algorithm, library, N, P) %>% summarise_each(list(mean), flops))
+  mean_flops <- as.data.frame(time_data %>% group_by(algorithm, case, library, N, P) %>% summarise_each(list(mean), flops))
   mean_flops$metric = "mean"
   final_data <- rbind(peak_flops, mean_flops)
 }

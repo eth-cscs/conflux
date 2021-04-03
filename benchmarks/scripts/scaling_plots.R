@@ -46,8 +46,50 @@ source(paste(getwd(), "/scripts/SPCL_Stats.R", sep=""))
 # prepare the data 
 rawData <- read.csv(file=exp_filename, sep=",", stringsAsFactors=FALSE, header=TRUE)
 
+rawData <- rawData[!(rawData$N == 16384 & rawData$P > 500),]
+
+
 rawData[rawData$N_base == "-" & rawData$type == "strong",]$N_base <- rawData[rawData$N_base == "-" & rawData$type == "strong",]$N
 rawData[rawData$N_base == "-" & rawData$type == "weak",]$N_base <- rawData[rawData$N_base == "-" & rawData$type == "weak",]$N / sqrt(rawData[rawData$N_base == "-" & rawData$type == "weak",]$P)
+
+
+# # --------------------------------
+# 
+# rawData[rawData$blocksize == "", ]$blocksize = 1
+# time_data <- rawData[rawData$unit == "time",]
+# time_data <- time_data[complete.cases(time_data),]
+# comm_data <- rawData[rawData$unit == "bytes",]
+# comm_data <- comm_data[complete.cases(comm_data),]
+# fastest_blocks <- as.data.frame(time_data %>% group_by(algorithm, library, N, N_base, P) %>% summarise_each(list(min), value))
+# comm_min_blocks <- as.data.frame(comm_data %>% group_by(algorithm, library, N, N_base, P) %>% summarise_each(list(min), value))
+# rows_to_remove = c()
+# 
+# for (row in 1:nrow(time_data)) {
+#   cur_blocksize = time_data[row, "blocksize"]
+#   cur_p = time_data[row, "P"]
+#   cur_n = time_data[row, "N"]
+#   cur_n_base = time_data[row, "N_base"]
+#   cur_lib = time_data[row, "library"]
+#   cur_val = time_data[row, "value"]
+#   cur_alg = time_data[row, "algorithm"]
+#   all_values = time_data[time_data$algorithm == cur_alg & time_data$library == cur_lib & time_data$N == cur_n & time_data$N_base == cur_n_base & time_data$P == cur_p & time_data$blocksize == cur_blocksize,]$value
+#   best_block_value = fastest_blocks[fastest_blocks$algorithm == cur_alg & fastest_blocks$library == cur_lib & fastest_blocks$N == cur_n & fastest_blocks$N_base == cur_n_base  &fastest_blocks$P == cur_p, ]$value
+#   
+#   smallest_com_vol = comm_min_blocks[comm_min_blocks$algorithm == cur_alg & comm_min_blocks$library == cur_lib & comm_min_blocks$N == cur_n & comm_min_blocks$N_base == cur_n_base  & comm_min_blocks$P == cur_p, ]$value
+#   if (!identical(smallest_com_vol, numeric(0))){
+#     time_data[row, "V"] = smallest_com_vol / cur_p * 1e-6
+#   }
+#   if (min(all_values) != best_block_value | cur_val > 1.3 * best_block_value){
+#     rows_to_remove <- c(rows_to_remove, row)
+#     if (cur_alg == "cholesky" & cur_lib == "psychol" & cur_p == 4 & cur_n == 16384){
+#       a = 1
+#     }
+#   }
+# }
+# filtered_time_data = time_data[-rows_to_remove, ]
+# 
+# # --------------------------------
+
 
 filtered_time_data <- find_optimal_blocks(rawData)
 
@@ -72,6 +114,10 @@ for (variant in variantPlots){
         if (nrow(df3) == 0)
           next
         
+        if (alg == "Cholesky" & scaling == "weak" & variant == "FLOPS"){
+          a = 1
+        }
+        
         
         plot_data <- df3[c("P", "library", "value", "N")]
         
@@ -88,6 +134,9 @@ for (variant in variantPlots){
             plot_data$percent_peak = 200/3 * (plot_data$N)^3 / (1e6 * (plot_data$P/2) * plot_data$value * FLOPSperNode)
           }
           plot_data$value <- plot_data$percent_peak
+          
+          # filtering out data with peak flops below the threshold
+          plot_data <- plot_data[plot_data$percent_peak > 2,]
         }
         else{
           ylabel = "total communication volume [GB]"

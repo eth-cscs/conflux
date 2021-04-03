@@ -9,8 +9,8 @@ library(gmodels)
 
 
 #-------------------------SETUP----------------------#
-path = "C:/gk_pliki/uczelnia/doktorat/performance_modelling/repo/conflux_cpp_2/results/conflux/benchmarks" #getwd()
-#path = "/mnt/c/gk_pliki/uczelnia/doktorat/performance_modelling/repo/conflux_cpp_2/results/conflux/benchmarks" #getwd()
+#path = "C:/gk_pliki/uczelnia/doktorat/performance_modelling/repo/conflux_cpp_2/results/conflux/benchmarks" #getwd()
+path = "/mnt/c/gk_pliki/uczelnia/doktorat/performance_modelling/repo/conflux_cpp_2/results/conflux/benchmarks" #getwd()
 exp_filename = "benchmarks.csv"
 #exp_filename = "rawData_old.csv"
 setwd(path)
@@ -46,6 +46,8 @@ DataColumnsHash['flops'] = c("P", "algLabel", "flops")
 #--------------------PREPROCESSING-----------------------------#
 
 rawData = read.table(exp_filename, header = T, sep = ',',fill = TRUE, stringsAsFactors=FALSE)
+
+rawData <- rawData[!(rawData$N == 16384 & rawData$P > 500),]
 
 rawData[rawData$N_base == "-" & rawData$type == "strong",]$N_base <- rawData[rawData$N_base == "-" & rawData$type == "strong",]$N
 rawData[rawData$N_base == "-" & rawData$type == "weak",]$N_base <- rawData[rawData$N_base == "-" & rawData$type == "weak",]$N / sqrt(rawData[rawData$N_base == "-" & rawData$type == "weak",]$P)
@@ -102,35 +104,35 @@ rawData$scaling = ifelse(rawData$N_base == 16384, '$2^{14}$',
 rawrawData <- rawData
 
 ####################### 
-
-rawData[rawData$blocksize == "", ]$blocksize = 1
-time_data <- rawData[rawData$unit == "time",]
-time_data <- time_data[complete.cases(time_data),]
-comm_data <- rawData[rawData$unit == "bytes",]
-comm_data <- comm_data[complete.cases(comm_data),]
-fastest_blocks <- as.data.frame(time_data %>% group_by(algorithm, library, N, P) %>% summarise_each(list(min), value))
-comm_min_blocks <- as.data.frame(comm_data %>% group_by(algorithm, library, N, P) %>% summarise_each(list(min), value))
-rows_to_remove = c()
-
-for (row in 1:nrow(time_data)) {
-  cur_blocksize = time_data[row, "blocksize"]
-  cur_p = time_data[row, "P"]
-  cur_n = time_data[row, "N"]
-  cur_lib = time_data[row, "library"]
-  cur_val = time_data[row, "value"]
-  cur_alg = time_data[row, "algorithm"]
-  all_values = time_data[time_data$algorithm == cur_alg & time_data$library == cur_lib & time_data$N == cur_n & time_data$P == cur_p & time_data$blocksize == cur_blocksize,]$value
-  best_block_value = fastest_blocks[fastest_blocks$algorithm == cur_alg & fastest_blocks$library == cur_lib & fastest_blocks$N == cur_n &fastest_blocks$P == cur_p, ]$value
-  
-  smallest_com_vol = comm_min_blocks[comm_min_blocks$algorithm == cur_alg & comm_min_blocks$library == cur_lib & comm_min_blocks$N == cur_n & comm_min_blocks$P == cur_p, ]$value
-  if (!identical(smallest_com_vol, numeric(0))){
-    time_data[row, "V"] = smallest_com_vol / cur_p * 1e-6
-  }
-  if (min(all_values) != best_block_value | cur_val > 1.3 * best_block_value){
-    rows_to_remove <- c(rows_to_remove, row)
-  }
-}
-filtered_data = time_data[-rows_to_remove, ]
+# 
+# rawData[rawData$blocksize == "", ]$blocksize = 1
+# time_data <- rawData[rawData$unit == "time",]
+# time_data <- time_data[complete.cases(time_data),]
+# comm_data <- rawData[rawData$unit == "bytes",]
+# comm_data <- comm_data[complete.cases(comm_data),]
+# fastest_blocks <- as.data.frame(time_data %>% group_by(algorithm, library, N, P) %>% summarise_each(list(min), value))
+# comm_min_blocks <- as.data.frame(comm_data %>% group_by(algorithm, library, N, P) %>% summarise_each(list(min), value))
+# rows_to_remove = c()
+# 
+# for (row in 1:nrow(time_data)) {
+#   cur_blocksize = time_data[row, "blocksize"]
+#   cur_p = time_data[row, "P"]
+#   cur_n = time_data[row, "N"]
+#   cur_lib = time_data[row, "library"]
+#   cur_val = time_data[row, "value"]
+#   cur_alg = time_data[row, "algorithm"]
+#   all_values = time_data[time_data$algorithm == cur_alg & time_data$library == cur_lib & time_data$N == cur_n & time_data$P == cur_p & time_data$blocksize == cur_blocksize,]$value
+#   best_block_value = fastest_blocks[fastest_blocks$algorithm == cur_alg & fastest_blocks$library == cur_lib & fastest_blocks$N == cur_n &fastest_blocks$P == cur_p, ]$value
+#   
+#   smallest_com_vol = comm_min_blocks[comm_min_blocks$algorithm == cur_alg & comm_min_blocks$library == cur_lib & comm_min_blocks$N == cur_n & comm_min_blocks$P == cur_p, ]$value
+#   if (!identical(smallest_com_vol, numeric(0))){
+#     time_data[row, "V"] = smallest_com_vol / cur_p * 1e-6
+#   }
+#   if (min(all_values) != best_block_value | cur_val > 1.3 * best_block_value){
+#     rows_to_remove <- c(rows_to_remove, row)
+#   }
+# }
+# filtered_data = time_data[-rows_to_remove, ]
 
 
 ####################
