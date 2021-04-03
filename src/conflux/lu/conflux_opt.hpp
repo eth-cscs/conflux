@@ -592,7 +592,7 @@ void LU_rep(lu_params<T>& gv,
                               0, Nl-loff, Nl-loff));
         assert(has_valid_data(&A11Buff[0], 
                               first_non_pivot_row, Ml,
-                              loff, Nl, Nl))
+                              loff, Nl, Nl));
 #endif
 
         PE(step0_padding);
@@ -809,32 +809,6 @@ void LU_rep(lu_params<T>& gv,
                            &gpivots[0]);
             PL();
 
-#ifdef DEBUG
-                if (k == chosen_step && debug_level > -1 && rank == print_rank) {
-                    std::cout << "Rank [" << pi << ", " << pj << ", " << pk << "], k: " << k << ", n_local_active_rows: "
-                              << n_local_active_rows << ", candidatePivotBuff after tournament pivoting: \n"
-                              << std::flush;
-                    print_matrix(candidatePivotBuff.data(), 0, Ml, 0, v + 1, v + 1);
-                    std::cout << "\n\n"
-                              << std::flush;
-
-                    std::cout << "Rank [" << pi << ", " << pj << ", " << pk << "], k: " << k << ", gpivots: \n" << std::flush;
-                    print_matrix(gpivots.data(), 0, 1, 0, N, N);
-                    std::cout << "\n\n"
-                              << std::flush;
-
-                    std::cout << "Rank [" << pi << ", " << pj << ", " << pk << "], k: " << k << ", lpivots: \n" << std::flush;
-                    print_map(lpivots);
-                    std::cout << "\n\n"
-                              << std::flush;
-
-                    std::cout << "Rank [" << pi << ", " << pj << ", " << pk << "], k: " << k << ", lpivots_offsets: \n" << std::flush;
-                    print_map(loffsets);
-                    std::cout << "\n\n"
-                              << std::flush;
-                }
-#endif
-
             PE(step1_A00Buff_isend);
             // send A00 to pi = k % sqrtp1 && pk = layrK
             // pj = k % sqrtp1; pk = layrK
@@ -888,9 +862,11 @@ void LU_rep(lu_params<T>& gv,
         PL();
         */
 
-        PE(step1_curPivots);
+        PE(step1_curPivots_bcast);
         MPI_Bcast(&gpivots[0], min_perm_size, MPI_INT, root, jk_comm);
+        PL();
 
+        PE(step1_curPivots_postprocessing);
         std::unordered_map<int, std::vector<int>> lpivots;
         std::unordered_map<int, std::vector<int>> loffsets;
         std::tie(lpivots, loffsets) = g2lnoTile(gpivots, min_perm_size, Px, v);
@@ -910,6 +886,32 @@ void LU_rep(lu_params<T>& gv,
         std::copy_n(&gpivots[0], v, &pivotIndsBuff[k * v]);
 
         assert(curPivots[0] <= v && curPivots[0] >= 0);
+#ifdef DEBUG
+        if (k == chosen_step && debug_level > 0 && rank == print_rank) {
+            std::cout << "Rank [" << pi << ", " << pj << ", " << pk << "], k: " << k << ", n_local_active_rows: "
+                      << n_local_active_rows << ", candidatePivotBuff after tournament pivoting: \n"
+                      << std::flush;
+            print_matrix(candidatePivotBuff.data(), 0, Ml, 0, v + 1, v + 1);
+            std::cout << "\n\n"
+                      << std::flush;
+
+            std::cout << "Rank [" << pi << ", " << pj << ", " << pk << "], k: " << k << ", gpivots: \n" << std::flush;
+            print_matrix(gpivots.data(), 0, 1, 0, N, N);
+            std::cout << "\n\n"
+                      << std::flush;
+
+            std::cout << "Rank [" << pi << ", " << pj << ", " << pk << "], k: " << k << ", lpivots: \n" << std::flush;
+            print_map(lpivots);
+            std::cout << "\n\n"
+                      << std::flush;
+
+            std::cout << "Rank [" << pi << ", " << pj << ", " << pk << "], k: " << k << ", lpivots_offsets: \n" << std::flush;
+            print_map(loffsets);
+            std::cout << "\n\n"
+                      << std::flush;
+        }
+#endif
+
 
         // wait for both broadcasts
         // MPI_Waitall(4, reqs_pivots, MPI_STATUSES_IGNORE);
@@ -1120,6 +1122,13 @@ void LU_rep(lu_params<T>& gv,
             A01BuffTemp[i * (Nl - loff + 1)] = 0;
         }
 
+#ifdef DEBUG
+        MPI_Barrier(lu_comm);
+        if (k == chosen_step && rank == print_rank) {
+            std::cout << "Finished copying A11BUFF -> A01BuffTemp " << std::endl;
+        }
+#endif
+
         // if (pi == 0 && pj == 1 && pk == 0 && (k % Px) == 0){
         //     std::cout << "A01Buff before reduce. Rank [" << pi << ", " << pj << ", " << pk << "]:" << std::endl << std::flush;
         //     print_matrix(A01Buff.data(), 0, v, 0, Nl, Nl);
@@ -1139,13 +1148,20 @@ void LU_rep(lu_params<T>& gv,
                        MPI_DOUBLE, MPI_SUM, layrK, k_comm);
         }
         PL();
+#ifdef DEBUG
+        MPI_Barrier(lu_comm);
+        if (k == chosen_step && rank == print_rank) {
+            std::cout << "Finished MPI_Reduce for A01BuffTemp " << std::endl;
+        }
+#endif
 
         // # -------------------------------------------------- #
         // # 3. distribute v pivot rows from A11buff to A01Buff #
         // # here, only processors pk == layrK participate      #
         // # -------------------------------------------------- #
         PE(step3_put);
-        MPI_Request pivot_reqs[Px+1];
+        // MPI_Request pivot_reqs[1+Px];
+        MPI_Request pivot_send; // pivot_reqs[1+Px];
         if (pk == layrK) {
             auto p_rcv = X2p(ij_comm, k % Px, pj);
             // append the curPivOrder of this row that will be used by receiver
@@ -1154,30 +1170,36 @@ void LU_rep(lu_params<T>& gv,
                 A01BuffTemp[i * (Nl - loff + 1)] = piv_order;
             }
 
-            // I might also be a sender (if curPivots[0]>0)
-            MPI_Isend(&A01BuffTemp[0], 
-                      curPivots[0] * (Nl - loff + 1),
-                      MPI_DOUBLE, 
-                      p_rcv, 33, 
-                      ij_comm, 
-                      &pivot_reqs[0]);
-
-            // if I am the receiver
-            if (pi == k % Px) {
-                for (int ppi = 0; ppi < Px; ++ppi) {
-                    auto p_send = X2p(ij_comm, ppi, pj);
-                    MPI_Irecv(&A11BuffTemp[ppi * v * (Nl - loff + 1)],
-                              v * (Nl - loff + 1),
-                              MPI_DOUBLE,
-                              MPI_ANY_SOURCE,
-                              33,
-                              ij_comm,
-                              &pivot_reqs[ppi+1]
-                              );
+            // I might be a sender (if curPivots[0]>0)
+            // and if this is not a local communication
+            if (curPivots[0] > 0 && rank != p_rcv) {
+                MPI_Isend(&A01BuffTemp[0], 
+                          curPivots[0] * (Nl - loff + 1),
+                          MPI_DOUBLE, 
+                          p_rcv, 33, 
+                          ij_comm, 
+                          &pivot_send);
+                          // &pivot_reqs[0]);
+            }
+            if (rank == p_rcv) {
+#pragma omp parallel for shared(A11BuffTemp, Nl, loff, A01Buff)
+                for (int row = 0; row < curPivots[0]; ++row) {
+                    int piv_order = (int) A01BuffTemp[row * (Nl-loff+1)];
+                    auto dspls = piv_order * (Nl - loff);
+                    std::copy_n(&A01BuffTemp[1 + row * (Nl-loff+1)], 
+                                Nl-loff,
+                                &A01Buff[dspls]);
                 }
             }
         }
         PL();
+
+#ifdef DEBUG
+        MPI_Barrier(lu_comm);
+        if (k == chosen_step && rank == print_rank) {
+            std::cout << "Finished MPI_Put requests" << std::endl;
+        }
+#endif
 
 #ifdef DEBUG
         MPI_Barrier(lu_comm);
@@ -1363,10 +1385,46 @@ void LU_rep(lu_params<T>& gv,
         }
 #endif
 
-        auto lld_A01 = Nl - loff;
-
         PE(step3_put);
         // receive A01Buff before the next step
+        if (pk == layrK && pi == k % Px) {
+            // local transfers have been performed
+            int total_rows = curPivots[0];
+            int offset = curPivots[0] * (Nl - loff + 1); // idx * v * (Nl - loff + 1);
+            while (total_rows < min_perm_size) {
+                // int p_send = X2p(ij_comm, pi_send, pj);
+                MPI_Status status;
+                MPI_Recv(&A11BuffTemp[offset],
+                          v * (Nl - loff + 1),
+                          MPI_DOUBLE,
+                          MPI_ANY_SOURCE,
+                          33,
+                          ij_comm,
+                          &status);
+                int received_size;
+                MPI_Get_count(&status, MPI_DOUBLE, &received_size);
+
+                int n_received_rows = received_size / (Nl - loff + 1);
+                total_rows += n_received_rows;
+                assert(total_rows <= v && total_rows >= 0);
+
+#pragma omp parallel for shared(A11BuffTemp, Nl, loff, A01Buff, offset)
+                for (int row = 0; row < n_received_rows; ++row) {
+                    int piv_order = (int) A11BuffTemp[offset + row * (Nl-loff+1)];
+                    auto dspls = piv_order * (Nl - loff);
+                    std::copy_n(&A11BuffTemp[offset + row * (Nl-loff+1) + 1], 
+                                Nl-loff,
+                                &A01Buff[dspls]);
+                }
+
+                offset += received_size;
+            }
+        }
+        if (curPivots[0] > 0 && pi != k % Px) {
+            MPI_Wait(&pivot_send, MPI_STATUS_IGNORE);
+        }
+        PL();
+        /*
         if (pk == layrK && pi == k % Px) {
             for (int i = 0; i < Px; ++i) {
                 MPI_Status status;
@@ -1385,6 +1443,8 @@ void LU_rep(lu_params<T>& gv,
                                 &A01Buff[dspls]);
                 }
             }
+        }
+        if (pk == layrK) {
             // wait for all pending requests in this round
             // practically, we do not need these requests
             // but, it's important to ensure that the send buffer A01BuffTemp
@@ -1392,6 +1452,9 @@ void LU_rep(lu_params<T>& gv,
             MPI_Wait(&pivot_reqs[0], MPI_STATUS_IGNORE);
         }
         PL();
+        */
+
+        auto lld_A01 = Nl - loff;
 
         // # ---------------------------------------------- #
         // # 5. compute A01 and broadcast it to A01BuffRecv #
