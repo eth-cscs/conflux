@@ -30,6 +30,8 @@
  */
 
 #include <fstream>
+#include <iomanip>
+#include <iostream>
 #include <cstring>
 #include <math.h>
 #include <string>
@@ -518,5 +520,107 @@ void conflux::CholeskyIO::dumpA11()
                                   prop->v, MPI_DOUBLE, MPI_STATUS_IGNORE);
             }
         }
+    }
+}
+
+/**
+ * @brief prints a local buffer from a processor to a file with correct formatting
+ * 
+ * @param type the type of the local buffer
+ * @param iter the iteration number of the algorithm
+ */
+void conflux::CholeskyIO::dumpLocalBuffer(BufferType1D type, uint32_t iter)
+{
+    // find the correct pointers and the correct dimensions for the
+    // buffer to be printed
+    double *data; uint32_t rowSize, colSize, numTiles; std::string name;
+    if (type == BufferType1D::A10) {
+        data = proc->A10->get(0);
+        rowSize = prop->v;
+        colSize = prop->v;
+        numTiles = proc->maxIndexA10;
+        name = "A10";
+    } else if (type == BufferType1D::A10RCV) {
+        data = proc->A10rcv->get(0);
+        rowSize = prop->v;
+        colSize = prop->l;
+        numTiles = proc->maxIndexA11i;
+        name = "A10rcv";
+    } else if (type == BufferType1D::A01RCV) {
+        data = proc->A01rcv->get(0);
+        rowSize = prop->v;
+        colSize = prop->l;
+        numTiles = proc->maxIndexA11j;
+        name = "A01rcv";
+    } else {
+        std::cout << "invalid argument, dumping local buffer aborted." << std::endl;
+    }
+
+    // create file name and output file, open it
+    std::stringstream fileName;
+    fileName << "logs/p" << proc->rank << "-(" << proc->px << "," << proc->py << ","
+             << proc->pz << ")-k=" << iter << "-" << name << ".txt";
+    std::ofstream outputFile(fileName.str().c_str(), std::ios::out);
+
+    // write basic information to the file
+    outputFile << "************************** SETTING **************************\n" << " N: " << prop->N 
+               << "\n v: " << prop->v << "\n Grid: " << prop->PX << "x" << prop->PY << "x" << prop->PZ 
+               << "\n Current Processor: " << proc->rank << "\n Iteration: " << iter << "\n"
+               << "*************************************************************\n\n";
+    // loop over all tiles that are there
+    for (TileIndex i = 0; i < numTiles; ++i) {
+        outputFile << "******** Tile " << i;
+        if (type == BufferType1D::A10) {
+            outputFile << " (iGlob = " << prop->localToGlobal(proc->rank, i) << ")";
+        } 
+        outputFile << " ********\n";
+        for (size_t row = 0; row < rowSize; ++row) {
+            outputFile << "\t";
+            for (size_t col = 0; col < colSize; ++col) {
+                outputFile << std::fixed <<  std::setprecision(3) << std::setw(7) 
+                           << data[i * (rowSize * colSize) + col + row * colSize] 
+                           << std::setprecision(3);
+            }
+            outputFile << "\n";
+        }
+        outputFile << "\n";
+    }
+
+    // close the handle and return
+    outputFile.close();
+}
+
+/**
+ * @brief overwrites the contents of a local buffer with the processor's
+ * rank. This can be used for debugging the process of coalescing subtiles
+ * and send them to a processor who should receive them and shuffle them
+ * into their A10rcv or A01 rcv buffers
+ * 
+ * @param type the type of the buffer
+ * @param startIdx the start index (defaults to 0)
+ * 
+ * @note remove this code once the code works
+ */
+void conflux::CholeskyIO::overwriteBuffer(BufferType1D type, uint32_t startIdx) 
+{
+    // find the parameters for this buffer first
+    double *data; uint32_t numElems;
+    if (type == BufferType1D::A10) {
+        if (startIdx >= proc->maxIndexA10) return;
+        data = proc->A10->get(startIdx);
+        numElems = (prop->vSquare) * (proc->maxIndexA10 - startIdx);
+    } else if (type == BufferType1D::A10RCV) {
+        if (startIdx >= proc->maxIndexA11i) return; 
+        data = proc->A10rcv->get(startIdx);
+        numElems = (prop->v * prop->l) * (proc->maxIndexA11i - startIdx);
+    } else if (type == BufferType1D::A01RCV) {
+        if (startIdx >= proc->maxIndexA11j) return;
+        data = proc->A01rcv->get(startIdx);
+        numElems = (prop->v * prop->l) * (proc->maxIndexA11j - startIdx);
+    }
+
+    // overwrite data with the rank
+    for (int i = 0; i < numElems; ++i) {
+        data[i] = static_cast<double>(proc->rank);
     }
 }

@@ -276,9 +276,9 @@ void updateA10(const conflux::TileIndex k, const MPI_Comm &world)
         proc->reqUpdateA10[proc->cntUpdateA10++] = req;  
         //if(proc->rank == TESTRANK) std::cout << "Processor " << proc->px << " " <<proc->py << " wants to receive from " << pSnd << " in round " << k << std::endl;
         
-        //PL();      
-    }
-
+        //PL();  
+    }    
+    
     // post to later receive representatives of A01
     sentSet.clear();
     for (conflux::TileIndex jLoc = k / prop->PY; jLoc < proc->maxIndexA11j; ++jLoc) {
@@ -339,6 +339,16 @@ void updateA10(const conflux::TileIndex k, const MPI_Comm &world)
                     prop->v, prop->v, 1.0, proc->A00, prop->v, tile, prop->v);
         //PL();
     }
+
+    #ifdef DEBUG
+    if (k < 4) {
+        if (proc->rank == 5) {
+            io->overwriteBuffer(conflux::BufferType1D::A10, 0);
+        }
+        io->dumpLocalBuffer(conflux::BufferType1D::A10, k);
+        MPI_Barrier(world);
+    }
+    #endif // DEBUG
 
     // we make use of the fact that this value does not change over the course of the full run
     // but for when it fails the boundary checks
@@ -408,6 +418,12 @@ void updateA10(const conflux::TileIndex k, const MPI_Comm &world)
  */
 void computeA11(const conflux::TileIndex k, const MPI_Comm &world)
 {
+    #ifdef DEBUG
+    if (k < 4) {
+        io->dumpLocalBuffer(conflux::BufferType1D::A10RCV, k);
+        MPI_Barrier(world);
+    }
+    #endif // DEBUG
     // iterate over all tiles below (inclusive) the diagonal that this processor
     // owns and update them via low-rank update.
     // TODO: algo descriptions says that indices start from k/P, which imo is wrong (saethrej)
