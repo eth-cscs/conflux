@@ -548,7 +548,7 @@ void conflux::parallelCholesky()
     // in debug mode, write the matrix back into a file in every round
     #ifdef DEBUG
     std::stringstream tmp;
-    tmp << "../data/output_" << prop->N << ".bin";
+    tmp << "data/output_" << prop->N << ".bin";
     io->openFile(tmp.str());
     #endif //DEBUG
     /********************** START OF THE FACTORIZATION ***********************/

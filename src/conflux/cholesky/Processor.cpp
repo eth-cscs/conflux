@@ -145,13 +145,13 @@ void conflux::Processor::updateBcastComm(uint32_t remTiles)
         return;
     }
 
-        this->isWorldBroadcast = false;
-        m_curIdx++;
-        bcastComm = m_bcastComms[m_curIdx];
-        inBcastComm = m_inCurrentBcastComm[m_curIdx];
-        if (inBcastComm) {
-            //std::cout << rank << " in round " << m_prop->Kappa - 2 - remTiles << std::endl;
-        }
+    this->isWorldBroadcast = false;
+    m_curIdx++;
+    bcastComm = m_bcastComms[m_curIdx];
+    inBcastComm = m_inCurrentBcastComm[m_curIdx];
+    if (inBcastComm) {
+        //std::cout << rank << " in round " << m_prop->Kappa - 2 - remTiles << std::endl;
+    }
 }
 
 /**
@@ -189,9 +189,8 @@ void conflux::Processor::initializeBroadcastComms()
     }  
 
     else {
-        maxBroadcastSize = 1 << (uint64_t)ceil(log2(m_prop->P));
+        maxBroadcastSize = 1 << (uint64_t)ceil(log2(m_prop->Kappa - 2));
         if (maxBroadcastSize >= m_prop->P) {
-            //if (rank == 0) std::cout << "Second branch" << std::endl;
             m_inCurrentBcastComm.push_back(true);
             m_bcastComms.push_back(MPI_COMM_WORLD);
 
@@ -202,11 +201,9 @@ void conflux::Processor::initializeBroadcastComms()
             m_bcastSizes.push_back(m_prop->P);
             maxBroadcastSize /= 2;
             this->isWorldBroadcast = true;
-
         }
 
         else {
-            //if (rank == 0) std::cout << "Third branch" << std::endl;
             this->isWorldBroadcast = false;
             createNewComm(maxBroadcastSize);
         }
