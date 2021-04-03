@@ -398,7 +398,7 @@ void LU_rep(lu_params<T>& gv,
     std::vector<T> A01BuffRcv(nlayr * Nl);
 
     std::vector<T> A11Buff = gv.data;
-    std::vector<T> A11BuffTemp(Ml * (Nl+1));
+    std::vector<T> A11BuffTemp(std::max(Ml, Px * v) * (Nl+1));
 
     // costa::memory::threads_workspace<T> workspace(128);
 
@@ -1162,29 +1162,46 @@ void LU_rep(lu_params<T>& gv,
         PE(step3_put);
         // MPI_Request pivot_reqs[1+Px];
         MPI_Request pivot_send; // pivot_reqs[1+Px];
+        MPI_Request pivot_recv[Px-1]; // pivot_reqs[1+Px];
         if (pk == layrK) {
-            auto p_rcv = X2p(ij_comm, k % Px, pj);
             // append the curPivOrder of this row that will be used by receiver
             for (int i = 0; i < curPivots[0]; ++i) {
                 int piv_order = curPivOrder[i];
+                assert(piv_order >= 0 && piv_order < v);
                 A01BuffTemp[i * (Nl - loff + 1)] = piv_order;
             }
 
             // I might be a sender (if curPivots[0]>0)
             // and if this is not a local communication
-            if (curPivots[0] > 0 && rank != p_rcv) {
+            // if (curPivots[0] > 0 && rank != p_rcv) {
+            auto p_rcv = X2p(ij_comm, k % Px, pj);
+            if (pi != k % Px) {
                 MPI_Isend(&A01BuffTemp[0], 
                           curPivots[0] * (Nl - loff + 1),
                           MPI_DOUBLE, 
                           p_rcv, 33, 
                           ij_comm, 
                           &pivot_send);
-                          // &pivot_reqs[0]);
-            }
-            if (rank == p_rcv) {
-#pragma omp parallel for shared(A11BuffTemp, Nl, loff, A01Buff)
+            } else {
+                // receive remote packages
+                int idx = 0;
+                for (int ppi = 0; ppi < Px; ++ppi) {
+                    if (pi == ppi) continue;
+                    int offset = idx * v * (Nl - loff + 1);
+                    auto p_send = X2p(ij_comm, ppi, pj);
+                    MPI_Irecv(&A11BuffTemp[offset],
+                              v * (Nl - loff + 1),
+                              MPI_DOUBLE, 
+                              p_send, 33, 
+                              ij_comm, 
+                              &pivot_recv[idx]);
+                    ++idx;
+                }
+
+                // copy local rows manually
+#pragma omp parallel for shared(A01BuffTemp, curPivots, Nl, loff, A01Buff)
                 for (int row = 0; row < curPivots[0]; ++row) {
-                    int piv_order = (int) A01BuffTemp[row * (Nl-loff+1)];
+                    int piv_order = curPivOrder[row]; //  (int) A01BuffTemp[row * (Nl-loff+1)];
                     auto dspls = piv_order * (Nl - loff);
                     std::copy_n(&A01BuffTemp[1 + row * (Nl-loff+1)], 
                                 Nl-loff,
@@ -1390,37 +1407,39 @@ void LU_rep(lu_params<T>& gv,
         if (pk == layrK && pi == k % Px) {
             // local transfers have been performed
             int total_rows = curPivots[0];
-            int offset = curPivots[0] * (Nl - loff + 1); // idx * v * (Nl - loff + 1);
-            while (total_rows < min_perm_size) {
-                // int p_send = X2p(ij_comm, pi_send, pj);
+
+            for (int i = 0; i < Px-1; ++i) {
                 MPI_Status status;
-                MPI_Recv(&A11BuffTemp[offset],
-                          v * (Nl - loff + 1),
-                          MPI_DOUBLE,
-                          MPI_ANY_SOURCE,
-                          33,
-                          ij_comm,
-                          &status);
+                int idx = -1;
+                MPI_Waitany(Px-1, &pivot_recv[0], &idx, &status);
+                assert(idx >= 0 && idx < Px-1);
+
+                int p_send = status.MPI_SOURCE;
+                int pi_send, pj_send;
+                std::tie(pi_send, pj_send) = p2X_2d(ij_comm, p_send);
+
                 int received_size;
                 MPI_Get_count(&status, MPI_DOUBLE, &received_size);
-
+                // std::cout << "Receiving count = " << received_size <<std::endl;
                 int n_received_rows = received_size / (Nl - loff + 1);
                 total_rows += n_received_rows;
                 assert(total_rows <= v && total_rows >= 0);
 
+                int offset = idx * v * (Nl - loff + 1);
+
 #pragma omp parallel for shared(A11BuffTemp, Nl, loff, A01Buff, offset)
                 for (int row = 0; row < n_received_rows; ++row) {
                     int piv_order = (int) A11BuffTemp[offset + row * (Nl-loff+1)];
+                    assert(piv_order >= 0 && piv_order < v);
                     auto dspls = piv_order * (Nl - loff);
                     std::copy_n(&A11BuffTemp[offset + row * (Nl-loff+1) + 1], 
                                 Nl-loff,
                                 &A01Buff[dspls]);
                 }
-
-                offset += received_size;
             }
+            assert(total_rows == v);
         }
-        if (curPivots[0] > 0 && pi != k % Px) {
+        if (pi != k % Px && pk == layrK) {
             MPI_Wait(&pivot_send, MPI_STATUS_IGNORE);
         }
         PL();
