@@ -37,6 +37,7 @@
 
 
 #include <vector>
+#include <set>
 #include <mpi.h>
 
 #include "CholeskyProperties.h"
@@ -55,6 +56,9 @@ public:
     // constructors and destructors
     Processor(CholeskyProperties *prop);
     ~Processor();
+
+    // method to update the broadcast communicator
+    void updateBcastComm(uint32_t remTiles);
 
     // basic processor information
     ProcRank rank; //!< global rank within MPI_COMM_WORLD
@@ -89,6 +93,26 @@ public:
     // upper bounds for requests in sub-tile handling in update A10
     int sndBound; //!< upper bound for number of requests due to sending subtiles
     int rcvBound; //!< upper bound for number of requests due to receiving subtiles
+
+    // communicators for the broadcast of new A00
+    MPI_Comm bcastComm; //!< communicator for the current broadcast
+    bool inBcastComm; //!< flag indicating whether this processors is in bcast comm
+    bool isWorldBroadcast;
+
+private:
+    // private member functions
+    void initializeBroadcastComms();
+    // this creates a new communicator for a given tile size
+    void createNewComm(uint64_t &broadCastSize);
+
+    // private member fields
+    std::vector<MPI_Comm> m_bcastComms; //!< vector of all bcast comms in this execution
+    std::vector<uint32_t> m_bcastSizes; //!< vector of the theoretical bcast sizes (- A00 providers)
+    std::vector<bool> m_inCurrentBcastComm; //!< vector of flags of membership
+    std::vector<std::set<ProcRank>> m_tileOwners; //!< set of ranks that own tile for given remaining num tiles
+    bool m_alwaysUseWorld; //!< this flags says that we do not use any optimization of the broadcast
+    uint8_t m_curIdx; //!< current index for all of the above vectors
+    CholeskyProperties *m_prop; //!< pointer to the cholesky properties object. DO NOT FREE IN THIS CLASS
 };
 
 } // namespace conflux
