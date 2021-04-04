@@ -83,6 +83,10 @@ class lu_params {
         int keep_dims_k[] = {0, 0, 1};
         MPI_Cart_sub(lu_comm, keep_dims_k, &k_comm);
 
+        // i-communicator
+        int keep_dims_i[] = {1, 0, 0};
+        MPI_Cart_sub(lu_comm, keep_dims_i, &i_comm);
+
         // ij-comm // used only for verification
         int keep_dims_ij[] = {1, 1, 0};
         MPI_Cart_sub(lu_comm, keep_dims_ij, &ij_comm);
@@ -360,6 +364,7 @@ public:
     MPI_Comm ik_comm = MPI_COMM_NULL;
     MPI_Comm ij_comm = MPI_COMM_NULL;
     MPI_Comm k_comm = MPI_COMM_NULL;
+    MPI_Comm i_comm = MPI_COMM_NULL;
     int rank;
     int pi, pj, pk;
     int M, N, P;
@@ -372,6 +377,8 @@ public:
     int seed = 42;
     std::vector<T> data;
     costa::grid_layout<T> matrix;
+
+    bool use_collectives = true;
 
     lu_params() = default;
 
@@ -390,6 +397,8 @@ public:
     }
 
     void free_comms() {
+        if (i_comm != MPI_COMM_NULL)
+            MPI_Comm_free(&i_comm);
         if (k_comm != MPI_COMM_NULL)
             MPI_Comm_free(&k_comm);
         if (ij_comm != MPI_COMM_NULL)
