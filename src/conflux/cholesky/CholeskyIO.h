@@ -44,6 +44,12 @@
 namespace conflux {
 
 /**
+ * @brief defines a type for a type of local 1D buffer to be printed for
+ * debugging functionality
+ */
+enum class BufferType1D {A10, A10RCV, A01RCV};
+
+/**
  * @brief object that handles the creation of s.p.d. input matrices for the
  * Cholesky factorization and the dumping of the matrix to a file at any time
  * in the algorithm.
@@ -68,6 +74,12 @@ public:
     void closeFile();
     void dumpMatrix();
     void dumpSingleTileColumn(TileIndex round);
+
+    // functions to dump the content of a local buffer to a file
+    void dumpLocalBuffer(BufferType1D type, uint32_t iter);
+
+    // debug functionality to overwrite the content of an entire block
+    void overwriteBuffer(BufferType1D type, uint32_t startIdx = 0);
 
 private:
     // private member fields
