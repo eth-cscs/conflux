@@ -48,6 +48,13 @@ class lu_params {
 
         this->v = v;
 
+        // using coll
+        // for large tiles, we cannot afford (due to memory constraints) 
+        // to use MPI_Isend/MPI_Irecv instead of MPI_Put
+        // so we have to use the collectives implementation
+        // which uses no additional memory.
+        this->use_collectives = v > 1024;
+
         int nLocalTilesx = (int)(std::ceil((double)inpM / (v * Px)));
         int nLocalTilesy = (int)(std::ceil((double)inpN / (v * Py)));
 
@@ -378,7 +385,7 @@ public:
     std::vector<T> data;
     costa::grid_layout<T> matrix;
 
-    bool use_collectives = true;
+    bool use_collectives = false;
 
     lu_params() = default;
 
