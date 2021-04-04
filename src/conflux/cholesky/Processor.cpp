@@ -130,6 +130,9 @@ conflux::Processor::~Processor()
     delete A10rcv;
     delete A01rcv;
 
+    // delete reduction buffer
+    delete reductionBuf;
+
     // the processor with rank 0 within its local z-axis communicator (i.e. 
     // the one with pz=0) has to free the communicator at the end of the
     // execution.

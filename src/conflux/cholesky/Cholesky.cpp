@@ -418,7 +418,7 @@ void reduceA11(const conflux::TileIndex k, const MPI_Comm &world)
             std::memcpy(
                 proc->reductionBuf->get(iLocCopy),
                 proc->A11->get(iLocCopy, jLoc),
-                prop->vSquare
+                prop->vSquare * sizeof(double)
             );
         }
         PL();
@@ -442,7 +442,7 @@ void reduceA11(const conflux::TileIndex k, const MPI_Comm &world)
             std::memcpy(
                 proc->A11->get(iLocCopy, jLoc), 
                 proc->reductionBuf->get(iLocCopy),
-                prop->vSquare
+                prop->vSquare * sizeof(double)
             );
         }
         PL();
