@@ -86,6 +86,9 @@ conflux::Processor::Processor(CholeskyProperties *prop)
     this->A10rcv = new TileMatrix(MatrixType::VECTOR, prop->v, prop->l, this->maxIndexA11i);
     this->A01rcv = new TileMatrix(MatrixType::VECTOR, prop->v, prop->l, this->maxIndexA11j);
 
+    // allocate temporary reduction buffer
+    this->reductionBuf = new TileMatrix(MatrixType::VECTOR, prop->v, prop->v, this->maxIndexA11i);
+
     // set the request counters to zero
     this->cntUpdateA10 = 0;
     this->cntScatterA11 = 0;

@@ -45,6 +45,7 @@
 #endif
 
 #include <mpi.h>
+#include <omp.h>
 
 #ifdef __USE_MKL
 #include <mkl.h>
@@ -398,31 +399,54 @@ void reduceA11(const conflux::TileIndex k, const MPI_Comm &world)
     // (k+1) % PY, (k+1) % PZ respectively
     conflux::ProcCoord pyRed = prop->globalToLocal(k+1, k+1).py;
     if (proc->py == pyRed) {
-
-        conflux::ProcRank recvProcessorRank = prop->gridToGlobal(proc->px, proc->py, (k + 1) % prop->PZ);
-
-        // maybe check if this is the correct loop boundary
-        for (conflux::TileIndex iLoc = k / prop->PX; iLoc < proc->maxIndexA11i; ++iLoc) {
-
-            conflux::TileIndices globalIndices = prop->localToGlobal(proc->px, proc->py, iLoc, jLoc);
-            // we dont care about old indices
-            if (globalIndices.i <= k)  continue;
-
-            PE(reduceA11_reduction);
-            // this process actually performs the reduction (and thus in place)
-            if (proc->rank == recvProcessorRank) {
-                MPI_Reduce(MPI_IN_PLACE, proc->A11->get(iLoc, jLoc), prop->vSquare,
-                       MPI_DOUBLE, MPI_SUM, (k+1) % prop->PZ, proc->zAxisComm);//, &req);
-
-            // all other processes only send data    
-            } else {
-                MPI_Reduce(proc->A11->get(iLoc, jLoc), proc->A11->get(iLoc, jLoc), prop->vSquare,
-                       MPI_DOUBLE, MPI_SUM, (k+1) % prop->PZ, proc->zAxisComm);//, &req);
+        // compute the rank that is root of the reduction
+        conflux::ProcRank redRank = prop->gridToGlobal(proc->px, proc->py, (k+1) % prop->PZ);
+        
+        // compute the range of the indices that the iteration is going to be computed over
+        PE(reduceA11_memcpy1);
+        conflux::TileIndex iLoc;
+        for (iLoc = k / prop->PX; iLoc < proc->maxIndexA11i; ++iLoc) {
+            // break as soon as we have found the first index for the reduction
+            if (prop->localToGlobal(proc->px, proc->py, iLoc, jLoc).i > k) {
+                break;
             }
-            PL();
         }
-    }
+        
+        // parallel memcpy from A11 to the reduction buffer
+        #pragma omp parallel for
+        for (conflux::TileIndex iLocCopy = iLoc; iLocCopy < proc->maxIndexA11i; ++iLocCopy) {
+            std::memcpy(
+                proc->reductionBuf->get(iLocCopy),
+                proc->A11->get(iLocCopy, jLoc),
+                prop->vSquare
+            );
+        }
+        PL();
 
+        // carry out the actual reduction
+        PE(reduceA11_reduction);
+        uint32_t numElems = (proc->maxIndexA11i - iLoc) * prop->vSquare;
+        if (proc->rank == redRank) {
+            MPI_Reduce(MPI_IN_PLACE, proc->reductionBuf->get(iLoc), numElems, MPI_DOUBLE,
+                       MPI_SUM, (k+1) % prop->PZ, proc->zAxisComm);
+        } else {
+            MPI_Reduce(proc->reductionBuf->get(iLoc), proc->reductionBuf->get(iLoc), numElems,
+                       MPI_DOUBLE, MPI_SUM, (k+1) % prop->PZ, proc->zAxisComm);
+        }
+        PL();
+
+        // parallel memcpy from the temporary reduction buffer
+        PE(reduceA11_memcpy2);
+        #pragma omp parallel for
+        for (conflux::TileIndex iLocCopy = iLoc; iLocCopy < proc->maxIndexA11i; ++iLocCopy) {
+            std::memcpy(
+                proc->A11->get(iLocCopy, jLoc), 
+                proc->reductionBuf->get(iLocCopy),
+                prop->vSquare
+            );
+        }
+        PL();
+    }
 }
 
 /**

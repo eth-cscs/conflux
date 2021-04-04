@@ -79,6 +79,9 @@ public:
     TileMatrix *A10rcv; //!< contains subtiles (v,l) of A10 to receive
     TileMatrix *A01rcv; //!< contains subtiles (v,l) of A01 to receive
 
+    // reduction temporary buffer
+    TileMatrix *reductionBuf; //!< buffer on which reduction is carried out as a whole
+
     // More specific communicators (e.g. for reduction)
     MPI_Comm zAxisComm; //!< communicator for reduction along z-Axis
 

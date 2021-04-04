@@ -84,6 +84,7 @@ def compare(dim: int) -> float:
     # define space for matrix to be read
     output = np.ndarray(shape = (dim, dim))
     result = np.ndarray(shape = (dim, dim))
+    np.set_printoptions(precision=2)
     
     try:
         # read output matrix (set entries above diagonal to 0)
@@ -91,10 +92,10 @@ def compare(dim: int) -> float:
             for i in range(dim):
                 for j in range(dim):
                     output[i][j] = struct.unpack('<d', f.read(8))[0]
-                    print(output[i][j], end="' ")
+                    print(output[i][j], end=",")
                     if (j > i):
                         output[i][j] = 0
-                    print('')
+                print('')
         # read result matrix (also set entries above diagonal to 0 to ensure
         # interoperability between python and C++ programs.)
         with open('data/input_{}.bin'.format(dim), 'rb+') as f:
@@ -104,6 +105,7 @@ def compare(dim: int) -> float:
                     if (j > i):
                         result[i][j] = 0
         result = np.linalg.cholesky(result)
+        
         norm = np.linalg.norm(output - result)
         print("||output-result|| = {}".format(norm))
         return norm
