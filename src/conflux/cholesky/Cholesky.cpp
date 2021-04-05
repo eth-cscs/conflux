@@ -646,8 +646,10 @@ void conflux::parallelCholesky()
         proc->cntUpdateA10snd = 0;
 
         /************************ (1) CHOLESKY OF A00 ************************/
-        //std::cout << "Rank " << proc->rank << " started cholesky A00 in round " << k << std::endl;
-        choleskyA00(k, world);
+        // we only need to compute the cholesky factorization if 
+        if (proc->inBcastComm) {
+            choleskyA00(k, world);
+        }
 
         // return if this was the last iteration
         if (k == prop->Kappa - 1){
@@ -661,16 +663,13 @@ void conflux::parallelCholesky()
             return;
         }
 
-        /************************ (2) UPDATE A10 *****************************/
+        /******************* (2-3) UPDATE A10, COMPUTE A11 *******************/
         updateA10(k, world);
 
         // dump current tile column in DEBUG mode
         #ifdef DEBUG
         io->dumpSingleTileColumn(k);
         #endif // DEBUG
-
-        /************************ (3) COMPUTE A11 ****************************/
-        //computeA11(k, world);
 
         /************************ (4) REDUCE A11 *****************************/
         reduceA11(k, world);
