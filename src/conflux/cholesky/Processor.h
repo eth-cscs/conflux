@@ -35,7 +35,6 @@
 #ifndef PROCESSOR_H
 #define PROCESSOR_H
 
-
 #include <vector>
 #include <set>
 #include <mpi.h>
@@ -45,6 +44,27 @@
 #include "TileMatrix.h"
 
 namespace conflux {
+
+/**
+ * @brief simple enum class used for checking where a tile belongs
+ */
+enum class TileType {TILE_A10, TILE_A01};
+
+/**
+ * @brief simple struct that stores the flags on whether tiles are ready
+ * for a dgemm call which we can overlap
+ */
+typedef struct TileReady {
+    bool a10; // flag indicating whether A10 rep is ready
+    bool a01; // flag indicating whether A01 rep is ready
+    bool done; // flag indicating whether dgemm was performed
+} TileReady;
+
+typedef struct TileInfo {
+    TileType type;    // type of the tile, i.e. A10 or A01
+    TileIndex idxLoc; // index of the tile in the corresponding rcv buffer
+    double *tilePtr;  // pointer to the data of the tile
+} TileInfo;
     
 /**
  * @brief an instance for a processor storing its properties and all its buffers
@@ -72,12 +92,12 @@ public:
 
     // buffers for this processor
     double *A00;        //!< (v,v) buffer that stores A00 of current iteration
-    TileMatrix *A10;    //!< vector of tiles (v,v) from A10
-    TileMatrix *A11;    //!< matrix of (v,v) tiles from A11
+    TileMatrix<double> *A10;    //!< vector of tiles (v,v) from A10
+    TileMatrix<double> *A11;    //!< matrix of (v,v) tiles from A11
     
     // receive and send buffers (temporary data) for this processor
-    TileMatrix *A10rcv; //!< contains subtiles (v,l) of A10 to receive
-    TileMatrix *A01rcv; //!< contains subtiles (v,l) of A01 to receive
+    TileMatrix<double> *A10rcv; //!< contains subtiles (v,l) of A10 to receive
+    TileMatrix<double> *A01rcv; //!< contains subtiles (v,l) of A01 to receive
 
     // More specific communicators (e.g. for reduction)
     MPI_Comm zAxisComm; //!< communicator for reduction along z-Axis
@@ -85,6 +105,9 @@ public:
     // vectors to store the request objects during an iteration
     std::vector<MPI_Request> reqUpdateA10;  //!< requests during the updateA10 operation
     std::vector<MPI_Request> reqScatterA11; //!< requests during the scatter operation
+    TileMatrix<TileReady> *dgemmReadyFlags; //!< stores whether both operands for dgemm are ready
+    std::vector<TileInfo> tileInfos; //!< stores information on the requests in updateA10
+
 
     // various counters for these requests 
     int cntUpdateA10;  //!< counts the number of requests in update A10 operation

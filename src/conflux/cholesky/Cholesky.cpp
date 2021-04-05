@@ -248,7 +248,11 @@ void updateA10(const conflux::TileIndex k, const MPI_Comm &world)
         MPI_Request req;
         MPI_Irecv(proc->A10rcv->get(iLoc), prop->v * prop->l, MPI_DOUBLE, pSnd, glob.i,
                  world, &req);
-        proc->reqUpdateA10[proc->cntUpdateA10++] = req; 
+        proc->reqUpdateA10[proc->cntUpdateA10++] = req;
+
+        // get index information and store it in the info buffer
+        conflux::TileInfo tmpInf = {conflux::TileType::TILE_A10, iLoc, proc->A10rcv->get(iLoc)};
+        proc->tileInfos.push_back(tmpInf);
         PL();       
     }
 
@@ -268,6 +272,10 @@ void updateA10(const conflux::TileIndex k, const MPI_Comm &world)
         MPI_Irecv(proc->A01rcv->get(jLoc), prop->v * prop->l, MPI_DOUBLE, pSnd, glob.j,
                  world, &req);
         proc->reqUpdateA10[proc->cntUpdateA10++] = req;  
+        
+        // get index information and store it in the requst buffer
+        conflux::TileInfo tmpInf = {conflux::TileType::TILE_A01, jLoc, proc->A01rcv->get(jLoc)};
+        proc->tileInfos.push_back(tmpInf);
         PL();      
     }
 
@@ -324,13 +332,84 @@ void updateA10(const conflux::TileIndex k, const MPI_Comm &world)
         }
     }
 
-    // wait until all the data transfers have been completed
-    // @ TODO: investigate if this wait all is still necessary
-    PE(updateA10_waitall);
-    if (proc->cntUpdateA10 > 0) {
-        MPI_Waitall(proc->cntUpdateA10, &(proc->reqUpdateA10[0]), MPI_STATUSES_IGNORE);
-    }
+    // wait for any request to be completed, and then, if possible, already start with the
+    // computation of one of the dgemms
+    int idx, numGemms;
+    while (true) {
+        // wait for a request to finish, break if the idx is MPI_UNDEFINED
+        MPI_Waitany(proc->cntUpdateA10, proc->reqUpdateA10.data(), &idx, MPI_STATUS_IGNORE);
+        if (idx == MPI_UNDEFINED) {
+            break;
+        }
+        // if we are in here, this means that it is a valid request that was not yet handled
+        conflux::TileInfo info = proc->tileInfos[idx];
+
+        // if the request that finished is for an A10 rep, loop over all tiles in A11 that 
+        // depend on this tile, and update the flags. If a location has both inputs ready,
+        // call dgemm
+        if (info.type == conflux::TileType::TILE_A10){
+            for (conflux::TileIndex jLoc = k / prop->PY; jLoc < proc->maxIndexA11j; ++jLoc) {
+
+                // get the tile and set the A10 flag to true
+                conflux::TileReady *tmp = proc->dgemmReadyFlags->get(info.idxLoc, jLoc);
+                tmp->a10 = true;
+
+                // compute global index and skip tile if at least one index is <= k, or above diagonal
+                conflux::TileIndices glob = prop->localToGlobal(proc->px, proc->py, info.idxLoc, jLoc);
+                if (glob.i <= k || glob.j > glob.i || glob.j <= k) continue;
+
+                if (!tmp->done && tmp->a01) {
+                    PE(computeA11_dgemm)
+                    cblas_dgemm(
+                        CblasRowMajor, CblasNoTrans, CblasTrans,  // DGEMM information
+                        prop->v, prop->v, prop->l,                // information about dimension
+                        -1.0, info.tilePtr, prop->l,              // information about A10 rep
+                        proc->A01rcv->get(jLoc), prop->l,         // information about A01 rep
+                        1.0, proc->A11->get(info.idxLoc, jLoc), prop->v   // information about A11 tile
+                    );
+                    PL();
+                    tmp->done = true;
+                }                  
+            }
+        
+        // otherwise this request concerns an A01 rep. Do the opposite of the above case
+        } else {
+            for (conflux::TileIndex iLoc = k / prop->PX; iLoc < proc->maxIndexA11i; ++iLoc) {
+
+                // get the tile and set the A01 flag to true
+                conflux::TileReady *tmp = proc->dgemmReadyFlags->get(iLoc, info.idxLoc);
+                tmp->a01 = true;
+
+                // compute global index and skip tile if at least one index is <= k, or above diagonal
+                conflux::TileIndices glob = prop->localToGlobal(proc->px, proc->py, iLoc, info.idxLoc);
+                if (glob.i <= k || glob.j > glob.i || glob.j <= k) continue;
+
+                if (!tmp->done && tmp->a10) {
+                    PE(computeA11_dgemm)
+                    cblas_dgemm(
+                        CblasRowMajor, CblasNoTrans, CblasTrans,  // DGEMM information
+                        prop->v, prop->v, prop->l,                // information about dimension
+                        -1.0, proc->A10rcv->get(iLoc), prop->l,   // information about A10 rep
+                        info.tilePtr, prop->l,                    // information about A01 rep
+                        1.0, proc->A11->get(iLoc, info.idxLoc), prop->v   // information about A11 tile
+                    );
+                    PL();
+                    tmp->done = true;
+                }
+            }
+        }
+     }
+
+    // set everything to zero for the next iteration. or simplicity, do the entire buffer
+    PE(computeA11_memset);
+    std::memset(
+        proc->dgemmReadyFlags->get(0,0), 
+        0x00, 
+        sizeof(conflux::TileReady) * proc->maxIndexA11i * proc->maxIndexA11j
+    );
+    proc->tileInfos.clear();
     PL();
+
 }
 
 /**
@@ -584,7 +663,7 @@ void conflux::parallelCholesky()
         #endif // DEBUG
 
         /************************ (3) COMPUTE A11 ****************************/
-        computeA11(k, world);
+        //computeA11(k, world);
 
         /************************ (4) REDUCE A11 *****************************/
         reduceA11(k, world);

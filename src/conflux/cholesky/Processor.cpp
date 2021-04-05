@@ -78,17 +78,25 @@ conflux::Processor::Processor(CholeskyProperties *prop)
 
     // allocate permanent buffers for this processor
     this->A00 = new double[prop->v * prop->v];
-    this->A10 = new TileMatrix(MatrixType::VECTOR, prop->v, prop->v, this->maxIndexA10);
-    this->A11 = new TileMatrix(MatrixType::MATRIX, prop->v, prop->v, this->maxIndexA11i,
+    this->A10 = new TileMatrix<double>(MatrixType::VECTOR, prop->v, prop->v, this->maxIndexA10);
+    this->A11 = new TileMatrix<double>(MatrixType::MATRIX, prop->v, prop->v, this->maxIndexA11i,
                                this->maxIndexA11j);
 
     // allocate temporary receive buffers
-    this->A10rcv = new TileMatrix(MatrixType::VECTOR, prop->v, prop->l, this->maxIndexA11i);
-    this->A01rcv = new TileMatrix(MatrixType::VECTOR, prop->v, prop->l, this->maxIndexA11j);
+    this->A10rcv = new TileMatrix<double>(MatrixType::VECTOR, prop->v, prop->l, this->maxIndexA11i);
+    this->A01rcv = new TileMatrix<double>(MatrixType::VECTOR, prop->v, prop->l, this->maxIndexA11j);
 
-    // set the request counters to zero
+    // set the request counters to zero and initialze the dgemm ready flags
     this->cntUpdateA10 = 0;
     this->cntScatterA11 = 0;
+    this->dgemmReadyFlags = new TileMatrix<TileReady>(MatrixType::MATRIX, 1, 1, this->maxIndexA11i, this->maxIndexA11j);
+    for (TileIndex iLoc = 0; iLoc < this->maxIndexA11i; ++iLoc) {
+        for (TileIndex jLoc = 0; jLoc < this->maxIndexA11j; ++jLoc) {
+            TileReady *tmp = this->dgemmReadyFlags->get(iLoc, jLoc);
+            tmp->a10 = false;
+            tmp->a01 = false; 
+        }
+    }
 
     // compute the upper bounds for the number of requests on sub-tiles
     this->sndBound = this->maxIndexA10 * (prop->PZ * (prop->PX + prop->PY));
@@ -98,6 +106,7 @@ conflux::Processor::Processor(CholeskyProperties *prop)
     // upper bounds, and not exact by any means. It is only important to 
     reqUpdateA10.resize(this->rcvBound);
     reqScatterA11.resize(this->maxIndexA10 + 1);
+    tileInfos.reserve(this->rcvBound);
     
     // create a new communicator for all processors along the same z-axis as
     // the current processor, i.e. processors that share (px,py) coordinates
@@ -109,8 +118,6 @@ conflux::Processor::Processor(CholeskyProperties *prop)
     m_prop = prop;
 
     initializeBroadcastComms();
-
-
 }
 
 /**
@@ -126,6 +133,9 @@ conflux::Processor::~Processor()
     // delete temporary receive buffers
     delete A10rcv;
     delete A01rcv;
+
+    // delete the tile ready matrix
+    delete dgemmReadyFlags;
 
     // the processor with rank 0 within its local z-axis communicator (i.e. 
     // the one with pz=0) has to free the communicator at the end of the
@@ -218,9 +228,12 @@ void conflux::Processor::initializeBroadcastComms()
     this->inBcastComm = m_inCurrentBcastComm[0];
 }
 
-
-
-
+/**
+ * @brief creates a new communicator for broadcasting
+ * @note this function MUST NOT be called from outside the constructor
+ * 
+ * @param broadCastSize the new size of the broadcast (excl. the a00 owners)
+ */
 void conflux::Processor::createNewComm(uint64_t &broadCastSize) {
     TileIndex glob = m_prop->Kappa - 1;
     //if(rank == 0) std::cout << glob << std::endl;
