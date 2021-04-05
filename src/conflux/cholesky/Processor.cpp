@@ -88,6 +88,7 @@ conflux::Processor::Processor(CholeskyProperties *prop)
 
     // set the request counters to zero and initialze the dgemm ready flags
     this->cntUpdateA10 = 0;
+    this->cntUpdateA10snd = 0;
     this->cntScatterA11 = 0;
     this->dgemmReadyFlags = new TileMatrix<TileReady>(MatrixType::MATRIX, 1, 1, this->maxIndexA11i, this->maxIndexA11j);
     for (TileIndex iLoc = 0; iLoc < this->maxIndexA11i; ++iLoc) {
@@ -104,9 +105,10 @@ conflux::Processor::Processor(CholeskyProperties *prop)
 
     // reserve memory for the MPI request vectors. Note that all these sizes are
     // upper bounds, and not exact by any means. It is only important to 
-    reqUpdateA10.resize(this->rcvBound);
-    reqScatterA11.resize(this->maxIndexA10 + 1);
-    tileInfos.reserve(this->rcvBound);
+    this->reqUpdateA10.resize(this->rcvBound);
+    this->reqUpdateA10snd.resize(this->sndBound);
+    this->reqScatterA11.resize(this->maxIndexA10 + 1);
+    this->tileInfos.reserve(this->rcvBound);
     
     // create a new communicator for all processors along the same z-axis as
     // the current processor, i.e. processors that share (px,py) coordinates
@@ -115,7 +117,7 @@ conflux::Processor::Processor(CholeskyProperties *prop)
     MPI_Comm_split(MPI_COMM_WORLD, this->px * prop->PY + this->py, this->pz, &this->zAxisComm);
 
     // set the private pointer to the properties object
-    m_prop = prop;
+    this->m_prop = prop;
 
     initializeBroadcastComms();
 }

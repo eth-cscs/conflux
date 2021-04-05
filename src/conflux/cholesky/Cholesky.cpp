@@ -315,7 +315,9 @@ void updateA10(const conflux::TileIndex k, const MPI_Comm &world)
             for (conflux::ProcCoord pzRcv = 0; pzRcv < prop->PZ; ++pzRcv) {
                 PE(updateA10_sendA10);
                 conflux::ProcRank pRcv = prop->gridToGlobal(tileOwners.px, pyRcv, pzRcv);
-                MPI_Ssend(tile + pzRcv * prop->l, 1, MPI_SUBTILE, pRcv, iGlob, world);
+                MPI_Request req;
+                MPI_Isend(tile + pzRcv * prop->l, 1, MPI_SUBTILE, pRcv, iGlob, world, &req);
+                proc->reqUpdateA10snd[proc->cntUpdateA10snd++] = req;
                 PL();
             }
         }
@@ -326,7 +328,9 @@ void updateA10(const conflux::TileIndex k, const MPI_Comm &world)
             for (conflux::ProcCoord pzRcv = 0; pzRcv < prop->PZ; ++pzRcv) {
                 PE(updateA10_sendA01);
                 conflux::ProcRank pRcv = prop->gridToGlobal(pxRcv, tileOwners.py, pzRcv);
-                MPI_Ssend(tile + pzRcv * prop->l, 1, MPI_SUBTILE, pRcv, iGlob, world);          
+                MPI_Request req;
+                MPI_Isend(tile + pzRcv * prop->l, 1, MPI_SUBTILE, pRcv, iGlob, world, &req);  
+                proc->reqUpdateA10snd[proc->cntUpdateA10snd++] = req;        
                 PL();
             }
         }
@@ -410,6 +414,8 @@ void updateA10(const conflux::TileIndex k, const MPI_Comm &world)
     proc->tileInfos.clear();
     PL();
 
+    // finally, wait for the send requests to complete
+    MPI_Waitall(proc->cntUpdateA10snd, proc->reqUpdateA10snd.data(), MPI_STATUSES_IGNORE);
 }
 
 /**
@@ -637,6 +643,7 @@ void conflux::parallelCholesky()
         // reset the request counters
         proc->cntUpdateA10 = 0;
         proc->cntScatterA11 = 0;
+        proc->cntUpdateA10snd = 0;
 
         /************************ (1) CHOLESKY OF A00 ************************/
         //std::cout << "Rank " << proc->rank << " started cholesky A00 in round " << k << std::endl;

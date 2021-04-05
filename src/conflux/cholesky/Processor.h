@@ -104,14 +104,16 @@ public:
 
     // vectors to store the request objects during an iteration
     std::vector<MPI_Request> reqUpdateA10;  //!< requests during the updateA10 operation
+    std::vector<MPI_Request> reqUpdateA10snd; // !< send requests during updateA10
     std::vector<MPI_Request> reqScatterA11; //!< requests during the scatter operation
     TileMatrix<TileReady> *dgemmReadyFlags; //!< stores whether both operands for dgemm are ready
     std::vector<TileInfo> tileInfos; //!< stores information on the requests in updateA10
 
 
     // various counters for these requests 
-    int cntUpdateA10;  //!< counts the number of requests in update A10 operation
-    int cntScatterA11; //!< counts the number of requests in scatter A11 operation
+    int cntUpdateA10;    //!< counts the number of requests in update A10 operation
+    int cntUpdateA10snd; //!< counts the number of send requests in updateA10
+    int cntScatterA11;   //!< counts the number of requests in scatter A11 operation
 
     // upper bounds for requests in sub-tile handling in update A10
     int sndBound; //!< upper bound for number of requests due to sending subtiles
