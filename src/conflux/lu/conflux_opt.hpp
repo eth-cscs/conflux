@@ -1804,7 +1804,7 @@ std::size_t LU_rep(lu_params<T>& gv,
 
     MPI_Barrier(lu_comm);
     auto t2 = std::chrono::high_resolution_clock::now();
-    auto duration = std::chrono::duration_cast<std::chrono::microseconds>(t2 - t1).count();
+    auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(t2 - t1).count();
 
     /*
     if (rank == print_rank) {
