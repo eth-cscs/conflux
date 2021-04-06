@@ -32,6 +32,12 @@ std::tuple<int, int, int> conflux::p2X(MPI_Comm comm3D, int rank) {
     return {coords[0], coords[1], coords[2]};
 }
 
+std::tuple<int, int> conflux::p2X_2d(MPI_Comm comm2D, int rank) {
+    int coords[] = {-1, -1};
+    MPI_Cart_coords(comm2D, rank, 2, coords);
+    return {coords[0], coords[1]};
+}
+
 int conflux::X2p(MPI_Comm comm3D, int pi, int pj, int pk) {
     int coords[] = {pi, pj, pk};
     int rank;
@@ -68,11 +74,11 @@ int conflux::butterfly_pair(int pi, int r, int Px) {
 std::pair<
     std::unordered_map<int, std::vector<int>>,
     std::unordered_map<int, std::vector<int>>>
-conflux::g2lnoTile(std::vector<int> &grows, int Px, int v) {
+conflux::g2lnoTile(std::vector<int> &grows, int size, int Px, int v) {
     std::unordered_map<int, std::vector<int>> lrows;
     std::unordered_map<int, std::vector<int>> loffsets;
 
-    for (unsigned i = 0u; i < grows.size(); ++i) {
+    for (unsigned i = 0u; i < size; ++i) {
         auto growi = grows[i];
         // # we are in the global tile:
         auto gT = growi / v;

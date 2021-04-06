@@ -48,6 +48,13 @@ class lu_params {
 
         this->v = v;
 
+        // using coll
+        // for large tiles, we cannot afford (due to memory constraints) 
+        // to use MPI_Isend/MPI_Irecv instead of MPI_Put
+        // so we have to use the collectives implementation
+        // which uses no additional memory.
+        this->use_collectives = v > 1024;
+
         int nLocalTilesx = (int)(std::ceil((double)inpM / (v * Px)));
         int nLocalTilesy = (int)(std::ceil((double)inpN / (v * Py)));
 
@@ -75,9 +82,17 @@ class lu_params {
         int keep_dims_jk[] = {0, 1, 1};
         MPI_Cart_sub(lu_comm, keep_dims_jk, &jk_comm);
 
+        // ik communicator
+        int keep_dims_ik[] = {1, 0, 1};
+        MPI_Cart_sub(lu_comm, keep_dims_ik, &ik_comm);
+
         // k-communicator
         int keep_dims_k[] = {0, 0, 1};
         MPI_Cart_sub(lu_comm, keep_dims_k, &k_comm);
+
+        // i-communicator
+        int keep_dims_i[] = {1, 0, 0};
+        MPI_Cart_sub(lu_comm, keep_dims_i, &i_comm);
 
         // ij-comm // used only for verification
         int keep_dims_ij[] = {1, 1, 0};
@@ -140,7 +155,6 @@ public:
                 4, 2, 900, 3, 7, 3, 4, 5,   //pi=0, pj=1 owner of 900
                 1, 3, 8, 3, 5, 5, 1, 3,
                 3, 9, 2, 7, 9, 2, 3, 9};
-            full_matrix = generator;
 
             // define lambda function for initialization
             int lld = N;
@@ -161,8 +175,6 @@ public:
                 2.2,  2.0,  1.8,  1.6,  1.4,  1.2,  1.0,  1.2,  1.4,  
                 2.4,  2.2,  2.0,  1.8,  1.6,  1.4,  1.2,  1.0,  1.2,  
                 2.6,  2.4,  2.2,  2.0,  1.8,  1.6,  1.4,  1.2,  1.0  };
-
-            full_matrix = generator;
 
             // define lambda function for initialization
             int lld = N;
@@ -191,8 +203,6 @@ public:
                 7, 6, 7, 8, 2, 2, 4, 6, 6, 8, 3, 6, 5, 2, 6, 5,
                 4, 5, 1, 5, 3, 7, 4, 4, 7, 5, 8, 2, 4, 7, 1, 7,
                 8, 3, 2, 4, 3, 8, 1, 6, 9, 6, 3, 6, 4, 8, 7, 8};
-
-            full_matrix = generator;
 
             // define lambda function for initialization
             int lld = N;
@@ -225,8 +235,6 @@ public:
                 8, 4, 9, 2, 8, 6, 9, 9, 3, 7, 7, 7, 8, 7, 2, 8, 1, 2, 3, 4,
                 3, 5, 4, 8, 9, 2, 7, 1, 2, 2, 7, 9, 8, 2, 1, 3, 3, 4, 5, 6,
                 6, 4, 1, 5, 3, 7, 9, 1, 1, 3, 2, 9, 9, 5, 1, 9, 7, 8, 9, 1};
-
-            full_matrix = generator;
 
             // define lambda function for initialization
             int lld = N;
@@ -295,8 +303,6 @@ public:
                                 // 2.0, 5.0, 7.0, 2.0, 4.0, 7.0, 6.0, 1.0, 0.0, 4.0, 1.0, 0.0, 6.0, 7.0, 3.0, 7.0, 0.0, 6.0, 3.0, 7.0, 8.0, 2.0, 4.0, 1.0, 8.0, 7.0, 0.0,
                                 // 0.0, 3.0, 5.0, 5.0, 6.0, 5.0, 2.0, 6.0, 9.0, 0.0, 0.0, 9.0, 5.0, 0.0, 2.0, 8.0, 3.0, 8.0, 0.0, 6.0, 9.0, 8.0, 4.0, 6.0, 5.0, 1.0, 9.0};
 
-            full_matrix = generator;
-
             // define lambda function for initialization
             int lld = N;
             auto f = [&generator, &lld](int i, int j) -> T {
@@ -338,7 +344,6 @@ public:
                                   5.0, 7.0, 9.0, 9.0, 6.0, 4.0, 6.0, 7.0, 1.0, 4.0, 8.0, 3.0, 5.0, 5.0, 1.0, 3.0, 3.0, 0.0, 0.0, 8.0, 2.0, 5.0, 2.0, 9.0, 2.0, 4.0, 8.0, 8.0, 1.0, 8.0, 4.0, 4.0,
                                   1.0, 0.0, 7.0, 4.0, 4.0, 7.0, 7.0, 1.0, 6.0, 1.0, 7.0, 6.0, 9.0, 0.0, 0.0, 2.0, 2.0, 2.0, 9.0, 2.0, 2.0, 7.0, 4.0, 7.0, 0.0, 4.0, 0.0, 0.0, 9.0, 1.0, 5.0, 4.0,
                                   3.0, 8.0, 0.0, 6.0, 9.0, 5.0, 9.0, 0.0, 4.0, 2.0, 7.0, 9.0, 2.0, 6.0, 1.0, 5.0, 4.0, 9.0, 6.0, 3.0, 1.0, 1.0, 2.0, 2.0, 8.0, 5.0, 5.0, 1.0, 8.0, 7.0, 0.0, 7.0};
-            full_matrix = generator;
             // define lambda function for initialization
             int lld = N;
             auto f = [&generator, &lld](int i, int j) -> T {
@@ -363,8 +368,10 @@ public:
 
     MPI_Comm lu_comm = MPI_COMM_NULL;
     MPI_Comm jk_comm = MPI_COMM_NULL;
+    MPI_Comm ik_comm = MPI_COMM_NULL;
     MPI_Comm ij_comm = MPI_COMM_NULL;
     MPI_Comm k_comm = MPI_COMM_NULL;
+    MPI_Comm i_comm = MPI_COMM_NULL;
     int rank;
     int pi, pj, pk;
     int M, N, P;
@@ -378,7 +385,7 @@ public:
     std::vector<T> data;
     costa::grid_layout<T> matrix;
 
-    std::vector<T> full_matrix; // used only for validation
+    bool use_collectives = false;
 
     lu_params() = default;
 
@@ -397,12 +404,16 @@ public:
     }
 
     void free_comms() {
+        if (i_comm != MPI_COMM_NULL)
+            MPI_Comm_free(&i_comm);
         if (k_comm != MPI_COMM_NULL)
             MPI_Comm_free(&k_comm);
         if (ij_comm != MPI_COMM_NULL)
             MPI_Comm_free(&ij_comm);
         if (jk_comm != MPI_COMM_NULL)
             MPI_Comm_free(&jk_comm);
+        if (ik_comm != MPI_COMM_NULL)
+            MPI_Comm_free(&ik_comm);
         if (lu_comm != MPI_COMM_NULL)
             MPI_Comm_free(&lu_comm);
     }
