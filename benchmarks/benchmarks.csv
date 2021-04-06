@@ -1906,8 +1906,8 @@ cholesky,psychol,131072,131072,64,8x8x1,bytes,strong,1182202855424,256
 cholesky,psychol,131072,131072,128,8x8x2,bytes,strong,1266026020864,256
 cholesky,psychol,131072,131072,256,8x8x4,bytes,strong,1429914255360,256
 cholesky,psychol,131072,131072,256,16x16x1,bytes,strong,2320847339520,256
-cholesky,psychol,131072,131072,512,8x8x8,bytes,strong,,256
-cholesky,psychol,131072,131072,512,16x16x2,bytes,strong,,256
+cholesky,psychol,131072,131072,512,8x8x8,bytes,strong,1742658338816,256
+cholesky,psychol,131072,131072,512,16x16x2,bytes,strong,2425679773696,256
 cholesky,psychol,131072,131072,1024,32x32x1,bytes,strong,,256
 cholesky,psychol,131072,131072,1024,16x16x4,bytes,strong,,256
 cholesky,psychol,2048,1024,4,2x2x1,bytes,weak,84410368,256
