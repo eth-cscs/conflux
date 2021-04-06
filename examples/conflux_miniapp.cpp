@@ -58,6 +58,9 @@ int main(int argc, char *argv[]) {
         ("r,n_rep",
             "number of repetitions.", 
             cxxopts::value<int>()->default_value("2"))
+        ("t,type",
+            "weak or strong scaling",
+             cxxopts::value<std::string>()->default_value("other"))
         ("h,help", "Print usage.")
     ;
     // for some reason, a recent version of cxxopts
@@ -69,12 +72,14 @@ int main(int argc, char *argv[]) {
         return 0;
     }
 
-    auto M = result["M"].as<int>();
+    // auto M = result["M"].as<int>();
     auto N = result["N"].as<int>();
+    auto M = N;
     auto b = result["block_size"].as<int>();
     auto n_rep = result["n_rep"].as<int>();
     auto print_limit = result["print_limit"].as<int>();
     auto p_grid = result["p_grid"].as<std::vector<int>>();
+    auto type = result["type"].as<std::string>(); // type of experiment
 
     bool print_full_matrices = std::max(M, N) < print_limit;
 
@@ -111,15 +116,36 @@ int main(int argc, char *argv[]) {
 
     // pivots
     std::vector<int> pivotIndsBuff(params.M);
-    for (int i = 0; i < n_rep; ++i) {
+    auto N_base = type=="weak" ? N/params.Px : N;
+    for (int i = 0; i < n_rep+1; ++i) {
         PC();
         // reinitialize the matrix
         params.InitMatrix();
-        conflux::LU_rep<double>(
-                               params,
-                               C_buff.data(),
-                               pivotIndsBuff.data()
-                               );
+        std::size_t time = 
+            conflux::LU_rep<double>(
+                                   params,
+                                   C_buff.data(),
+                                   pivotIndsBuff.data()
+                                   );
+        // if not a warm-up run
+        if (i > 0 && rank == 0) {
+            std::string grid = std::to_string(params.Px) 
+                             + "x" 
+                             + std::to_string(params.Py) 
+                             + "x" 
+                             + std::to_string(params.Pz);
+
+            std::cout << "_result_ lu,conflux,"
+                      << params.N << "," 
+                      << N_base << "," 
+                      << params.P << "," 
+                      << grid 
+                      << ",time,"
+                      << type << "," 
+                      << time << "," 
+                      << params.v 
+                      << std::endl;
+        }
     }
 
 #ifdef CONFLUX_WITH_VALIDATION
