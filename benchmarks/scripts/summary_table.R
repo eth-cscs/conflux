@@ -10,11 +10,11 @@ library(gmodels)
 
 #-------------------------SETUP----------------------#
 #path = "C:/gk_pliki/uczelnia/doktorat/performance_modelling/repo/conflux_cpp_2/results/conflux/benchmarks" #getwd()
-path = "/mnt/c/gk_pliki/uczelnia/doktorat/performance_modelling/repo/conflux_cpp_2/results/conflux/benchmarks" #getwd()
-exp_filename = "benchmarks.csv"
+#path = "/mnt/c/gk_pliki/uczelnia/doktorat/performance_modelling/repo/conflux_cpp_2/results/conflux/benchmarks" #getwd()
+exp_filename = "/../benchmarks.csv"
 #exp_filename = "rawData_old.csv"
-setwd(path)
-source(paste(path, "scripts/SPCL_Stats.R", sep="/"))
+#setwd(path)
+#source(paste(path, "scripts/SPCL_Stats.R", sep="/"))
 scalings = c("$2^{17}$", "$2^{14}$", '$2^{13} \\cdot \\sqrt{P}$')
 matrixShapes = c("lu","cholesky")
 variantPlots = c("commVol", "time")
@@ -44,8 +44,9 @@ DataColumnsHash['flops'] = c("P", "algLabel", "flops")
 
 
 #--------------------PREPROCESSING-----------------------------#
-
-rawData = read.table(exp_filename, header = T, sep = ',',fill = TRUE, stringsAsFactors=FALSE)
+source("SPCL_Stats.R")
+rawData <- read.csv(file=paste(getwd(), exp_filename, sep = ""), sep=",", stringsAsFactors=FALSE, header=TRUE)
+#rawData = read.table(exp_filename, header = T, sep = ',',fill = TRUE, stringsAsFactors=FALSE)
 
 rawData <- rawData[!(rawData$N == 16384 & rawData$P > 500),]
 
@@ -277,5 +278,5 @@ for (i1 in 1:length(matrixShapes)) {
   }    
 }
 
-write.csv(statSummary, file = "statSummary.csv")
+write.csv(statSummary, file = "../statSummary.csv")
 write.csv(rawData, file = "res.csv")

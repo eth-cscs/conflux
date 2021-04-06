@@ -7,7 +7,8 @@ library(hash)
 
 
 exp_name = ""
-exp_filename = "benchmarks.csv"
+#exp_filename = "benchmarks.csv"
+exp_filename = "/../benchmarks.csv"
 scalings = c("weak", "strong")
 
 variantPlots = c("time", "FLOPS", "bytes")
@@ -38,14 +39,24 @@ annotCoord = list()
 
 #exp_filename = paste(exp_name,'.csv',sep="")
 #setwd("C:/gk_pliki/uczelnia/doktorat/performance_modelling/repo/conflux_cpp_2/results/conflux/benchmarks/scripts")
-setwd("/mnt/c/gk_pliki/uczelnia/doktorat/performance_modelling/repo/conflux_cpp_2/results/conflux/benchmarks/scripts")
-setwd(paste("../",exp_name,sep =""))
-source(paste(getwd(), "/scripts/SPCL_Stats.R", sep=""))
+#setwd("/mnt/c/gk_pliki/uczelnia/doktorat/performance_modelling/repo/conflux_cpp_2/results/conflux/benchmarks/scripts")
+#setwd(paste("../",exp_name,sep =""))
+#source(paste(getwd(), "/scripts/SPCL_Stats.R", sep=""))
+source("SPCL_Stats.R")
 
 
 # prepare the data 
-rawData <- read.csv(file=exp_filename, sep=",", stringsAsFactors=FALSE, header=TRUE)
+#rawData <- read.csv(file=exp_filename, sep=",", stringsAsFactors=FALSE, header=TRUE)
+rawData <- read.csv(file=paste(getwd(), exp_filename, sep = ""), sep=",", stringsAsFactors=FALSE, header=TRUE)
 
+
+# !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+# !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+# !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+# TODO - FILTERING SMALL PEAK FLOPS RESULTS!
+# !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+# !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+# !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 rawData <- rawData[!(rawData$N == 16384 & rawData$P > 500),]
 
 
@@ -114,7 +125,7 @@ for (variant in variantPlots){
         if (nrow(df3) == 0)
           next
         
-        if (alg == "Cholesky" & scaling == "weak" & variant == "FLOPS"){
+        if (alg == "Cholesky" & scaling == "strong" & size == 16384 & variant == "FLOPS"){
           a = 1
         }
         
@@ -217,7 +228,7 @@ for (variant in variantPlots){
         #                 plot_data[plot_data$p == annotPointX1[4] & plot_data$algorithm == 'ScaLAPACK [14] ',]$time[1])
         # 
         # plot the timers
-        pdf(file=paste(name, ".pdf", sep=""),
+        pdf(file=paste("../", name, ".pdf", sep=""),
             width = w, height = w*aspRatio)
         
         limit = yscale
