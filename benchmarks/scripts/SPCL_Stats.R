@@ -37,7 +37,6 @@ find_optimal_blocks <- function(rawData) {
 
 
 
-
 find_statistics <- function(filtered_data) {
   time_data <- filtered_data[filtered_data$unit == "time",]
   
@@ -56,6 +55,15 @@ find_statistics <- function(filtered_data) {
 
 str_cmp <- function(str1, str2){
   str_detect(str1, regex(str2, ignore_case = TRUE))
+}
+
+
+filtr <- function(rawData, cols, vals){
+  data <- rawData
+  for (i in 1:length(cols)){
+    data <- data[data[[cols[i]]] == vals[i],]
+  }
+  data
 }
 
 
