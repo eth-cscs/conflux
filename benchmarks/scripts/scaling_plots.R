@@ -159,7 +159,7 @@ for (variant in variantPlots){
           annotPointX2 = c(9,8,11,32)
           annotPointY2 = c(7,33,16,27)
           #limit = ylim(0, 90)
-        } else if (alg == 'Cholesky' & scaling == 'weak' & size == 8192 & variant == 'bytes' ){
+        } else if (alg == 'Cholesky' & scaling == 'weak' & size == 8192 & variant == 'FLOPS' ){
           annotx = c(180,200,4048,4396)
           annoty = c(22,5,77,36)
           annotPointX1 = c(128,433,4096,2048)
