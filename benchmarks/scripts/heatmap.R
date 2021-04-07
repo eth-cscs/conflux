@@ -54,7 +54,9 @@ rawData <- read.csv(file=paste(getwd(), exp_filename, sep = ""), sep=",", string
 
 rawData[rawData$N_base == "-" & rawData$type == "strong",]$N_base <- rawData[rawData$N_base == "-" & rawData$type == "strong",]$N
 rawData[rawData$N_base == "-" & rawData$type == "weak",]$N_base <- rawData[rawData$N_base == "-" & rawData$type == "weak",]$N / sqrt(rawData[rawData$N_base == "-" & rawData$type == "weak",]$P)
-rawData[str_cmp(rawData$library, "capital"),]$library = "candmc"
+if (nrow(rawData[str_cmp("capital", rawData$library),]) > 0) {
+  rawData[str_cmp(rawData$library, "capital"),]$library = "candmc"
+}
 if (nrow(rawData[str_cmp("psychol", rawData$library),]) > 0) {
   rawData[str_cmp("psychol", rawData$library),]$library = "conflux"
 }
@@ -179,7 +181,7 @@ heatmap_data <- dataSummary2[importantCols]
 # --------------------- FILTERING THRESHOLD (in percent): ---------- #
 threshold = 3
 min_speedup = 0.75
-max_speedup = 3
+max_speedup = 3.6
 
 data <- heatmap_data[heatmap_data$mShape == "lu" & heatmap_data$peak_flops > threshold,]
 pdf(file= "../lu_heatmap_labelled_filtered.pdf",  width = 6, height = 5)
@@ -309,6 +311,7 @@ p <- ggplot(data=data, aes(x=as.factor(P), y=as.factor(N),
   theme_bw(20) + theme(legend.position = "none") +
   theme(axis.text.x = element_text(angle = 90))
 print(p)
+ggsave(file="../lu_heatmap_labelled_filtered_compacted.svg", plot=p, width=w, height=h)
 dev.off()
 #}
 
