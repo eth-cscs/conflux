@@ -1,4 +1,6 @@
+
 library(plyr)
+library(dplyr)
 library(reshape2)
 library(ggplot2)
 # library(dplyr)
@@ -14,7 +16,7 @@ rawData[rawData$N_base == "-" & rawData$type == "strong",]$N_base <- rawData[raw
 rawData[rawData$N_base == "-" & rawData$type == "weak",]$N_base <- rawData[rawData$N_base == "-" & rawData$type == "weak",]$N / sqrt(rawData[rawData$N_base == "-" & rawData$type == "weak",]$P)
 rawData[str_cmp(rawData$library, "capital"),]$library = "candmc"
 if (nrow(rawData[str_cmp("psychol", rawData$library),]) > 0) {
-  rawData[str_cmp("psychol", rawData$library),]$library = "COnfLUX"
+  rawData[str_cmp("psychol", rawData$library),]$library = "conflux"
 }
 
 rawData$case = paste(rawData$algorithm, rawData$N_base,sep ="_")
@@ -31,9 +33,8 @@ min_df <- rbind(min_df, min_df_slate)
 
 df_comm <- min_df[min_df$unit == "bytes",]
 
-algos = c("lu")
+algos = c("lu", "cholesky")
 
-detach("package:dplyr",unload = TRUE)
 
 for (alg in algos) {
   df <- df_comm[df_comm$algorithm == alg,]
@@ -43,7 +44,8 @@ for (alg in algos) {
   df <- reshape(df, idvar = c("N", "P"), timevar = "library", direction = "wide")
   df$datasrc <- "measured"    #lets add a column to seperate model and meassurements
   #df <- rename(df, c("totMB.mkl"="MKL", "totMB.candmc"="CANDMC", "totMB.candmc_3D"="CANDMC 3D","totMB.slate"="SLATE", "totMB.conflux"="COnfLUX", "totMB.COnfLUX_3D"="COnfLUX 3D")) #rename the columns to algorithms
-  df <- rename(df, c("totMB.mkl"="MKL", "totMB.candmc"="CANDMC", "totMB.slate"="SLATE", "totMB.conflux"="COnfLUX")) #rename the columns to algorithms
+  
+  df <- plyr::rename(df, c("totMB.mkl"="MKL", "totMB.candmc"="CANDMC", "totMB.slate"="SLATE", "totMB.conflux"="COnfLUX")) #rename the columns to algorithms
     
   
   
@@ -82,21 +84,21 @@ for (alg in algos) {
   
   Nf$COnfLUXRatio = Nf$best_other / Nf$COnfLUX
   
-  for (p in unique(Nf$P)) {
-    for (n in unique(Nf$N)) {
-      print(n)
-      if ( length(df[(df$N==n) & (df$P == p),]$P) == 1) {
-        Nf[(Nf$P == p) & (Nf$N == n), ]$datasrc <- "measured"
-        Nf[(Nf$P == p) & (Nf$N == n), ]$MKL <- df[(df$N==n) & (df$P == p),]$MKL
-        Nf[(Nf$P == p) & (Nf$N == n), ]$COnfLUX <- df[(df$N==n) & (df$P == p),]$COnfLUX
-        Nf[(Nf$P == p) & (Nf$N == n), ]$CANDMC <- df[(df$N==n) & (df$P == p),]$CANDMC
-        Nf[(Nf$P == p) & (Nf$N == n), ]$SLATE <- df[(df$N==n) & (df$P == p),]$SLATE
-        Nf[(Nf$P == p) & (Nf$N == n), ]$COnfLUXRatio <- df[(df$N==n) & (df$P == p),]$COnfLUXRatio
-        Nf[(Nf$P == p) & (Nf$N == n), ]$best_other <- df[(df$N==n) & (df$P == p),]$best_other
-        Nf[(Nf$P == p) & (Nf$N == n), ]$best_other_name <- df[(df$N==n) & (df$P == p),]$best_other_name
-      }
-    }
-  }
+  # for (p in unique(Nf$P)) {
+  #   for (n in unique(Nf$N)) {
+  #     print(n)
+  #     if ( length(df[(df$N==n) & (df$P == p),]$P) == 1) {
+  #       Nf[(Nf$P == p) & (Nf$N == n), ]$datasrc <- "measured"
+  #       Nf[(Nf$P == p) & (Nf$N == n), ]$MKL <- df[(df$N==n) & (df$P == p),]$MKL
+  #       Nf[(Nf$P == p) & (Nf$N == n), ]$COnfLUX <- df[(df$N==n) & (df$P == p),]$COnfLUX
+  #       Nf[(Nf$P == p) & (Nf$N == n), ]$CANDMC <- df[(df$N==n) & (df$P == p),]$CANDMC
+  #       Nf[(Nf$P == p) & (Nf$N == n), ]$SLATE <- df[(df$N==n) & (df$P == p),]$SLATE
+  #       Nf[(Nf$P == p) & (Nf$N == n), ]$COnfLUXRatio <- df[(df$N==n) & (df$P == p),]$COnfLUXRatio
+  #       Nf[(Nf$P == p) & (Nf$N == n), ]$best_other <- df[(df$N==n) & (df$P == p),]$best_other
+  #       Nf[(Nf$P == p) & (Nf$N == n), ]$best_other_name <- df[(df$N==n) & (df$P == p),]$best_other_name
+  #     }
+  #   }
+  # }
   
   
   # if we have both, measured and model data for a P,N combination, throw away the model
@@ -105,7 +107,9 @@ for (alg in algos) {
   data = Nf #Nf[Nf$P > 60,]
   
   pdf(file= paste("../heatmap_labeled_commvol_", alg , ".pdf", sep = ''),  width = w, height = w*aspRatio)
-  ggplot(data=data, aes(x=as.factor(P), y=as.factor(N), 
+  print(data)
+  print(paste("../heatmap_labeled_commvol_", alg , ".pdf", sep = ''))
+  p = ggplot(data=data, aes(x=as.factor(P), y=as.factor(N), 
                         fill=COnfLUXRatio, 
                         label=paste(round(COnfLUXRatio,1), 
                                     best_other_name, sep="\n") )) +
@@ -118,10 +122,11 @@ for (alg in algos) {
     scale_fill_gradient("", low = "orange", high = "green") +
     theme_bw(20) + theme(legend.position = "none") +
     theme(axis.text.x = element_text(angle = 90))
+  print(p)
   dev.off()
   
   pdf(file= paste("../heatmap_commvol_", alg , ".pdf", sep = ''),  width = w, height = w*aspRatio)
-  ggplot(data=data, aes(x=as.factor(P), y=as.factor(N), 
+  p <- ggplot(data=data, aes(x=as.factor(P), y=as.factor(N), 
                         fill=COnfLUXRatio, 
                         label=paste(best_other_name))) +
     geom_tile() +
@@ -132,5 +137,6 @@ for (alg in algos) {
     scale_fill_gradient("", low = "orange", high = "green") +
     theme_bw(20) + theme(legend.position = "none") +
     theme(axis.text.x = element_text(angle = 90))
+  print(p)
   dev.off()
 }

@@ -3,6 +3,7 @@ library(ggrepel)
 library(reshape2)
 library(plyr)
 library(hash)
+library(forcats)
 #library("reshape2")
 
 
@@ -21,10 +22,10 @@ sizes[["strong"]] <- sizes_strong
 sizes[["weak"]] <- sizes_weak
 
 libraries_chol = c("MKL [cite]", "SLATE [cite]", "CAPITAL [cite]", "PsyChol (this work)")
-libraries_LU = c("MKL [cite]", "SLATE [cite]", "CANDMC [cite]", "CONFLUX (this work)")
+libraries_LU = c("MKL [cite]", "SLATE [cite]", "CANDMC [cite]", "COnfLUX (this work)")
 libraries <- hash()
-libraries[["LU"]] <- libraries_chol
-libraries[["Cholesky"]] <- libraries_LU
+libraries[["LU"]] <- libraries_LU
+libraries[["Cholesky"]] <- libraries_chol
 #annotl = c("CARMA [21]","CTF [49]","COSMA (this work)", "ScaLAPACK [14]")
 #varPlot = "FLOPS"
 
@@ -37,17 +38,20 @@ annotCoord = list()
 #annotCoordX[["square_memory_p1_time"]] = 
 
 
-#exp_filename = paste(exp_name,'.csv',sep="")
-#setwd("C:/gk_pliki/uczelnia/doktorat/performance_modelling/repo/conflux_cpp_2/results/conflux/benchmarks/scripts")
-#setwd("/mnt/c/gk_pliki/uczelnia/doktorat/performance_modelling/repo/conflux_cpp_2/results/conflux/benchmarks/scripts")
-#setwd(paste("../",exp_name,sep =""))
-#source(paste(getwd(), "/scripts/SPCL_Stats.R", sep=""))
 source("SPCL_Stats.R")
 
 
 # prepare the data 
 #rawData <- read.csv(file=exp_filename, sep=",", stringsAsFactors=FALSE, header=TRUE)
 rawData <- read.csv(file=paste(getwd(), exp_filename, sep = ""), sep=",", stringsAsFactors=FALSE, header=TRUE)
+
+
+rawData[str_cmp("conflux", rawData$library),]$library = "COnfLUX (this work)"
+rawData[str_cmp("mkl", rawData$library),]$library = "MKL [cite]"
+rawData[str_cmp("slate", rawData$library),]$library = "SLATE [cite]"
+rawData[str_cmp("candmc", rawData$library),]$library = "CANDMC [cite]"
+rawData[str_cmp("psychol", rawData$library),]$library = "PsyChol (this work)"
+rawData[str_cmp("capital", rawData$library),]$library = "CAPITAL [cite]"
 
 
 # !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -63,43 +67,6 @@ rawData <- rawData[!(rawData$N == 16384 & rawData$P > 500),]
 rawData[rawData$N_base == "-" & rawData$type == "strong",]$N_base <- rawData[rawData$N_base == "-" & rawData$type == "strong",]$N
 rawData[rawData$N_base == "-" & rawData$type == "weak",]$N_base <- rawData[rawData$N_base == "-" & rawData$type == "weak",]$N / sqrt(rawData[rawData$N_base == "-" & rawData$type == "weak",]$P)
 
-
-# # --------------------------------
-# 
-# rawData[rawData$blocksize == "", ]$blocksize = 1
-# time_data <- rawData[rawData$unit == "time",]
-# time_data <- time_data[complete.cases(time_data),]
-# comm_data <- rawData[rawData$unit == "bytes",]
-# comm_data <- comm_data[complete.cases(comm_data),]
-# fastest_blocks <- as.data.frame(time_data %>% group_by(algorithm, library, N, N_base, P) %>% summarise_each(list(min), value))
-# comm_min_blocks <- as.data.frame(comm_data %>% group_by(algorithm, library, N, N_base, P) %>% summarise_each(list(min), value))
-# rows_to_remove = c()
-# 
-# for (row in 1:nrow(time_data)) {
-#   cur_blocksize = time_data[row, "blocksize"]
-#   cur_p = time_data[row, "P"]
-#   cur_n = time_data[row, "N"]
-#   cur_n_base = time_data[row, "N_base"]
-#   cur_lib = time_data[row, "library"]
-#   cur_val = time_data[row, "value"]
-#   cur_alg = time_data[row, "algorithm"]
-#   all_values = time_data[time_data$algorithm == cur_alg & time_data$library == cur_lib & time_data$N == cur_n & time_data$N_base == cur_n_base & time_data$P == cur_p & time_data$blocksize == cur_blocksize,]$value
-#   best_block_value = fastest_blocks[fastest_blocks$algorithm == cur_alg & fastest_blocks$library == cur_lib & fastest_blocks$N == cur_n & fastest_blocks$N_base == cur_n_base  &fastest_blocks$P == cur_p, ]$value
-#   
-#   smallest_com_vol = comm_min_blocks[comm_min_blocks$algorithm == cur_alg & comm_min_blocks$library == cur_lib & comm_min_blocks$N == cur_n & comm_min_blocks$N_base == cur_n_base  & comm_min_blocks$P == cur_p, ]$value
-#   if (!identical(smallest_com_vol, numeric(0))){
-#     time_data[row, "V"] = smallest_com_vol / cur_p * 1e-6
-#   }
-#   if (min(all_values) != best_block_value | cur_val > 1.3 * best_block_value){
-#     rows_to_remove <- c(rows_to_remove, row)
-#     if (cur_alg == "cholesky" & cur_lib == "psychol" & cur_p == 4 & cur_n == 16384){
-#       a = 1
-#     }
-#   }
-# }
-# filtered_time_data = time_data[-rows_to_remove, ]
-# 
-# # --------------------------------
 
 
 filtered_time_data <- find_optimal_blocks(rawData)
@@ -118,14 +85,15 @@ for (variant in variantPlots){
     df2 <- df1[str_cmp(df1$algorithm, alg),]
     for (scaling in scalings){
       print(scaling)
+      df2_5 <- df2[str_cmp(df2$type, scaling),]
       for (size in sizes[[scaling]]){
         print(size)
-        df3 <- df2[df2$N_base == size, ]
+        df3 <- df2_5[df2_5$N_base == size, ]
         
         if (nrow(df3) == 0)
           next
         
-        if (alg == "Cholesky" & scaling == "strong" & size == 16384 & variant == "FLOPS"){
+        if (alg == "Cholesky" & scaling == "weak" & size == 8192 & variant == "FLOPS"){
           a = 1
         }
         
@@ -170,63 +138,69 @@ for (variant in variantPlots){
         w = 10
         textSize = 30
         pointSize = 5
+        # 
+        # if (alg == 'LU' && size > 4000) {
+        #   a = 1
+        # }
         
-        # if (size == 'square' && variant == 'strong') {
-        #   annotx = c(9000,712,1524,256)
-        #   annoty = c(50,5,70,20)
-        #   annotPointX1 = c(4096,1024,512,128)
-        #   
-        #   annotPointX2 = c(7000,800,700,150)
-        #   annotPointY2 = c(47,8,67,23)
-        #   limit = ylim(0, 90)
-        # } else if (size == 'square' && variant == 'memory_p1')  {
-        #     annotx = c(200,200,8000,3100)
-        #     annoty = c(15,35,86,50)
-        #     annotPointX1 = c(256,468,2196,2048)
-        #     annotPointX2 = c(200,335,3500,2500)
-        #     annotPointY2 = c(18,35,83,47)
-        # } else if (size == 'square' && variant == 'memory_p2')  {
-        #   annotx = c(180,200,4048,4396)
-        #   annoty = c(22,5,77,36)
-        #   annotPointX1 = c(128,433,4096,2048)
-        #   
-        #   annotPointX2 = c(150,335,3500,3050)
-        #   annotPointY2 = c(26,5,73,32)
-        #   
-        # }
-        # else if (size == 'tall' && variant == 'strong')  {
-        #   annotx = c(4096,5300,5300,14000)
-        #   annoty = c(10,52,65,5)
-        #   annotPointX1 = c(4096,7236,3348,11988)
-        #   
-        #   annotPointX2 = c(4096,6500,4000,11988)
-        #   annotPointY2 = c(13,50,68,7)
-        # }
-        # else if (size == 'tall' && variant == 'memory_p1')  {
-        #   annotx = c(512,200,506,1224)
-        #   annoty = c(42,5,74,32)
-        #   annotPointX1 = c(1024,256,512,1024)
-        #   
-        #   annotPointX2 = c(900,200,400,900)
-        #   annotPointY2 = c(45,8,70,28)
-        # }
-        # else if (size == 'tall' && variant == 'memory_p2')  {
-        #   annotx = c(306,200,2024,800)
-        #   annoty = c(35,5,55,24)
-        #   annotPointX1 = c(128,256,1024,468)
-        #   
-        #   annotPointX2 = c(150,200,1200,600)
-        #   annotPointY2 = c(35,8,52,22)
-        # }
-        # else {
-        #   next
-        # }
-        # 
-        # annotPointY1 = c(plot_data[plot_data$p == annotPointX1[1] & plot_data$algorithm == 'CARMA [21] ',]$time[1],
-        #                 plot_data[plot_data$p == annotPointX1[2] & plot_data$algorithm == 'CTF [45] ',]$time[1],
-        #                 plot_data[plot_data$p == annotPointX1[3] & plot_data$algorithm == 'COSMA (this work) ',]$time[1],
-        #                 plot_data[plot_data$p == annotPointX1[4] & plot_data$algorithm == 'ScaLAPACK [14] ',]$time[1])
-        # 
+        if (alg == 'LU' && scaling == 'weak') {
+          annotx = c(9,8,48,128)
+          annoty = c(12,30,25,40)
+          annotPointX1 = c(64,16,64,64)
+
+          annotPointX2 = c(18,10,40,120)
+          annotPointY2 = c(12,27,24,37)
+          limit = ylim(0, 90)
+        } else if (alg == 'LU' & scaling == 'strong' & size == 16384 ) {
+          annotx = c(6,12,20,45)
+          annoty = c(5,35,16,30)
+          annotPointX1 = c(16,4,8,16)
+          
+          annotPointX2 = c(9,8,11,32)
+          annotPointY2 = c(7,33,16,27)
+          #limit = ylim(0, 90)
+        } else if (alg == 'Cholesky' & scaling == 'weak' & size == 8192 & variant == 'bytes' ){
+          annotx = c(180,200,4048,4396)
+          annoty = c(22,5,77,36)
+          annotPointX1 = c(128,433,4096,2048)
+
+          annotPointX2 = c(150,335,3500,3050)
+          annotPointY2 = c(26,5,73,32)
+
+        }
+        else if (size == 'tall' && variant == 'strong')  {
+          annotx = c(10,5300,5300,14000)
+          annoty = c(10,52,65,5)
+          annotPointX1 = c(4,16,64,15)
+
+          annotPointX2 = c(4096,6500,4000,11988)
+          annotPointY2 = c(13,50,68,7)
+        }
+        else if (size == 'tall' && variant == 'memory_p1')  {
+          annotx = c(512,200,506,1224)
+          annoty = c(42,5,74,32)
+          annotPointX1 = c(1024,256,512,1024)
+
+          annotPointX2 = c(900,200,400,900)
+          annotPointY2 = c(45,8,70,28)
+        }
+        else if (size == 'tall' && variant == 'memory_p2')  {
+          annotx = c(306,200,2024,800)
+          annoty = c(35,5,55,24)
+          annotPointX1 = c(128,256,1024,468)
+
+          annotPointX2 = c(150,200,1200,600)
+          annotPointY2 = c(35,8,52,22)
+        }
+        else {
+          next
+        }
+
+        annotPointY1 = c(plot_data[plot_data$P == annotPointX1[1] & plot_data$library == 'MKL [cite]',]$value[1],
+                        plot_data[plot_data$P == annotPointX1[2] & plot_data$library == 'SLATE [cite]',]$value[1],
+                        plot_data[plot_data$P == annotPointX1[3] & plot_data$library == 'CANDMC [cite]',]$value[1],
+                        plot_data[plot_data$P == annotPointX1[4] & plot_data$library == 'COnfLUX (this work)',]$value[1])
+
         # plot the timers
         pdf(file=paste("../", name, ".pdf", sep=""),
             width = w, height = w*aspRatio)
@@ -235,7 +209,7 @@ for (variant in variantPlots){
         shapes = scale_shape_manual(values=c(15, 16, 17,18))
         shapesColors = scale_color_manual(values = c("#F8766D", "#7CAE00","#00BFC4",  "#C77CFF"))
         
-        data3 = ddply(plot_data, ~ library+P, summarize, min=min(value), max=max(value), mean=median(value))
+        data3 = ddply(plot_data, ~ library+P+N, summarize, min=min(value), max=max(value), mean=median(value))
         
         scaling_label = paste(scaling, "scaling", sep = " ")
         if (variant == "strong"){
@@ -245,6 +219,9 @@ for (variant in variantPlots){
           size_label = paste("N = ", size, " * sqrt(P)", sep = " ")
         }
         
+        
+        data3 <- data3 %>% mutate(library = fct_relevel(library, 
+                                            libraries[[alg]]))
         
         if (variant == "bytes") {
           p <- ggplot(mapping=aes(x=P, y=min, fill=library, color=library, shape=library)) +
@@ -259,40 +236,40 @@ for (variant in variantPlots){
             yscale +
             ggtitle(paste(alg, scaling, size, sep=" ")) +
             ylab(ylabel) +
-            theme_bw(27)
-          # annotate("text", x = annotx, y = annoty, label = annotl, size=textSize/3) +
-          # annotate("segment", x = annotPointX2[1], xend = annotPointX1[1],
-          #          y = annotPointY2[1], yend = annotPointY1[1]) +
-          # annotate("segment", x = annotPointX2[2], xend = annotPointX1[2],
-          #          y = annotPointY2[2], yend = annotPointY1[2]) +
-          # annotate("segment", x = annotPointX2[3], xend = annotPointX1[3],
-          #          y = annotPointY2[3], yend = annotPointY1[3]) +
-          # annotate("segment", x = annotPointX2[4], xend = annotPointX1[4],
-          #          y = annotPointY2[4], yend = annotPointY1[4]) 
+            theme_bw(27) +
+          annotate("text", x = annotx, y = annoty, label = libraries[[alg]], size=textSize/3) +
+          annotate("segment", x = annotPointX2[1], xend = annotPointX1[1],
+                   y = annotPointY2[1], yend = annotPointY1[1]) +
+          annotate("segment", x = annotPointX2[2], xend = annotPointX1[2],
+                   y = annotPointY2[2], yend = annotPointY1[2]) +
+          annotate("segment", x = annotPointX2[3], xend = annotPointX1[3],
+                   y = annotPointY2[3], yend = annotPointY1[3]) +
+          annotate("segment", x = annotPointX2[4], xend = annotPointX1[4],
+                   y = annotPointY2[4], yend = annotPointY1[4])
         }
         else {
           p <- ggplot(mapping=aes(x=P, y=mean, ymin=min, ymax=max, fill=library, color=library, shape=library)) +
-            geom_ribbon(data=data3[data3$library != "CARMA [21] ",], alpha=0.3, show.legend=TRUE)+
+            geom_ribbon(data=data3[data3$library != "CARMA [21] ",], alpha=0.3, show.legend=FALSE)+
             shapes + 
-            geom_point(data=data3, size = 4, show.legend=TRUE) +
-            geom_errorbar(data=data3[data3$library == "CARMA [21] ",], width=0.1, size=1, show.legend=TRUE) +
+            geom_point(data=data3, size = 4, show.legend=FALSE) +
+            geom_errorbar(data=data3[data3$library == "CARMA [21] ",], width=0.1, size=1, show.legend=FALSE) +
             scale_x_continuous(trans='log2',labels=function(x) format(x, big.mark = ",", scientific = FALSE)) +
             #scale_x_log2("# of cores", breaks=c(128, 256, 512, 1024, 2048, 4096, 8192, 16384)) +
             # scale_y_log10(ylabel) +
             xlab("# of nodes") +
             yscale +
-            ggtitle(paste(alg, scaling, size, sep=" ")) +
+          #  ggtitle(paste(alg, scaling, size, sep=" ")) +
             ylab(ylabel) +
-            theme_bw(27)
-            # annotate("text", x = annotx, y = annoty, label = annotl, size=textSize/3) +
-            # annotate("segment", x = annotPointX2[1], xend = annotPointX1[1],
-            #          y = annotPointY2[1], yend = annotPointY1[1]) +
-            # annotate("segment", x = annotPointX2[2], xend = annotPointX1[2],
-            #          y = annotPointY2[2], yend = annotPointY1[2]) +
-            # annotate("segment", x = annotPointX2[3], xend = annotPointX1[3],
-            #          y = annotPointY2[3], yend = annotPointY1[3]) +
-            # annotate("segment", x = annotPointX2[4], xend = annotPointX1[4],
-            #          y = annotPointY2[4], yend = annotPointY1[4]) 
+            theme_bw(27) +
+            annotate("text", x = annotx, y = annoty, label = libraries[[alg]], size=textSize/3) +
+            annotate("segment", x = annotPointX2[1], xend = annotPointX1[1],
+                     y = annotPointY2[1], yend = annotPointY1[1]) +
+            annotate("segment", x = annotPointX2[2], xend = annotPointX1[2],
+                     y = annotPointY2[2], yend = annotPointY1[2]) +
+            annotate("segment", x = annotPointX2[3], xend = annotPointX1[3],
+                     y = annotPointY2[3], yend = annotPointY1[3]) +
+            annotate("segment", x = annotPointX2[4], xend = annotPointX1[4],
+                     y = annotPointY2[4], yend = annotPointY1[4])
         }
         print(p)
         

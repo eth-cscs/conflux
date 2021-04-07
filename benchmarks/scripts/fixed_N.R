@@ -19,16 +19,17 @@ if (nrow(rawData[str_cmp("psychol", rawData$library),]) > 0) {
 }
 
 rawData$case = paste(rawData$algorithm, rawData$N_base,sep ="_")
-min_df <- as.data.frame(rawData %>% group_by(algorithm, library, N, P, unit, grid) %>% summarise_each(list(min), value))
-min_df[str_detect(min_df$grid, regex("\\dx\\dx4")) | str_detect(min_df$grid, regex("\\dx\\dx8")),]$library <- 
-  paste(min_df[str_detect(min_df$grid, regex("\\dx\\dx4")) | str_detect(min_df$grid, regex("\\dx\\dx8")),]$library, "3D", sep = "_")
+# min_df <- as.data.frame(rawData %>% group_by(algorithm, library, N, P, unit, grid) %>% summarise_each(list(min), value))
+# min_df[str_detect(min_df$grid, regex("\\dx\\dx4")) | str_detect(min_df$grid, regex("\\dx\\dx8")),]$library <- 
+#   paste(min_df[str_detect(min_df$grid, regex("\\dx\\dx4")) | str_detect(min_df$grid, regex("\\dx\\dx8")),]$library, "3D", sep = "_")
 
+min_df <- as.data.frame(rawData %>% group_by(algorithm, library, N, P, unit) %>% summarise_each(list(min), value))
 
 
 df_comm <- min_df[min_df$unit == "bytes",]
 
 algos = c("cholesky", "lu")
-
+detach("package:dplyr",unload = TRUE)
 for (alg in algos) {
   df <- df_comm[df_comm$algorithm == alg,]
   
@@ -36,7 +37,8 @@ for (alg in algos) {
   df <- df[c("library", "N", "P", "totMB")]
   df <- reshape(df, idvar = c("N", "P"), timevar = "library", direction = "wide")
   df$datasrc <- "measured"    #lets add a column to seperate model and meassurements
-  df <- rename(df, c("totMB.mkl"="MKL", "totMB.candmc"="CANDMC", "totMB.candmc_3D"="CANDMC 3D","totMB.slate"="SLATE", "totMB.conflux"="COnfLUX", "totMB.conflux_3D"="COnfLUX 3D")) #rename the columns to algorithms
+  # df <- rename(df, c("totMB.mkl"="MKL", "totMB.candmc"="CANDMC", "totMB.candmc_3D"="CANDMC 3D","totMB.slate"="SLATE", "totMB.conflux"="COnfLUX", "totMB.conflux_3D"="COnfLUX 3D")) #rename the columns to algorithms
+  df <- rename(df, c("totMB.mkl"="MKL", "totMB.candmc"="CANDMC", "totMB.slate"="SLATE", "totMB.conflux"="COnfLUX")) #rename the columns to algorithms
   
   
   extrap_range <- 2^(2:19)
@@ -71,7 +73,7 @@ for (alg in algos) {
   machines$speedup = machines$LibSci / machines$Conflux
   print(machines)
   
-  ggplot(data=data, aes(x=P, y=comm_vol/effP, shape=as.factor(algo), color=as.factor(algo))) +
+  p <- ggplot(data=data, aes(x=P, y=comm_vol/effP, shape=as.factor(algo), color=as.factor(algo))) +
     geom_line(data=data[data$datasrc=="modelled",]) +
     geom_jitter(data=data[data$datasrc=="measured",], size=3, height=0.04) +
     scale_x_log10("Number of available Nodes", labels=scales::comma) +
@@ -83,6 +85,6 @@ for (alg in algos) {
     geom_vline(data=machines, aes(xintercept=nodes), linetype="dashed") +
     theme_bw(20) +
     theme(legend.position = c(0.9, 0.8), legend.title = element_blank())
-  
+  print(p)
   dev.off()
 }

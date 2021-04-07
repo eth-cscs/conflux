@@ -178,24 +178,46 @@ heatmap_data <- dataSummary2[importantCols]
 
 # --------------------- FILTERING THRESHOLD (in percent): ---------- #
 threshold = 3
+min_speedup = 0.75
+max_speedup = 3
 
 data <- heatmap_data[heatmap_data$mShape == "lu" & heatmap_data$peak_flops > threshold,]
-pdf(file= "../lu_heatmap_labelled_filtered.pdf",  width = w, height = w*aspRatio)
-ggplot(data=data, aes(x=as.factor(P), y=as.factor(N),
+pdf(file= "../lu_heatmap_labelled_filtered.pdf",  width = 6, height = 5)
+p <- ggplot(data=data, aes(x=as.factor(P), y=as.factor(N),
                       fill=maxSpeedup,
-                      label=paste(round(maxSpeedup,1),
-                                  secondBestAlg, sep="\n") )) +
+                      label=(paste((round(maxSpeedup,1)),
+                                  secondBestAlg, sep="\n") ))) +
   geom_tile(aes(fill = maxSpeedup)) +
   geom_text() +
   # geom_text(fontface="bold") +
   # geom_point(aes(shape=as.factor(datasrc)), size=3) +
-  scale_x_discrete("Available Nodes") +
-  scale_y_discrete("Matrix Size [N]") +
-  scale_fill_gradient("", low = "orange", high = "green") +
+  scale_x_discrete("Number of nodes") +
+  scale_y_discrete("Matrix size") +
+  scale_fill_gradient("", low = "orange", high = "green", limits = c(min_speedup,max_speedup)) +
   theme_bw(20) + theme(legend.position = "none") +
   theme(axis.text.x = element_text(angle = 90))
+print(p)
 dev.off()
 
+pdf(file= "../lu_heatmap_labelled_performance.pdf",  width = 4, height = 4)
+p <- ggplot(data=data, aes(x=as.factor(P), y=as.factor(N),
+                           fill=peak_flops,
+                           label=(paste(round(peak_flops,0), "%", sep ="") ))) +
+  geom_tile(aes(fill = peak_flops)) +
+  geom_text() +
+  # geom_text(fontface="bold") +
+  # geom_point(aes(shape=as.factor(datasrc)), size=3) +
+  scale_x_discrete("Number of nodes") +
+  scale_y_discrete("Matrix size") +
+  scale_fill_gradient("", low = "orange", high = "green") +
+  theme_bw(20) +
+  theme(legend.position = "none",
+        axis.title.y = element_blank(),
+        axis.text.y = element_blank(),
+        axis.ticks.y = element_blank()) +
+  theme(axis.text.x = element_text(angle = 90))
+print(p)
+dev.off()
 
 
 heatmap_data[heatmap_data$secondBestAlg == "candmc",]$secondBestAlg <- "C"
@@ -205,37 +227,39 @@ heatmap_data[heatmap_data$secondBestAlg == "slate",]$secondBestAlg <- "S"
 #for (alg in matrixShapes){
 data <- heatmap_data[heatmap_data$mShape == "cholesky",]
 pdf(file= "../cholesky_heatmap_labelled.pdf",  width = w, height = w*aspRatio)
-ggplot(data=data, aes(x=as.factor(P), y=as.factor(N), 
+p <- ggplot(data=data, aes(x=as.factor(P), y=as.factor(N), 
                       fill=maxSpeedup, 
                       label=paste(round(maxSpeedup,1), 
                                   secondBestAlg, sep="\n") )) +
   geom_tile(aes(fill = maxSpeedup)) +
   geom_text() +
   # geom_text(fontface="bold") +
-  # geom_point(aes(shape=as.factor(datasrc)), size=3) +
+  # geom_point(aes(shape=as.factor(datasrc)), size=max_speedup) +
   scale_x_discrete("Number of nodes") +
-  scale_y_discrete("Matrix Size") +
-  scale_fill_gradient("", low = "orange", high = "green") +
+  scale_y_discrete("Matrix size") +
+  scale_fill_gradient("", low = "orange", high = "green", limits = c(min_speedup,max_speedup)) +
   theme_bw(20) + theme(legend.position = "none") +
   theme(axis.text.x = element_text(angle = 90))
+print(p)
 dev.off()
 
 
 data <- heatmap_data[heatmap_data$mShape == "lu",]
 pdf(file= "../lu_heatmap_labelled.pdf",  width = w, height = w*aspRatio)
-ggplot(data=data, aes(x=as.factor(P), y=as.factor(N),
+p <- ggplot(data=data, aes(x=as.factor(P), y=as.factor(N),
                       fill=maxSpeedup,
                       label=paste(round(maxSpeedup,1),
                                   secondBestAlg, sep="\n") )) +
   geom_tile(aes(fill = maxSpeedup)) +
   geom_text() +
   # geom_text(fontface="bold") +
-  # geom_point(aes(shape=as.factor(datasrc)), size=3) +
-  scale_x_discrete("Available Nodes") +
-  scale_y_discrete("Matrix Size [N]") +
-  scale_fill_gradient("", low = "orange", high = "green") +
+  # geom_point(aes(shape=as.factor(datasrc)), size=max_speedup) +
+  scale_x_discrete("Number of nodes") +
+  scale_y_discrete("Matrix size") +
+  scale_fill_gradient("", low = "orange", high = "green", limits = c(min_speedup,max_speedup)) +
   theme_bw(20) + theme(legend.position = "none") +
   theme(axis.text.x = element_text(angle = 90))
+print(p)
 dev.off()
 
 
@@ -246,23 +270,24 @@ w = 4
 
 data <- heatmap_data[heatmap_data$mShape == "cholesky" & heatmap_data$peak_flops > threshold,]
 pdf(file= "../cholesky_heatmap_labelled_filtered_compacted.pdf",  width = w, height = w*aspRatio)
-ggplot(data=data, aes(x=as.factor(P), y=as.factor(N),
+p <- ggplot(data=data, aes(x=as.factor(P), y=as.factor(N),
                       fill=maxSpeedup,
                       label=paste(round(maxSpeedup,1),
                                   secondBestAlg, sep="\n") )) +
   geom_tile(aes(fill = maxSpeedup)) +
   geom_text() +
   # geom_text(fontface="bold") +
-  # geom_point(aes(shape=as.factor(datasrc)), size=3) +
-  scale_x_discrete("# of nodes") +
-  scale_y_discrete("Matrix Size [N]") +
-  scale_fill_gradient("", low = "orange", high = "green") +
+  # geom_point(aes(shape=as.factor(datasrc)), size=max_speedup) +
+  scale_x_discrete("Number of nodes") +
+  scale_y_discrete("Matrix size") +
+  scale_fill_gradient("", low = "orange", high = "green", limits = c(min_speedup,max_speedup)) +
   theme_bw(20) + 
   theme(legend.position = "none",
         axis.title.y = element_blank(),
         axis.text.y = element_blank(),
         axis.ticks.y = element_blank()) +
   theme(axis.text.x = element_text(angle = 90))
+print(p)
 dev.off()
 
 h = 4
@@ -270,19 +295,20 @@ w = 4.8
 
 data <- heatmap_data[heatmap_data$mShape == "lu" & heatmap_data$peak_flops > threshold,]
 pdf(file= "../lu_heatmap_labelled_filtered_compacted.pdf",  width = w, height = h)
-ggplot(data=data, aes(x=as.factor(P), y=as.factor(N),
+p <- ggplot(data=data, aes(x=as.factor(P), y=as.factor(N),
                       fill=maxSpeedup,
                       label=paste(round(maxSpeedup,1),
                                   secondBestAlg, sep="\n") )) +
   geom_tile(aes(fill = maxSpeedup)) +
   geom_text() +
   # geom_text(fontface="bold") +
-  # geom_point(aes(shape=as.factor(datasrc)), size=3) +
-  scale_x_discrete("Available Nodes") +
-  scale_y_discrete("Matrix Size [N]") +
-  scale_fill_gradient("", low = "orange", high = "green") +
+  # geom_point(aes(shape=as.factor(datasrc)), size=max_speedup) +
+  scale_x_discrete("Number of nodes") +
+  scale_y_discrete("Matrix size") +
+  scale_fill_gradient("", low = "orange", high = "green", limits = c(0.75,max_speedup)) +
   theme_bw(20) + theme(legend.position = "none") +
   theme(axis.text.x = element_text(angle = 90))
+print(p)
 dev.off()
 #}
 
