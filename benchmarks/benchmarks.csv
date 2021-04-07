@@ -2061,11 +2061,11 @@ cholesky,psychol,262144,262144,256,16x16x1,time,other,102389,512,bcast
 cholesky,psychol,262144,262144,256,16x16x1,time,other,99166,512,bcast
 cholesky,psychol,262144,262144,256,16x16x1,time,other,98687,512,bcast
 cholesky,psychol,262144,262144,256,16x16x1,time,other,99204,512,bcast
-cholesky,psychol,65536,65536,512,16x16x2,time,other,,,
-cholesky,psychol,65536,65536,512,16x16x2,time,other,,,
-cholesky,psychol,65536,65536,512,16x16x2,time,other,,,
-cholesky,psychol,65536,65536,512,16x16x2,time,other,,,
-cholesky,psychol,65536,65536,512,16x16x2,time,other,,,
+cholesky,psychol,65536,65536,512,16x16x2,time,other,4396,256,bcast
+cholesky,psychol,65536,65536,512,16x16x2,time,other,4412,256,bcast
+cholesky,psychol,65536,65536,512,16x16x2,time,other,4414,256,bcast
+cholesky,psychol,65536,65536,512,16x16x2,time,other,4419,256,bcast
+cholesky,psychol,65536,65536,512,16x16x2,time,other,4427,256,bcast
 cholesky,psychol,262144,262144,512,16x16x2,time,other,65279,512,bcast
 cholesky,psychol,262144,262144,512,16x16x2,time,other,65424,512,bcast
 cholesky,psychol,262144,262144,512,16x16x2,time,other,66828,512,bcast
