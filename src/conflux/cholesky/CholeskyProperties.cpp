@@ -83,9 +83,9 @@ conflux::CholeskyProperties::CholeskyProperties(ProcRank numProc, uint32_t dim, 
         throw CholeskyException(CholeskyException::errorCode::InvalidGridSize);
     }
 
-    if (xGrid != yGrid) {
-        throw CholeskyException(CholeskyException::errorCode::UnmatchingXYSizes);
-    }
+    //if (xGrid != yGrid) {
+     //   throw CholeskyException(CholeskyException::errorCode::UnmatchingXYSizes);
+    //}
 
     if (tileSize % zGrid != 0) {
         throw CholeskyException(CholeskyException::errorCode::TilesNotDivisibleByZ);
@@ -130,7 +130,7 @@ conflux::CholeskyProperties::~CholeskyProperties()
  */ 
 conflux::ProcRank conflux::CholeskyProperties::gridToGlobal(ProcCoord px, ProcCoord py, ProcCoord pz)
 {
-    return px + py * this->PY + pz * this->PXY;
+    return px + py * this->PX + pz * this->PXY;
 }
 
 /**
@@ -142,7 +142,7 @@ conflux::ProcRank conflux::CholeskyProperties::gridToGlobal(ProcCoord px, ProcCo
  */
 conflux::ProcRank conflux::CholeskyProperties::gridToGlobal(GridProc grid)
 {
-    return grid.px + grid.py * this->PY + grid.pz * this->PXY;
+    return grid.px + grid.py * this->PX + grid.pz * this->PXY;
 }
 
 /**
@@ -157,8 +157,8 @@ conflux::GridProc conflux::CholeskyProperties::globalToGrid(ProcRank p)
 {
     ProcCoord pz = p / this->PXY;
     p -= pz * this->PXY;
-    ProcCoord py = p / this->PY;
-    ProcCoord px = p % this->PY;
+    ProcCoord py = p / this->PX;
+    ProcCoord px = p % this->PX;
     return GridProc{px, py, pz};
 }
 
