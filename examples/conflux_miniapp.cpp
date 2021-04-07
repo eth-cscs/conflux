@@ -116,7 +116,8 @@ int main(int argc, char *argv[]) {
 
     // pivots
     std::vector<int> pivotIndsBuff(params.M);
-    auto N_base = type=="weak" ? N/params.Px : N;
+    int sqrtP = (int) std::sqrt(params.P);
+    auto N_base = type=="weak" ? params.N/sqrtP : params.N;
     for (int i = 0; i < n_rep+1; ++i) {
         PC();
         // reinitialize the matrix
