@@ -2071,3 +2071,8 @@ cholesky,psychol,262144,262144,512,16x16x2,time,other,65424,512,bcast
 cholesky,psychol,262144,262144,512,16x16x2,time,other,66828,512,bcast
 cholesky,psychol,262144,262144,512,16x16x2,time,other,65284,512,bcast
 cholesky,psychol,262144,262144,512,16x16x2,time,other,65726,512,bcast
+cholesky,psychol,262144,262144,256,8x8x4,time,other,116552,1024,bcast
+cholesky,psychol,262144,262144,256,8x8x4,time,other,116407,1024,bcast
+cholesky,psychol,262144,262144,256,8x8x4,time,other,117054,1024,bcast
+cholesky,psychol,262144,262144,256,8x8x4,time,other,117522,1024,bcast
+cholesky,psychol,262144,262144,256,8x8x4,time,other,116510,1024,bcast
