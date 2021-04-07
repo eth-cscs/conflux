@@ -23,7 +23,7 @@ scalings = c("$2^{17}$", "$2^{14}$", '$2^{13} \\cdot \\sqrt{P}$')
 matrixShapes = c("lu","cholesky")
 variantPlots = c("commVol", "time")
 algorithms = c("conflux","mkl","slate","candmc")
-annotl = c("COnfLUX/PsyChol (this work) ", "MKL [cite] ","SLATE [cite] ","CANDMC/CAPITAL [cite] ")
+annotl = c("COnfLUX/ConfCHOX (this work) ", "MKL [cite] ","SLATE [cite] ","CANDMC/CAPITAL [cite] ")
 importantCols = c("algorithm","N_base","library", "P","N","value","unit") #, "V","commVolModel","commModelRatio")
 
 results <- data.frame(matrix(ncol = 5, nrow = 0))
@@ -191,7 +191,7 @@ p <- ggplot(data=data, aes(x=as.factor(P), y=as.factor(N),
                                   secondBestAlg, sep="\n") ))) +
   geom_tile(aes(fill = maxSpeedup)) +
   geom_text() +
-  # geom_text(fontface="bold") +
+  geom_text(fontface="bold") +
   # geom_point(aes(shape=as.factor(datasrc)), size=3) +
   scale_x_discrete("Number of nodes") +
   scale_y_discrete("Matrix size") +
@@ -207,7 +207,7 @@ p <- ggplot(data=data, aes(x=as.factor(P), y=as.factor(N),
                            label=(paste(round(peak_flops,0), "%", sep ="") ))) +
   geom_tile(aes(fill = peak_flops)) +
   geom_text() +
-  # geom_text(fontface="bold") +
+  geom_text(fontface="bold") +
   # geom_point(aes(shape=as.factor(datasrc)), size=3) +
   scale_x_discrete("Number of nodes") +
   scale_y_discrete("Matrix size") +
@@ -219,6 +219,7 @@ p <- ggplot(data=data, aes(x=as.factor(P), y=as.factor(N),
         axis.ticks.y = element_blank()) +
   theme(axis.text.x = element_text(angle = 90))
 print(p)
+ggsave(file="../lu_heatmap_labelled_performance.svg", plot=p, width = 4, height = 4)
 dev.off()
 
 
@@ -290,6 +291,7 @@ p <- ggplot(data=data, aes(x=as.factor(P), y=as.factor(N),
         axis.ticks.y = element_blank()) +
   theme(axis.text.x = element_text(angle = 90))
 print(p)
+ggsave(file="../cholesky_heatmap_labelled_filtered_compacted.svg", plot=p, width=w, height=h)
 dev.off()
 
 h = 4
@@ -298,12 +300,14 @@ w = 4.8
 data <- heatmap_data[heatmap_data$mShape == "lu" & heatmap_data$peak_flops > threshold,]
 pdf(file= "../lu_heatmap_labelled_filtered_compacted.pdf",  width = w, height = h)
 p <- ggplot(data=data, aes(x=as.factor(P), y=as.factor(N),
-                      fill=maxSpeedup,
-                      label=paste(round(maxSpeedup,1),
-                                  secondBestAlg, sep="\n") )) +
+                      fill=maxSpeedup
+                      # label=paste(round(maxSpeedup,1),
+                      #             secondBestAlg, sep="\n") )
+            )) +
   geom_tile(aes(fill = maxSpeedup)) +
-  geom_text() +
-  # geom_text(fontface="bold") +
+  geom_text(aes(label = paste(round(maxSpeedup,1), "x", sep = "")), position = position_nudge(y=0.2)) +
+  geom_text(aes(label = paste("\n", secondBestAlg, sep = ""), fontface = "bold"), position = position_nudge(y=0.05)) +
+  #geom_text(fontface="bold") +
   # geom_point(aes(shape=as.factor(datasrc)), size=max_speedup) +
   scale_x_discrete("Number of nodes") +
   scale_y_discrete("Matrix size") +

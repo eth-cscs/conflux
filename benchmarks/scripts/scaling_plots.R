@@ -21,7 +21,7 @@ sizes <- hash()
 sizes[["strong"]] <- sizes_strong
 sizes[["weak"]] <- sizes_weak
 
-libraries_chol = c("MKL [cite]", "SLATE [cite]", "CAPITAL [cite]", "PsyChol (this work)")
+libraries_chol = c("MKL [cite]", "SLATE [cite]", "CAPITAL [cite]", "COnfCHOX (this work)")
 libraries_LU = c("MKL [cite]", "SLATE [cite]", "CANDMC [cite]", "COnfLUX (this work)")
 libraries <- hash()
 libraries[["LU"]] <- libraries_LU
@@ -50,7 +50,7 @@ rawData[str_cmp("conflux", rawData$library),]$library = "COnfLUX (this work)"
 rawData[str_cmp("mkl", rawData$library),]$library = "MKL [cite]"
 rawData[str_cmp("slate", rawData$library),]$library = "SLATE [cite]"
 rawData[str_cmp("candmc", rawData$library),]$library = "CANDMC [cite]"
-rawData[str_cmp("psychol", rawData$library),]$library = "PsyChol (this work)"
+rawData[str_cmp("psychol", rawData$library),]$library = "COnfCHOX (this work)"
 rawData[str_cmp("capital", rawData$library),]$library = "CAPITAL [cite]"
 
 
@@ -160,29 +160,30 @@ for (variant in variantPlots){
           annotPointY2 = c(7,33,16,27)
           #limit = ylim(0, 90)
         } else if (alg == 'Cholesky' & scaling == 'weak' & size == 8192 & variant == 'FLOPS' ){
-          annotx = c(180,200,4048,4396)
-          annoty = c(22,5,77,36)
-          annotPointX1 = c(128,433,4096,2048)
+          annotx = c(64,8,9,256)
+          annoty = c(20,25,14,36)
+          annotPointX1 = c(64,16,8,64)
 
-          annotPointX2 = c(150,335,3500,3050)
-          annotPointY2 = c(26,5,73,32)
+          annotPointX2 = c(100,10,6,128)
+          annotPointY2 = c(18,27,12,34)
 
         }
-        else if (size == 'tall' && variant == 'strong')  {
-          annotx = c(10,5300,5300,14000)
-          annoty = c(10,52,65,5)
-          annotPointX1 = c(4,16,64,15)
+        else if (alg == 'Cholesky' & scaling == 'strong' & size == 131072 & variant == 'FLOPS' ){
+          annotx = c(38,512,128,230)
+          annoty = c(26,31,22,56)
+          annotPointX1 = c(16,512,512,64)
 
-          annotPointX2 = c(4096,6500,4000,11988)
-          annotPointY2 = c(13,50,68,7)
+          annotPointX2 = c(23,490,256,120)
+          annotPointY2 = c(25,28,21,53)
         }
-        else if (size == 'tall' && variant == 'memory_p1')  {
-          annotx = c(512,200,506,1224)
-          annoty = c(42,5,74,32)
-          annotPointX1 = c(1024,256,512,1024)
+        else if (alg == 'Cholesky' & scaling == 'strong' & size == 16384 & variant == 'FLOPS' ){
+          annotPointX1 = c(8,16,64,4)
+          
+          annotx = c(6,40,36,26)
+          annoty = c(3,25,3,45)
 
-          annotPointX2 = c(900,200,400,900)
-          annotPointY2 = c(45,8,70,28)
+          annotPointX2 = c(6,28,50,9)
+          annotPointY2 = c(5,22,5,45)
         }
         else if (size == 'tall' && variant == 'memory_p2')  {
           annotx = c(306,200,2024,800)
@@ -198,8 +199,8 @@ for (variant in variantPlots){
 
         annotPointY1 = c(plot_data[plot_data$P == annotPointX1[1] & plot_data$library == 'MKL [cite]',]$value[1],
                         plot_data[plot_data$P == annotPointX1[2] & plot_data$library == 'SLATE [cite]',]$value[1],
-                        plot_data[plot_data$P == annotPointX1[3] & plot_data$library == 'CANDMC [cite]',]$value[1],
-                        plot_data[plot_data$P == annotPointX1[4] & plot_data$library == 'COnfLUX (this work)',]$value[1])
+                        plot_data[plot_data$P == annotPointX1[3] & (plot_data$library == 'CANDMC [cite]' | plot_data$library == 'CAPITAL [cite]'),]$value[1],
+                        plot_data[plot_data$P == annotPointX1[4] & (plot_data$library == 'COnfLUX (this work)' | plot_data$library == 'COnfCHOX (this work)'),]$value[1])
 
         # plot the timers
         pdf(file=paste("../", name, ".pdf", sep=""),
