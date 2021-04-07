@@ -505,7 +505,7 @@ void scatterA11(const conflux::TileIndex k, const MPI_Comm &world)
     MPI_Request req;
     if (proc->inBcastComm) {
         conflux::GridProc rootCord = prop->globalToGrid(rootProcessorRank);
-        int newRoot = proc->isWorldBroadcast ? rootProcessorRank : rootCord.px + rootCord.pz * prop->PX;
+        int newRoot = proc->isWorldBroadcast ? rootProcessorRank : rootCord.px + prop->PX * rootCord.pz;
         MPI_Bcast(proc->A00, prop->vSquare, MPI_DOUBLE, newRoot, proc->bcastComm);
     }
     //proc->reqScatterA11[proc->cntScatterA11++] = req;

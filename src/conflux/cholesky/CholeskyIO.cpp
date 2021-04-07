@@ -171,7 +171,7 @@ void conflux::CholeskyIO::generateInputMatrixDistributed()
         proc->A00[i * prop->v + i] = max;
     }
 
-    if (proc->pz == 0 && proc->px == proc->py) {
+    if (proc->pz == 0) { ///&& proc->px == proc->py) {
         // iterate over all local tiles from A11, compute global indices and check
         // whether iGlob = jGlob. If so, strengthen the diagonal there.
         for (TileIndex i = 0; i < proc->maxIndexA11i; ++i) {

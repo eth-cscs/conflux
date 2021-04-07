@@ -149,16 +149,22 @@ void conflux::Processor::updateBcastComm(uint32_t remTiles)
     m_curIdx++;
     bcastComm = m_bcastComms[m_curIdx];
     inBcastComm = m_inCurrentBcastComm[m_curIdx];
-    if (inBcastComm) {
-        //std::cout << rank << " in round " << m_prop->Kappa - 2 - remTiles << std::endl;
-    }
 }
 
 /**
  * @brief initializes the broadcast communicators
  */
 void conflux::Processor::initializeBroadcastComms()
-{
+{  
+    ownsDiagonal = false;
+    for (TileIndex i = 1; i < m_prop->Kappa; i++) {
+        ProcIndexPair2D tmp = m_prop->globalToLocal(i,i);
+        if (tmp.px == this->px && tmp.py == this->py) {
+            ownsDiagonal = true;
+            break;
+        }
+    }
+    MPI_Barrier(MPI_COMM_WORLD);
     // if we have 8 or less processors, it's not worth it to generate new communicators
     if (m_prop->P <= 8) {
         m_alwaysUseWorld = true;
@@ -242,7 +248,7 @@ void conflux::Processor::createNewComm(uint64_t &broadCastSize) {
 
     MPI_Comm tmpComm;
     bool inBroadcast = tmp_set.find(this->rank) != tmp_set.end();
-    int newRank = this->px == this->py ? this->px + m_prop->PX * this->pz : m_prop-> P + this->rank;
+    int newRank = ownsDiagonal ? this->px + m_prop->PX * this->pz : m_prop->P + this->rank;
     MPI_Comm_split(MPI_COMM_WORLD, inBroadcast, newRank, &tmpComm);
     m_tileOwners.push_back(tmp_set);
     m_bcastSizes.push_back(broadCastSize);
