@@ -268,6 +268,10 @@ void updateA10(const conflux::TileIndex k, const MPI_Comm &world)
 
     // post to later receive representatives of A01
     for (conflux::TileIndex jLoc = k / prop->PY; jLoc < proc->maxIndexA11j; ++jLoc) {
+        // if this processor is on the diagonal, then A10rcv = A01rcv, and thus the tiles
+        // were already received
+        if (proc->px == proc->py) break;
+
         // compute processor to receive from
         conflux::TileIndices glob = prop->localToGlobal(proc->px, proc->py, jLoc, jLoc);
         conflux::ProcRank pSnd = (prop->globalToLocal(glob.j)).p;
@@ -337,6 +341,10 @@ void updateA10(const conflux::TileIndex k, const MPI_Comm &world)
         // that own tile-cols with index iGlob, split into subtiles along Z-layer
         for (conflux::ProcCoord pxRcv = 0; pxRcv < prop->PX; ++pxRcv) {
             for (conflux::ProcCoord pzRcv = 0; pzRcv < prop->PZ; ++pzRcv) {
+                // if the receiver is on the diagonal, then he does not to receive the
+                // same tile again, and sending can thus be skipped
+                if (pxRcv == tileOwners.py) continue;
+
                 PE(updateA10_sendA01);
                 conflux::ProcRank pRcv = prop->gridToGlobal(pxRcv, tileOwners.py, pzRcv);
                 MPI_Ssend(tile + pzRcv * prop->l, 1, MPI_SUBTILE, pRcv, iGlob, world);          
@@ -386,14 +394,20 @@ void computeA11(const conflux::TileIndex k, const MPI_Comm &world)
             conflux::TileIndices glob = prop->localToGlobal(proc->px, proc->py, iLoc, jLoc);
             if (glob.i <= k || glob.j > glob.i || glob.j <= k) continue;
 
+            // define the locations where the tiles are about to go. If this processor is on the
+            // diagonal, then it will use A10rcv twice
+            double *a10rep = proc->A10rcv->get(iLoc);
+            double *a01rep = proc->px == proc->py ? proc->A10rcv->get(jLoc) : proc->A01rcv->get(jLoc);
+            double *a11 = proc->A11->get(iLoc, jLoc);
+
             // perform "low-rank" update (A11 <- A11 - A10 * A01^T)
             PE(computeA11_dgemm);
             cblas_dgemm(
                 CblasRowMajor, CblasNoTrans, CblasTrans,  // DGEMM information
                 prop->v, prop->v, prop->l,                // dimension information
-                -1.0, proc->A10rcv->get(iLoc), prop->l,   // information about A10 rep
-                proc->A01rcv->get(jLoc), prop->l,         // information about A01 rep
-                1.0, proc->A11->get(iLoc, jLoc), prop->v  // information about A11 tile to be updated
+                -1.0, a10rep, prop->l,                    // information about A10 rep
+                a01rep, prop->l,                          // information about A01 rep
+                1.0, a11, prop->v                         // information about A11 tile to be updated
             );
             PL();  
         }
