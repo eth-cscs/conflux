@@ -85,7 +85,12 @@ for (variant in variantPlots){
     df2 <- df1[str_cmp(df1$algorithm, alg),]
     for (scaling in scalings){
       print(scaling)
-      df2_5 <- df2[str_cmp(df2$type, scaling),]
+      if (alg == "LU" & scaling == "strong"){
+        df2_5 <- df2
+      }
+      else {
+        df2_5 <- df2[str_cmp(df2$type, scaling),]
+      }
       for (size in sizes[[scaling]]){
         print(size)
         df3 <- df2_5[df2_5$N_base == size, ]
@@ -123,16 +128,7 @@ for (variant in variantPlots){
           yscale = scale_y_continuous(labels=function(x) format(x, big.mark = ",", scientific = FALSE))
         }
         
-        
-        
-        
-        #  m = data$m
-        #  plot_data$time = 200* data$m * data$n * data$k / (data$time * 1e6) / (GFLOPSperCore * data$p)
-        
         name = paste(alg, scaling, size, variant, sep="_")
-        
-        
-        # print(plot_data[c("algorithm","p","time")])
         
         aspRatio = 0.65
         w = 10
@@ -185,13 +181,14 @@ for (variant in variantPlots){
           annotPointX2 = c(6,28,50,9)
           annotPointY2 = c(5,22,5,45)
         }
-        else if (size == 'tall' && variant == 'memory_p2')  {
-          annotx = c(306,200,2024,800)
-          annoty = c(35,5,55,24)
-          annotPointX1 = c(128,256,1024,468)
-
-          annotPointX2 = c(150,200,1200,600)
-          annotPointY2 = c(35,8,52,22)
+        else if (alg == 'LU' && scaling == 'strong' & size == 131072)  {
+          annotPointX1 = c(16,128,128,64)
+          
+          annotx = c(30,70,420,230)
+          annoty = c(18,7,30,50)
+          
+          annotPointX2 = c(22,100,240,110)
+          annotPointY2 = c(21,10,28,48)
         }
         else {
           next
