@@ -21,8 +21,8 @@ sizes <- hash()
 sizes[["strong"]] <- sizes_strong
 sizes[["weak"]] <- sizes_weak
 
-libraries_chol = c("MKL [cite]", "SLATE [cite]", "CAPITAL [cite]", "COnfCHOX (this work)")
-libraries_LU = c("MKL [cite]", "SLATE [cite]", "CANDMC [cite]", "COnfLUX (this work)")
+libraries_chol = c("MKL [35]", "SLATE [29]", "CAPITAL [34]", "COnfCHOX (this work)")
+libraries_LU = c("MKL [35]", "SLATE [29]", "CANDMC [57]", "COnfLUX (this work)")
 libraries <- hash()
 libraries[["LU"]] <- libraries_LU
 libraries[["Cholesky"]] <- libraries_chol
@@ -47,11 +47,11 @@ rawData <- read.csv(file=paste(getwd(), exp_filename, sep = ""), sep=",", string
 
 
 rawData[str_cmp("conflux", rawData$library),]$library = "COnfLUX (this work)"
-rawData[str_cmp("mkl", rawData$library),]$library = "MKL [cite]"
-rawData[str_cmp("slate", rawData$library),]$library = "SLATE [cite]"
-rawData[str_cmp("candmc", rawData$library),]$library = "CANDMC [cite]"
+rawData[str_cmp("mkl", rawData$library),]$library = "MKL [35]"
+rawData[str_cmp("slate", rawData$library),]$library = "SLATE [29]"
+rawData[str_cmp("candmc", rawData$library),]$library = "CANDMC [57]"
 rawData[str_cmp("psychol", rawData$library),]$library = "COnfCHOX (this work)"
-rawData[str_cmp("capital", rawData$library),]$library = "CAPITAL [cite]"
+rawData[str_cmp("capital", rawData$library),]$library = "CAPITAL [34]"
 
 
 # !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -194,9 +194,9 @@ for (variant in variantPlots){
           next
         }
 
-        annotPointY1 = c(plot_data[plot_data$P == annotPointX1[1] & plot_data$library == 'MKL [cite]',]$value[1],
-                        plot_data[plot_data$P == annotPointX1[2] & plot_data$library == 'SLATE [cite]',]$value[1],
-                        plot_data[plot_data$P == annotPointX1[3] & (plot_data$library == 'CANDMC [cite]' | plot_data$library == 'CAPITAL [cite]'),]$value[1],
+        annotPointY1 = c(plot_data[plot_data$P == annotPointX1[1] & plot_data$library == 'MKL [35]',]$value[1],
+                        plot_data[plot_data$P == annotPointX1[2] & plot_data$library == 'SLATE [29]',]$value[1],
+                        plot_data[plot_data$P == annotPointX1[3] & (plot_data$library == 'CANDMC [57]' | plot_data$library == 'CAPITAL [34]'),]$value[1],
                         plot_data[plot_data$P == annotPointX1[4] & (plot_data$library == 'COnfLUX (this work)' | plot_data$library == 'COnfCHOX (this work)'),]$value[1])
 
         # plot the timers

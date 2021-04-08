@@ -15,7 +15,7 @@ exp_filename = "/../benchmarks.csv"
 #exp_filename = "rawData_old.csv"
 #setwd(path)
 #source(paste(path, "scripts/SPCL_Stats.R", sep="/"))
-scalings = c("$2^{17}$", "$2^{14}$", '$2^{13} \\cdot \\sqrt{P}$')
+scalings = c("$2^{17}$", "$2^{14}$", '$2^{13} \\cdot \\sqrt{P}$', 'heatmap')
 matrixShapes = c("lu","cholesky")
 variantPlots = c("commVol", "time")
 algorithms = c("conflux","mkl","slate","candmc")
@@ -51,6 +51,7 @@ rawData <- read.csv(file=paste(getwd(), exp_filename, sep = ""), sep=",", string
 rawData <- rawData[!(rawData$N == 16384 & rawData$P > 500),]
 
 rawData[rawData$N_base == "-" & rawData$type == "strong",]$N_base <- rawData[rawData$N_base == "-" & rawData$type == "strong",]$N
+rawData[rawData$N_base == "-" & rawData$type == "other",]$N_base <- rawData[rawData$N_base == "-" & rawData$type == "other",]$N
 rawData[rawData$N_base == "-" & rawData$type == "weak",]$N_base <- rawData[rawData$N_base == "-" & rawData$type == "weak",]$N / sqrt(rawData[rawData$N_base == "-" & rawData$type == "weak",]$P)
 rawData[str_cmp(rawData$library, "capital"),]$library = "candmc"
 if (nrow(rawData[str_cmp("psychol", rawData$library),]) > 0) {
@@ -97,7 +98,9 @@ rawData$scaling = 'type 1 ERROR!'
 rawData$scaling = ifelse(rawData$N_base == 16384, '$2^{14}$',
                         ifelse(rawData$N_base == 131072, '$2^{17}$',
                                ifelse(rawData$N_base == 8192, '$2^{13} \\cdot \\sqrt{P}$',
-                                      ifelse(rawData$N_base == 1024, '$2^{10} \\cdot \\sqrt{P}$', 'ERROR!')
+                                      ifelse(rawData$N_base == 1024, '$2^{10} \\cdot \\sqrt{P}$', 
+                                             ifelse(rawData$type == "other", 'heatmap', 'ERROR!')
+                                      )
                                )
                         )
 )

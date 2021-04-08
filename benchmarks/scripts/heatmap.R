@@ -150,7 +150,7 @@ if (('plyr' %in% (.packages()))) {
 dataSummary =
   rawData %>%
   group_by(N,P,library, mShape, scaling) %>%
-  summarise(med_time = median(time)) %>% #, lci = ci(time)["CI lower"], uci = ci(time)["CI upper"], count = N()) %>%
+  summarise(med_time = min(time)) %>% #, lci = ci(time)["CI lower"], uci = ci(time)["CI upper"], count = N()) %>%
   ungroup() %>%
   # filter(library == "conflux (this work) ") %>%
   as.data.frame()
@@ -205,7 +205,7 @@ p <- ggplot(data=data, aes(x=as.factor(P), y=as.factor(N),
   geom_text(aes(label = paste("\n", secondBestAlg, sep = ""), fontface = "bold"), position = position_nudge(y=0.05)) +
   scale_x_discrete("Number of nodes") +
   scale_y_discrete("Matrix size") +
-  scale_fill_gradient("", low = "white", high = "green") + #, limits = c(min_speedup,max_speedup)) +
+  scale_fill_gradient2("", low = "#FFECD1", mid = "white", high = "green", midpoint = 1) + #, limits = c(min_speedup,max_speedup)) +
   theme_bw(20) + theme(legend.position = "none") +
   theme(axis.text.x = element_text(angle = 90))
 print(p)
@@ -225,7 +225,7 @@ p <- ggplot(data=data, aes(x=as.factor(P), y=as.factor(N),
   geom_text(aes(label = paste("\n", secondBestAlg, sep = ""), fontface = "bold"), position = position_nudge(y=0.05)) +
   scale_x_discrete("Number of nodes") +
   scale_y_discrete("Matrix size") +
-  scale_fill_gradient("", low = "white", high = "green") + #, limits = c(min_speedup,max_speedup)) +
+  scale_fill_gradient2("", low = "#FFE9C9", mid = "white", high = "#65FF69", midpoint = 1) + #, limits = c(min_speedup,max_speedup)) +
   theme_bw(20) + theme(legend.position = "none") +
   theme(axis.text.x = element_text(angle = 90))
 print(p)
@@ -278,6 +278,27 @@ p <- ggplot(data=data, aes(x=as.factor(P), y=as.factor(N),
 print(p)
 ggsave(file="../chol_heatmap_labelled_performance.svg", plot=p, width = 4, height = 4)
 dev.off()
+
+# --------------------------- SETUP PARSING --------------- #
+# - printing ratio of n to p -#
+data <- heatmap_data[heatmap_data$mShape == "cholesky" & heatmap_data$peak_flops > threshold,]
+data$maxSpeedup = data$N / (data$P)
+h = 4
+w = 10
+pdf(file= "../heatmap_n_p_ratio.pdf",  width = w, height = h)
+p <- ggplot(data=data, aes(x=as.factor(P), y=as.factor(N),
+                           fill=maxSpeedup)) +
+  geom_tile(aes(fill = maxSpeedup)) +
+  geom_text(aes(label = paste(round(maxSpeedup,1), "", sep = ""))) +
+  scale_x_discrete("Number of nodes") +
+  scale_y_discrete("Matrix size") +
+  scale_fill_gradient2("", low = "#FFECD1", mid = "white", high = "green", midpoint = 1) + #, limits = c(min_speedup,max_speedup)) +
+  theme_bw(20) + theme(legend.position = "none") +
+  theme(axis.text.x = element_text(angle = 90))
+print(p)
+dev.off()
+
+
 # 
 # 
 # 
