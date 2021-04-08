@@ -325,7 +325,10 @@ void updateA10(const conflux::TileIndex k, const MPI_Comm &world)
             for (conflux::ProcCoord pzRcv = 0; pzRcv < prop->PZ; ++pzRcv) {
                 PE(updateA10_sendA10);
                 conflux::ProcRank pRcv = prop->gridToGlobal(tileOwners.px, pyRcv, pzRcv);
-                MPI_Ssend(tile + pzRcv * prop->l, 1, MPI_SUBTILE, pRcv, iGlob, world);
+
+                MPI_Request req;
+                MPI_Isend(tile + pzRcv * prop->l, 1, MPI_SUBTILE, pRcv, iGlob, world, &req);
+                proc->reqUpdateA10[proc->cntUpdateA10++] = req;
                 PL();
 
                 // count this send only if sender and receiver are not the same
@@ -340,14 +343,16 @@ void updateA10(const conflux::TileIndex k, const MPI_Comm &world)
         // send tile synchronously as representative of A01 to all processors 
         // that own tile-cols with index iGlob, split into subtiles along Z-layer
         for (conflux::ProcCoord pxRcv = 0; pxRcv < prop->PX; ++pxRcv) {
-            for (conflux::ProcCoord pzRcv = 0; pzRcv < prop->PZ; ++pzRcv) {
-                // if the receiver is on the diagonal, then he does not to receive the
-                // same tile again, and sending can thus be skipped
-                if (pxRcv == tileOwners.py) continue;
+            // if the receiver is on the diagonal, then he does not to receive the
+            // same tile again, and sending can thus be skipped
+            if (pxRcv == tileOwners.py) continue;
 
+            for (conflux::ProcCoord pzRcv = 0; pzRcv < prop->PZ; ++pzRcv) {
                 PE(updateA10_sendA01);
                 conflux::ProcRank pRcv = prop->gridToGlobal(pxRcv, tileOwners.py, pzRcv);
-                MPI_Ssend(tile + pzRcv * prop->l, 1, MPI_SUBTILE, pRcv, iGlob, world);          
+                MPI_Request req;
+                MPI_Isend(tile + pzRcv * prop->l, 1, MPI_SUBTILE, pRcv, iGlob, world, &req);
+                proc->reqUpdateA10[proc->cntUpdateA10++] = req;
                 PL();
 
                 // count this send only if sender and receiver are not the same
