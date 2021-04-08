@@ -60,7 +60,7 @@
  * @param proc pointer to a processor's local variables, including all buffers
  * @throws CholeskyException if the MPI environment was not initialized
  */
-conflux::CholeskyIO::CholeskyIO(CholeskyProperties *prop, Processor *proc)
+conflux::CholeskyIO::CholeskyIO(CholeskyProperties *prop, Processor *proc, MPI_Comm &mainComm)
 {
     // throw an exception if the MPI environment was not initialized yet or if
     // any of the supplied pointers is NULL
@@ -69,6 +69,8 @@ conflux::CholeskyIO::CholeskyIO(CholeskyProperties *prop, Processor *proc)
     if (!isInitialized || prop == nullptr || proc == nullptr) {
         throw CholeskyException(CholeskyException::errorCode::FailedMPIInit);
     }
+
+    this->_mainComm = mainComm;
 
     // create a new MPI file handle
     this->fh = new MPI_File;
@@ -404,7 +406,7 @@ void conflux::CholeskyIO::parseAndDistributeMatrix()
  */
 void conflux::CholeskyIO::openFile(std::string filename)
 {
-    MPI_File_open(MPI_COMM_WORLD, filename.c_str(), MPI_MODE_CREATE | MPI_MODE_WRONLY,
+    MPI_File_open(_mainComm, filename.c_str(), MPI_MODE_CREATE | MPI_MODE_WRONLY,
                   MPI_INFO_NULL, fh);
 }
 

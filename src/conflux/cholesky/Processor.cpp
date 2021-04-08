@@ -50,7 +50,7 @@
  * 
  * @param prop pointer to properties of the Cholesky algorithm
  */
-conflux::Processor::Processor(CholeskyProperties *prop)
+conflux::Processor::Processor(CholeskyProperties *prop, MPI_Comm &mainCommunicator)
 {
     // check if MPI environment was already initialized, throw exception if not
     int init;
@@ -59,9 +59,11 @@ conflux::Processor::Processor(CholeskyProperties *prop)
         throw CholeskyException(CholeskyException::errorCode::FailedMPIInit);
     }
 
+    // assign the main communicator
+    this->_mainCommunicator = mainCommunicator;
     // get rank and grid position
     int procRank;
-    MPI_Comm_rank(MPI_COMM_WORLD, &procRank);
+    MPI_Comm_rank(mainCommunicator, &procRank);
     this->rank = static_cast<ProcRank>(procRank);
     this->grid = prop->globalToGrid(this->rank);
     this->px = this->grid.px;
@@ -103,7 +105,7 @@ conflux::Processor::Processor(CholeskyProperties *prop)
     // the current processor, i.e. processors that share (px,py) coordinates
     // we define color = px * PY + py, i.e. rank on XY-plane in row-major order
     // and rank as the pz coordinate.
-    MPI_Comm_split(MPI_COMM_WORLD, this->px * prop->PY + this->py, this->pz, &this->zAxisComm);
+    MPI_Comm_split(_mainCommunicator, this->px * prop->PY + this->py, this->pz, &this->zAxisComm);
 
     // set the private pointer to the properties object
     m_prop = prop;
@@ -162,7 +164,7 @@ void conflux::Processor::initializeBroadcastComms()
     // if we have 8 or less processors, it's not worth it to generate new communicators
     if (m_prop->P <= 8) {
         m_alwaysUseWorld = true;
-        m_bcastComms.push_back(MPI_COMM_WORLD);
+        m_bcastComms.push_back(_mainCommunicator);
         m_inCurrentBcastComm.push_back(true);
         this->bcastComm = m_bcastComms[0];
         this->m_curIdx = 0;
@@ -177,7 +179,7 @@ void conflux::Processor::initializeBroadcastComms()
     if (maxBroadcastSize == m_prop->P) {
         maxBroadcastSize = 1 << (uint64_t)ceil(log2(maxBroadcastSize));
         m_inCurrentBcastComm.push_back(true);
-        m_bcastComms.push_back(MPI_COMM_WORLD);
+        m_bcastComms.push_back(_mainCommunicator);
 
         std::set<ProcRank> dummySet;
         dummySet.insert(this->rank);
@@ -192,7 +194,7 @@ void conflux::Processor::initializeBroadcastComms()
         maxBroadcastSize = 1 << (uint64_t)ceil(log2(m_prop->Kappa - 2));
         if (maxBroadcastSize >= m_prop->P) {
             m_inCurrentBcastComm.push_back(true);
-            m_bcastComms.push_back(MPI_COMM_WORLD);
+            m_bcastComms.push_back(_mainCommunicator);
 
             std::set<ProcRank> dummySet;
             dummySet.insert(this->rank);
@@ -243,7 +245,7 @@ void conflux::Processor::createNewComm(uint64_t &broadCastSize) {
     MPI_Comm tmpComm;
     bool inBroadcast = tmp_set.find(this->rank) != tmp_set.end();
     int newRank = this->px == this->py ? this->px + m_prop->PX * this->pz : m_prop-> P + this->rank;
-    MPI_Comm_split(MPI_COMM_WORLD, inBroadcast, newRank, &tmpComm);
+    MPI_Comm_split(_mainCommunicator, inBroadcast, newRank, &tmpComm);
     m_tileOwners.push_back(tmp_set);
     m_bcastSizes.push_back(broadCastSize);
     m_inCurrentBcastComm.push_back(inBroadcast);

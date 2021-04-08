@@ -90,19 +90,20 @@ void conflux::initialize(int argc, char *argv[], uint32_t N)
     
     int numProc;
     MPI_Comm_size(MPI_COMM_WORLD, &numProc);
+    MPI_Comm world = MPI_COMM_WORLD;
 
     // get the properties for the cholesky factorization algorithm
     prop = new CholeskyProperties(static_cast<ProcRank>(numProc), N);
 
     // get the processor information
-    proc = new Processor(prop);
+    proc = new Processor(prop, world);
 
     // create and commit new type for subtiles
     MPI_Type_vector(prop->v, prop->l, prop->v, MPI_DOUBLE, &MPI_SUBTILE);
     MPI_Type_commit(&MPI_SUBTILE);
 
     // create new CholeksyIO object 
-    io = new CholeskyIO(prop, proc);
+    io = new CholeskyIO(prop, proc, world);
 
     // set path to matrix for this dimension
     std::stringstream tmp;
@@ -132,7 +133,6 @@ void conflux::initialize(int argc, char *argv[], uint32_t N)
  * @param N the dimension of the matrix
  * @param v the tile size
  * @param grid pointer to the grid dimensions
- * 
  * @throws CholeskyException if MPI environment was not initialized
  */
 void conflux::initialize(int argc, char *argv[], uint32_t N, uint32_t v, ProcCoord *grid)
@@ -144,22 +144,39 @@ void conflux::initialize(int argc, char *argv[], uint32_t N, uint32_t v, ProcCoo
         throw CholeskyException(CholeskyException::errorCode::FailedMPIInit);
     }
 
+    // this will be the main communicator
+    MPI_Comm mainCommunicator;
     int numProc;
     MPI_Comm_size(MPI_COMM_WORLD, &numProc);
+    int rank;
+    MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+    // these are parameters where we fare better when downgrading the grid
+    //@TODO these conditions can be much more elaborate
+    if ((numProc == 128 && N <= 32768) || (numProc == 8) && N < 8192) {
+        grid[2] = 1;
+        numProc = grid[0] * grid[1] * grid[2];
+        int color = rank < numProc ? 0 : 1;
+        MPI_Comm_split(MPI_COMM_WORLD, color, rank, &mainCommunicator);      
+        
+    }
+    // if we dont downgrade, we just use main
+    else {
+        mainCommunicator = MPI_COMM_WORLD;
+    }
 
     // get the properties for the cholesky factorization algorithm
     prop = new CholeskyProperties(static_cast<ProcRank>(numProc), N, v,
                                   grid[0], grid[1], grid[2]);
 
     // get the processor information
-    proc = new Processor(prop);
+    proc = new Processor(prop, mainCommunicator);
 
     // create and commit new type for subtiles
     MPI_Type_vector(prop->v, prop->l, prop->v, MPI_DOUBLE, &MPI_SUBTILE);
     MPI_Type_commit(&MPI_SUBTILE);
 
     // create new CholeksyIO object 
-    io = new CholeskyIO(prop, proc);
+    io = new CholeskyIO(prop, proc, mainCommunicator);
 
     // set path to matrix for this dimension
     std::stringstream tmp;
@@ -543,7 +560,15 @@ void scatterA11(const conflux::TileIndex k, const MPI_Comm &world)
 void conflux::parallelCholesky()
 {
     // create shortcut for MPI_COMM_WORLD
-    MPI_Comm world = MPI_COMM_WORLD;
+    MPI_Comm world = proc->mainCommunicator();
+    int commSize;
+    MPI_Comm_size(world, &commSize);
+    int orgRank;
+    MPI_Comm_rank(MPI_COMM_WORLD, &orgRank);
+    // drop out if there is nothing to do here
+    if (orgRank >= commSize) {
+        return;
+    }
     
     // in debug mode, write the matrix back into a file in every round
     #ifdef DEBUG

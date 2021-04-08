@@ -54,7 +54,7 @@ class Processor
 public:
 
     // constructors and destructors
-    Processor(CholeskyProperties *prop);
+    Processor(CholeskyProperties *prop, MPI_Comm &mainCommunicator);
     ~Processor();
 
     // method to update the broadcast communicator
@@ -99,6 +99,10 @@ public:
     bool inBcastComm; //!< flag indicating whether this processors is in bcast comm
     bool isWorldBroadcast;
 
+    // getter for the main communicator
+    MPI_Comm& mainCommunicator() {
+        return _mainCommunicator;
+    }
 private:
     // private member functions
     void initializeBroadcastComms();
@@ -113,6 +117,7 @@ private:
     bool m_alwaysUseWorld; //!< this flags says that we do not use any optimization of the broadcast
     uint8_t m_curIdx; //!< current index for all of the above vectors
     CholeskyProperties *m_prop; //!< pointer to the cholesky properties object. DO NOT FREE IN THIS CLASS
+    MPI_Comm _mainCommunicator;  //!< communicator which is not world in case of a few special input combinations
 };
 
 } // namespace conflux

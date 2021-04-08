@@ -56,7 +56,7 @@ class CholeskyIO
 {
 public:
     // constructor and destructor
-    CholeskyIO(CholeskyProperties *prop, Processor *proc);
+    CholeskyIO(CholeskyProperties *prop, Processor *proc, MPI_Comm &mainComm);
     ~CholeskyIO();
     
     // functions to generate an input matrix
@@ -75,6 +75,7 @@ private:
     CholeskyProperties *prop;   //!< pointer to the execution's property class
     Processor *proc;            //!< pointer to this processor's local variables
     std::string inputFilePath;  //!< path to the input file (not used currently)
+    MPI_Comm _mainComm;         //!< main communicator (differs from world in a few special parameter choices)
     
     void dumpA00(TileIndex round);
     void dumpA10(ProcIndexPair1D local, TileIndex global, TileIndex round);
