@@ -83,9 +83,9 @@ conflux::CholeskyProperties::CholeskyProperties(ProcRank numProc, uint32_t dim, 
         throw CholeskyException(CholeskyException::errorCode::InvalidGridSize);
     }
 
-    //if (xGrid != yGrid) {
-     //   throw CholeskyException(CholeskyException::errorCode::UnmatchingXYSizes);
-    //}
+    if (xGrid < yGrid) {
+        throw CholeskyException(CholeskyException::errorCode::UnmatchingXYSizes);
+    }
 
     if (tileSize % zGrid != 0) {
         throw CholeskyException(CholeskyException::errorCode::TilesNotDivisibleByZ);

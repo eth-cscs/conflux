@@ -116,7 +116,7 @@ class CholeskyException : public std::logic_error
                 case VectorInsteadOfMatrix:
                     return "Cannot access a vector with two indices.";
                 case UnmatchingXYSizes:
-                    return "The number of processors in X direction must match the number of processors in Y direction.";
+                    return "The number of processors in X direction must be larger or equal the number of processors in Y direction.";
                 case TilesNotDivisibleByZ:
                     return "The tile size must be divisible by the number of processors in z-direction.";
                 default:
