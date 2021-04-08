@@ -558,6 +558,18 @@ void scatterA11(const conflux::TileIndex k, const MPI_Comm &world)
         conflux::ProcIndexPair2D owners = prop->globalToLocal(iGlobRecv, k+1);
         conflux::ProcCoord zOwner = static_cast<conflux::ProcCoord>((k + 1) % prop->PZ);
         conflux::ProcRank senderProc = prop->gridToGlobal(owners.px, owners.py, zOwner);
+
+        // if the sender rank is this processors rank, we do not send via MPI but
+        // rather perform a parallelized memcpy
+        if (proc->rank == senderProc) {
+            conflux::TileCopyHelper cpy = {
+                proc->A11->get(owners.i, owners.j),
+                 proc->A10->get(iLocRecv)
+            };
+            proc->tileCopies.push_back(cpy);
+            continue;
+        }
+
         MPI_Request req;
         MPI_Irecv(proc->A10->get(iLocRecv), prop->vSquare, MPI_DOUBLE, senderProc,
                     iLocRecv, world, &req);
@@ -568,6 +580,7 @@ void scatterA11(const conflux::TileIndex k, const MPI_Comm &world)
     // we need to extract which processor owns the A00 tile of this round
     conflux::ProcIndexPair2D rootProcessorPair = prop->globalToLocal(k + 1, k + 1);
     conflux::ProcRank rootProcessorRank = prop->gridToGlobal(rootProcessorPair.px, rootProcessorPair.py, (k + 1) % prop->PZ);
+    
     // processor that owns next A00 has to copy the tile into its A00 buffer
     if (proc->rank == rootProcessorRank) {
         std::memcpy(
@@ -595,8 +608,15 @@ void scatterA11(const conflux::TileIndex k, const MPI_Comm &world)
             // send the A11 tiles that become A10 tiles in the next round
             PE(scatterA11_sendNewA10);
             conflux::ProcIndexPair1D A10pair = prop->globalToLocal(globalTile.i);
-            MPI_Ssend(proc->A11->get(iLoc, jLoc), prop->vSquare, MPI_DOUBLE,
-                     A10pair.p, A10pair.i, world);
+            
+            // if this tile would be sent to the processor itself, skip it because we
+            // perform a memcyp instead
+            if (proc->rank == A10pair.p) continue;
+
+            MPI_Request req;
+            MPI_Isend(proc->A11->get(iLoc, jLoc), prop->vSquare, MPI_DOUBLE,
+                     A10pair.p, A10pair.i, world, &req);
+            proc->reqScatterA11[proc->cntScatterA11++] = req;
                             
             // count this send only if sender and receiver are not the same
             proc->commVolInclOwn += prop->vSquare * sizeof(double);
@@ -614,9 +634,9 @@ void scatterA11(const conflux::TileIndex k, const MPI_Comm &world)
     if (proc->inBcastComm) {
         conflux::GridProc rootCord = prop->globalToGrid(rootProcessorRank);
         int newRoot = proc->isWorldBroadcast ? rootProcessorRank : rootCord.px + rootCord.pz * prop->PX;
-        MPI_Bcast(proc->A00, prop->vSquare, MPI_DOUBLE, newRoot, proc->bcastComm);
-        proc->commVolInclOwn += prop->vSquare * sizeof(double);
+        MPI_Bcast(proc->A00, prop->vSquare, MPI_DOUBLE, newRoot, proc->bcastComm); //, &req);
         if (proc->rank != rootProcessorRank) {
+            proc->commVolInclOwn += prop->vSquare * sizeof(double);
             proc->commVol += prop->vSquare * sizeof(double);
             proc->commVolNonRedundant += prop->vSquare * sizeof(double);
         }
@@ -624,13 +644,24 @@ void scatterA11(const conflux::TileIndex k, const MPI_Comm &world)
     //proc->reqScatterA11[proc->cntScatterA11++] = req;
     PL();
 
+    // perform the memcpys if necessary
+    #pragma omp parallel for
+    for (conflux::TileCopyHelper cpy : proc->tileCopies) {
+        std::memcpy(cpy.dst, cpy.src, prop->vSquare * sizeof(double));
+    }
+    proc->tileCopies.clear();
+
     // wait for the scattering to be completed
-    // @TODO investigate if this still needed (maybe blocking broadcast)
     PE(scatterA11_waitall);
     MPI_Waitall(proc->cntScatterA11, &(proc->reqScatterA11[0]), MPI_STATUSES_IGNORE);
     PL();
 
-    //MPI_Barrier(world);
+    // wait for the broadcast to be completed
+    /*
+    if (proc->inBcastComm) {
+        MPI_Wait(&req, MPI_STATUS_IGNORE);
+    }
+    */
 }
 
 /** 
