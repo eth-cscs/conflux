@@ -604,7 +604,7 @@ void conflux::parallelCholesky()
         proc->cntUpdateA10 = 0;
         proc->cntScatterA11 = 0;
 
-        if (proc->rank == 0) std::cout << "iteration " << k << " of " << prop->Kappa - 1 << std::endl;
+        //if (proc->rank == 0) std::cout << "iteration " << k << " of " << prop->Kappa - 1 << std::endl;
 
         /************************ (1) CHOLESKY OF A00 ************************/
         //std::cout << "Rank " << proc->rank << " started cholesky A00 in round " << k << std::endl;

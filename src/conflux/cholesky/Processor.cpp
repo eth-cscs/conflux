@@ -112,6 +112,7 @@ conflux::Processor::Processor(CholeskyProperties *prop)
 
     commVol = 0;
     commVolNonRedundant = 0;
+    commVolInclOwn = 0;
 }
 
 /**
