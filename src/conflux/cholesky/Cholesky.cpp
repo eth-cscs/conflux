@@ -246,6 +246,7 @@ void updateA10(const conflux::TileIndex k, const MPI_Comm &world)
 
         // receive the tile and store it in A10 receive buffer
         MPI_Request req;
+        //if(proc->rank == PINSPECT) std::cout << "Processor " << proc->rank << " with grid " << proc->px << " " << proc->py << " " << proc->pz << " receives from " << pSnd << " with loc index " << iLoc << " and with glob " << glob.i << std::endl;
         MPI_Irecv(proc->A10rcv->get(iLoc), prop->v * prop->l, MPI_DOUBLE, pSnd, glob.i,
                  world, &req);
         proc->reqUpdateA10[proc->cntUpdateA10++] = req;
@@ -278,17 +279,14 @@ void updateA10(const conflux::TileIndex k, const MPI_Comm &world)
         proc->tileInfos.push_back(tmpInf);
         PL();      
     }
-
     // 2-3.) update local tiles, split them into sub-tiles and distribute
     // them among z-layers
 
     // iterate over processor's local tiles in A10
     // iLocRecv is needed for the reception of the scattering
-    conflux::TileIndex iLocRecv = (k+1)/prop->P;
-    for (conflux::TileIndex iLoc = k / prop->P; iLoc < proc->maxIndexA10; ++iLoc, ++iLocRecv) {
+    for (conflux::TileIndex iLoc = k / prop->P; iLoc < proc->maxIndexA10; ++iLoc) {
 
         conflux::TileIndex iGlob = prop->localToGlobal(proc->rank, iLoc);
-        conflux::TileIndex iGlobRecv = prop->localToGlobal(proc->rank, iLocRecv);
 
         // skip tiles that were already handled or out-of-bounds
         if (iGlob <= k) continue;
@@ -308,7 +306,7 @@ void updateA10(const conflux::TileIndex k, const MPI_Comm &world)
 
         // determine processors that own tile-rows or -cols with index iGlob
         conflux::ProcIndexPair2D tileOwners = prop->globalToLocal(iGlob, iGlob);
-
+        //if (iGlob == 4) std::cout << tileOwners.px << " " << tileOwners.py << std::endl;
         // send tile synchronously as representative of A10 to all processors 
         // that own tile-rows with index iGlob, split into subtiles among Z-layer
         for (conflux::ProcCoord pyRcv = 0; pyRcv < prop->PY; ++pyRcv) {
@@ -436,7 +434,7 @@ void computeA11(const conflux::TileIndex k, const MPI_Comm &world)
     // owns and update them via low-rank update.
     // TODO: algo descriptions says that indices start from k/P, which imo is wrong (saethrej)
     for (conflux::TileIndex iLoc = k / prop->PX; iLoc < proc->maxIndexA11i; ++iLoc) {
-        for (conflux::TileIndex jLoc = k / prop->PY; jLoc <= iLoc && jLoc < proc->maxIndexA11j; ++jLoc) {
+        for (conflux::TileIndex jLoc = k / prop->PY; jLoc < proc->maxIndexA11j; ++jLoc) {
             // compute global index and skip tile if at least one index is <= k
             conflux::TileIndices glob = prop->localToGlobal(proc->px, proc->py, iLoc, jLoc);
             if (glob.i <= k || glob.j > glob.i || glob.j <= k) continue;
@@ -590,7 +588,7 @@ void scatterA11(const conflux::TileIndex k, const MPI_Comm &world)
     MPI_Request req;
     if (proc->inBcastComm) {
         conflux::GridProc rootCord = prop->globalToGrid(rootProcessorRank);
-        int newRoot = proc->isWorldBroadcast ? rootProcessorRank : rootCord.px + rootCord.pz * prop->PX;
+        int newRoot = proc->isWorldBroadcast ? rootProcessorRank : rootCord.px + prop->PX * rootCord.pz;
         MPI_Bcast(proc->A00, prop->vSquare, MPI_DOUBLE, newRoot, proc->bcastComm);
     }
     //proc->reqScatterA11[proc->cntScatterA11++] = req;

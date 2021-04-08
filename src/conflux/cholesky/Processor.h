@@ -123,6 +123,7 @@ public:
     MPI_Comm bcastComm; //!< communicator for the current broadcast
     bool inBcastComm; //!< flag indicating whether this processors is in bcast comm
     bool isWorldBroadcast;
+    bool ownsDiagonal; //!< flag indicating if ths processor owns a diagonal tile
 
 private:
     // private member functions
