@@ -112,6 +112,12 @@ conflux::Processor::Processor(CholeskyProperties *prop, MPI_Comm &mainCommunicat
 
     initializeBroadcastComms();
 
+    int commSize;
+    MPI_Comm_size(_mainCommunicator, &commSize);
+    int orgRank;
+    MPI_Comm_rank(MPI_COMM_WORLD, &orgRank);
+    doesCholesky = orgRank < commSize;
+
 
 }
 

@@ -98,6 +98,7 @@ public:
     MPI_Comm bcastComm; //!< communicator for the current broadcast
     bool inBcastComm; //!< flag indicating whether this processors is in bcast comm
     bool isWorldBroadcast;
+    bool doesCholesky; //<! if this flag is false, the processor can directly return in the cholesky function
 
     // getter for the main communicator
     MPI_Comm& mainCommunicator() {

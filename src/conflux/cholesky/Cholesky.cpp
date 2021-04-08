@@ -561,12 +561,8 @@ void conflux::parallelCholesky()
 {
     // create shortcut for MPI_COMM_WORLD
     MPI_Comm world = proc->mainCommunicator();
-    int commSize;
-    MPI_Comm_size(world, &commSize);
-    int orgRank;
-    MPI_Comm_rank(MPI_COMM_WORLD, &orgRank);
     // drop out if there is nothing to do here
-    if (orgRank >= commSize) {
+    if (!proc->doesCholesky) {
         return;
     }
     
