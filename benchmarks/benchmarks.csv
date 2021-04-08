@@ -2081,15 +2081,15 @@ cholesky,psychol,8192,8192,32,8x4x1,time,other,121,128,overlap-nonsquare
 cholesky,psychol,8192,8192,32,8x4x1,time,other,182,128,overlap-nonsquare
 cholesky,psychol,8192,8192,32,8x4x1,time,other,114,128,overlap-nonsquare
 cholesky,psychol,8192,8192,32,8x4x1,time,other,118,128,overlap-nonsquare
-cholesky,psychol,16384,16384,8x4x1,time,strong,483,128,overlap-nonsquare
-cholesky,psychol,16384,16384,8x4x1,time,strong,484,128,overlap-nonsquare
-cholesky,psychol,16384,16384,8x4x1,time,strong,480,128,overlap-nonsquare
-cholesky,psychol,16384,16384,8x4x1,time,strong,484,128,overlap-nonsquare
-cholesky,psychol,16384,16384,8x4x1,time,strong,486,128,overlap-nonsquare
-cholesky,psychol,32768,32768,8x4x1,time,other,2192,512,overlap-nonsquare
-cholesky,psychol,32768,32768,8x4x1,time,other,2186,512,overlap-nonsquare 
-cholesky,psychol,32768,32768,8x4x1,time,other,2185,512,overlap-nonsquare 
-cholesky,psychol,32768,32768,8x4x1,time,other,2171,512,overlap-nonsquare 
-cholesky,psychol,32768,32768,8x4x1,time,other,2175,512,overlap-nonsquare 
+cholesky,psychol,16384,16384,32,8x4x1,time,strong,483,128,overlap-nonsquare
+cholesky,psychol,16384,16384,32,8x4x1,time,strong,484,128,overlap-nonsquare
+cholesky,psychol,16384,16384,32,8x4x1,time,strong,480,128,overlap-nonsquare
+cholesky,psychol,16384,16384,32,8x4x1,time,strong,484,128,overlap-nonsquare
+cholesky,psychol,16384,16384,32,8x4x1,time,strong,486,128,overlap-nonsquare
+cholesky,psychol,32768,32768,32,8x4x1,time,other,2192,512,overlap-nonsquare
+cholesky,psychol,32768,32768,32,8x4x1,time,other,2186,512,overlap-nonsquare 
+cholesky,psychol,32768,32768,32,8x4x1,time,other,2185,512,overlap-nonsquare 
+cholesky,psychol,32768,32768,32,8x4x1,time,other,2171,512,overlap-nonsquare 
+cholesky,psychol,32768,32768,32,8x4x1,time,other,2175,512,overlap-nonsquare 
 
 
