@@ -110,7 +110,8 @@ conflux::Processor::Processor(CholeskyProperties *prop)
 
     initializeBroadcastComms();
 
-
+    commVol = 0;
+    commVolNonRedundant = 0;
 }
 
 /**
