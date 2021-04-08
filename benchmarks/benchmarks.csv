@@ -1956,11 +1956,11 @@ cholesky,psychol,262144,262144,64,8x8x1,time,other,259169,1024,overlap
 cholesky,psychol,262144,262144,64,8x8x1,time,other,258690,1024,overlap
 cholesky,psychol,262144,262144,64,8x8x1,time,other,262693,1024,overlap
 cholesky,psychol,262144,262144,64,8x8x1,time,other,261617,1024,overlap
-cholesky,psychol,32768,32768,128,8x8x2,time,other,1918,512,bcast
-cholesky,psychol,32768,32768,128,8x8x2,time,other,2040,512,bcast
-cholesky,psychol,32768,32768,128,8x8x2,time,other,2045,512,bcast
-cholesky,psychol,32768,32768,128,8x8x2,time,other,2003,512,bcast
-cholesky,psychol,32768,32768,128,8x8x2,time,other,1992,512,bcast
+cholesky,psychol,32768,32768,128,8x8x2,time,other,1826,512,Processor-downgrade
+cholesky,psychol,32768,32768,128,8x8x2,time,other,1817,512,Processor-downgrade
+cholesky,psychol,32768,32768,128,8x8x2,time,other,1782,512,Processor-downgrade
+cholesky,psychol,32768,32768,128,8x8x2,time,other,1839,512,Processor-downgrade
+cholesky,psychol,32768,32768,128,8x8x2,time,other,1841,512,Processor-downgrade
 cholesky,psychol,65536,65536,128,8x8x2,time,other,7019,512,bcast
 cholesky,psychol,65536,65536,128,8x8x2,time,other,6948,512,bcast
 cholesky,psychol,65536,65536,128,8x8x2,time,other,7277,512,bcast
