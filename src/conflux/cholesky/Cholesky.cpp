@@ -182,20 +182,6 @@ void conflux::initialize(int argc, char *argv[], uint32_t N, uint32_t v, ProcCoo
  */
 void conflux::finalize(bool clean)
 {
-    // reduce the communication volume
-    if (proc->rank == 0) {
-        MPI_Reduce(MPI_IN_PLACE, &(proc->commVol), 1, MPI_UINT64_T, MPI_SUM, 0, MPI_COMM_WORLD);
-        MPI_Reduce(MPI_IN_PLACE, &(proc->commVolNonRedundant), 1, MPI_UINT64_T, MPI_SUM, 0, MPI_COMM_WORLD);
-        MPI_Reduce(MPI_IN_PLACE, &(proc->commVolInclOwn), 1, MPI_UINT64_T, MPI_SUM, 0, MPI_COMM_WORLD);
-    } else {
-        MPI_Reduce(&(proc->commVol), &(proc->commVol), 1, MPI_UINT64_T, MPI_SUM, 0, MPI_COMM_WORLD);
-        MPI_Reduce(&(proc->commVolNonRedundant), &(proc->commVolNonRedundant), 1, MPI_UINT64_T, MPI_SUM, 0, MPI_COMM_WORLD);
-        MPI_Reduce(&(proc->commVolInclOwn), &(proc->commVolInclOwn), 1, MPI_UINT64_T, MPI_SUM, 0, MPI_COMM_WORLD);
-    }
-    if (proc->rank == 0) std::cout << "aggregate comm volume incl. sending to oneself: " << proc->commVolInclOwn << std::endl;
-    if (proc->rank == 0) std::cout << "aggregate comm volume excl. sending to oneself: " << proc->commVol << std::endl;
-    if (proc->rank == 0) std::cout << "aggregate comm volume without redundant sends:  " << proc->commVolNonRedundant << std::endl;
-
     // delete the CholeskyIO object
     delete io;
 
@@ -357,13 +343,6 @@ void updateA10(const conflux::TileIndex k, const MPI_Comm &world)
                 MPI_Isend(tile + pzRcv * prop->l, 1, MPI_SUBTILE, pRcv, iGlob, world, &req);
                 proc->reqUpdateA10[proc->cntUpdateA10++] = req;
                 PL();
-
-                // count this send only if sender and receiver are not the same
-                proc->commVolInclOwn += prop->v * prop->l * sizeof(double);
-                if (pRcv != proc->rank) {
-                    proc->commVol += prop->v * prop->l * sizeof(double);
-                    proc->commVolNonRedundant += prop->v * prop->l * sizeof(double);
-                }
             }
         }
 
@@ -385,15 +364,6 @@ void updateA10(const conflux::TileIndex k, const MPI_Comm &world)
                 MPI_Isend(tile + pzRcv * prop->l, 1, MPI_SUBTILE, pRcv, iGlob, world, &req);
                 proc->reqUpdateA10[proc->cntUpdateA10++] = req;
                 PL();
-
-                // count this send only if sender and receiver are not the same
-                proc->commVolInclOwn += prop->v * prop->l * sizeof(double);
-                if (pRcv != proc->rank) {
-                    proc->commVol += prop->v * prop->l * sizeof(double);
-                    if (pxRcv != tileOwners.py) {
-                        proc->commVolNonRedundant += prop->v * prop->l * sizeof(double);
-                    }
-                }
             }
         }
     }
@@ -516,9 +486,6 @@ void reduceA11(const conflux::TileIndex k, const MPI_Comm &world)
             } else {
                 MPI_Reduce(proc->A11->get(iLoc, jLoc), proc->A11->get(iLoc, jLoc), prop->vSquare,
                        MPI_DOUBLE, MPI_SUM, (k+1) % prop->PZ, proc->zAxisComm);//, &req);
-                proc->commVolInclOwn += prop->vSquare * sizeof(double);
-                proc->commVol += prop->vSquare * sizeof(double);
-                proc->commVolNonRedundant += prop->vSquare * sizeof(double);
             }
             PL();
         }
@@ -617,13 +584,6 @@ void scatterA11(const conflux::TileIndex k, const MPI_Comm &world)
             MPI_Isend(proc->A11->get(iLoc, jLoc), prop->vSquare, MPI_DOUBLE,
                      A10pair.p, A10pair.i, world, &req);
             proc->reqScatterA11[proc->cntScatterA11++] = req;
-                            
-            // count this send only if sender and receiver are not the same
-            proc->commVolInclOwn += prop->vSquare * sizeof(double);
-            if (A10pair.p != proc->rank) {
-                proc->commVol += prop->vSquare * sizeof(double);
-                proc->commVolNonRedundant += prop->vSquare * sizeof(double);
-            }
             PL();
         }
     }
@@ -635,11 +595,6 @@ void scatterA11(const conflux::TileIndex k, const MPI_Comm &world)
         conflux::GridProc rootCord = prop->globalToGrid(rootProcessorRank);
         int newRoot = proc->isWorldBroadcast ? rootProcessorRank : rootCord.px + rootCord.pz * prop->PX;
         MPI_Bcast(proc->A00, prop->vSquare, MPI_DOUBLE, newRoot, proc->bcastComm); //, &req);
-        if (proc->rank != rootProcessorRank) {
-            proc->commVolInclOwn += prop->vSquare * sizeof(double);
-            proc->commVol += prop->vSquare * sizeof(double);
-            proc->commVolNonRedundant += prop->vSquare * sizeof(double);
-        }
     }
     //proc->reqScatterA11[proc->cntScatterA11++] = req;
     PL();
@@ -655,13 +610,6 @@ void scatterA11(const conflux::TileIndex k, const MPI_Comm &world)
     PE(scatterA11_waitall);
     MPI_Waitall(proc->cntScatterA11, &(proc->reqScatterA11[0]), MPI_STATUSES_IGNORE);
     PL();
-
-    // wait for the broadcast to be completed
-    /*
-    if (proc->inBcastComm) {
-        MPI_Wait(&req, MPI_STATUS_IGNORE);
-    }
-    */
 }
 
 /** 

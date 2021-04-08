@@ -109,11 +109,8 @@ conflux::Processor::Processor(CholeskyProperties *prop)
     // set the private pointer to the properties object
     m_prop = prop;
 
+    // initialize the broadcast communiators
     initializeBroadcastComms();
-
-    commVol = 0;
-    commVolNonRedundant = 0;
-    commVolInclOwn = 0;
 }
 
 /**

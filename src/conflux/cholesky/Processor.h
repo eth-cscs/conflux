@@ -106,12 +106,7 @@ public:
     MPI_Comm bcastComm; //!< communicator for the current broadcast
     bool inBcastComm; //!< flag indicating whether this processors is in bcast comm
     bool isWorldBroadcast;
-
-    // communication volume
-    uint64_t commVolInclOwn; //!< the communication volume when counting sends to one-self
-    uint64_t commVol; //!< the communication volume of this processor
-    uint64_t commVolNonRedundant; //!< the communication volume of this processor when not counting redundant sends
-
+    
 private:
     // private member functions
     void initializeBroadcastComms();
