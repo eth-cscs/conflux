@@ -45,6 +45,11 @@
 #include "TileMatrix.h"
 
 namespace conflux {
+
+typedef struct TileCopyHelper {
+    double *src; // source of the memcpy
+    double *dst; // desintation of the memcpy
+} TileCopyHelper;
     
 /**
  * @brief an instance for a processor storing its properties and all its buffers
@@ -93,6 +98,9 @@ public:
     // upper bounds for requests in sub-tile handling in update A10
     int sndBound; //!< upper bound for number of requests due to sending subtiles
     int rcvBound; //!< upper bound for number of requests due to receiving subtiles
+
+    // helper structure that facilitates memcpy from A10 to A10rcv/A01rcv
+    std::vector<TileCopyHelper> tileCopies;
 
     // communicators for the broadcast of new A00
     MPI_Comm bcastComm; //!< communicator for the current broadcast

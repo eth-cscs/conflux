@@ -251,14 +251,27 @@ void updateA10(const conflux::TileIndex k, const MPI_Comm &world)
     for (conflux::TileIndex iLoc = k / prop->PX; iLoc < proc->maxIndexA11i; ++iLoc) {
         // compute processor to receive from
         conflux::TileIndices glob = prop->localToGlobal(proc->px, proc->py, iLoc, iLoc);
-        conflux::ProcRank pSnd = (prop->globalToLocal(glob.i)).p;
+        conflux::ProcIndexPair1D owner = prop->globalToLocal(glob.i);
+        conflux::ProcRank pSnd = owner.p;
 
         // continue with next iteration if this row has a global index <= k
         // because in this case the tile is irrelevant (above the diagonal)
         if (glob.i <= k) continue;
-        PE(updateA10_postIrecvA10);
+
+        // skip the reception of this (sub)tile if it's sent from the current rank
+        // because this can be handled by a simple memcpy
+        if (proc->rank == pSnd) {
+            conflux::TileCopyHelper cpy = {
+                proc->A10->get(owner.i),
+                proc->A10rcv->get(iLoc)
+            };
+            proc->tileCopies.push_back(cpy);
+            continue;
+        }
+        
 
         // receive the tile and store it in A10 receive buffer
+        PE(updateA10_postIrecvA10);
         MPI_Request req;
         MPI_Irecv(proc->A10rcv->get(iLoc), prop->v * prop->l, MPI_DOUBLE, pSnd, glob.i,
                  world, &req);
@@ -274,11 +287,22 @@ void updateA10(const conflux::TileIndex k, const MPI_Comm &world)
 
         // compute processor to receive from
         conflux::TileIndices glob = prop->localToGlobal(proc->px, proc->py, jLoc, jLoc);
-        conflux::ProcRank pSnd = (prop->globalToLocal(glob.j)).p;
+        conflux::ProcIndexPair1D owner = prop->globalToLocal(glob.j);
+        conflux::ProcRank pSnd = owner.p;
 
         // continue with next iteration if this col has a global index <= k,
         // because in this case the tile has already been handled.
         if (glob.j <= k) continue;
+
+        // skip this tile if it's sent from the current rank, do a direct memcpy instead
+        if (proc->rank == pSnd) {
+            conflux::TileCopyHelper cpy = {
+                proc->A10->get(owner.i),
+                proc->A01rcv->get(jLoc)
+            };
+            proc->tileCopies.push_back(cpy);
+            continue;
+        }
         PE(updateA10_postIrecvA01);
 
         // receive the tile and store it in A01 receive buffer
@@ -323,9 +347,12 @@ void updateA10(const conflux::TileIndex k, const MPI_Comm &world)
         // that own tile-rows with index iGlob, split into subtiles among Z-layer
         for (conflux::ProcCoord pyRcv = 0; pyRcv < prop->PY; ++pyRcv) {
             for (conflux::ProcCoord pzRcv = 0; pzRcv < prop->PZ; ++pzRcv) {
-                PE(updateA10_sendA10);
+                // if the rank that receives this subtile is this rank, then skip sending
+                // because the tile will be copied later
                 conflux::ProcRank pRcv = prop->gridToGlobal(tileOwners.px, pyRcv, pzRcv);
+                if (proc->rank == pRcv) continue;
 
+                PE(updateA10_sendA10);
                 MPI_Request req;
                 MPI_Isend(tile + pzRcv * prop->l, 1, MPI_SUBTILE, pRcv, iGlob, world, &req);
                 proc->reqUpdateA10[proc->cntUpdateA10++] = req;
@@ -348,8 +375,12 @@ void updateA10(const conflux::TileIndex k, const MPI_Comm &world)
             if (pxRcv == tileOwners.py) continue;
 
             for (conflux::ProcCoord pzRcv = 0; pzRcv < prop->PZ; ++pzRcv) {
-                PE(updateA10_sendA01);
+                // if the rank that receives this subtile is this rank, then skip sending
+                // because the tile will be copied later
                 conflux::ProcRank pRcv = prop->gridToGlobal(pxRcv, tileOwners.py, pzRcv);
+                if (proc->rank == pRcv) continue;
+
+                PE(updateA10_sendA01);
                 MPI_Request req;
                 MPI_Isend(tile + pzRcv * prop->l, 1, MPI_SUBTILE, pRcv, iGlob, world, &req);
                 proc->reqUpdateA10[proc->cntUpdateA10++] = req;
@@ -366,6 +397,24 @@ void updateA10(const conflux::TileIndex k, const MPI_Comm &world)
             }
         }
     }
+
+    // perform the memory copies that arised
+    #pragma omp parallel for
+    for (conflux::TileCopyHelper cpy : proc->tileCopies) {
+        // if PZ = 1, then this is a simple memcpy call
+        if (prop->PZ == 0) {
+            std::memcpy(cpy.dst, cpy.src, prop->v * prop->l * sizeof(double));
+
+        // otherwise we need to copy individual chunks out of the tile
+        } else {
+            double *start = cpy.src + proc->pz * prop->l;
+            for (int row = 0; row < prop->v; ++row) {
+                std::memcpy(cpy.dst + row * prop->l, start + row * prop->v, prop->l * sizeof(double));
+            }
+        }
+    }
+    // clear the helper structure for the next iteration
+    proc->tileCopies.clear();
 
     // wait until all the data transfers have been completed
     // @ TODO: investigate if this wait all is still necessary

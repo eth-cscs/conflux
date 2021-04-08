@@ -98,6 +98,7 @@ conflux::Processor::Processor(CholeskyProperties *prop)
     // upper bounds, and not exact by any means. It is only important to 
     reqUpdateA10.resize(this->rcvBound + this->sndBound);
     reqScatterA11.resize(this->maxIndexA10 + 1);
+    tileCopies.reserve(this->maxIndexA11i + this->maxIndexA11j);
     
     // create a new communicator for all processors along the same z-axis as
     // the current processor, i.e. processors that share (px,py) coordinates
