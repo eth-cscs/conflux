@@ -1,5 +1,9 @@
 #pragma once
 #include <omp.h>
+#include <mpi.h>
+#include <iostream>
+#include <stdio.h>
+#include <iomanip>
 #include <conflux/lu/matrix_view.hpp>
 
 namespace conflux {
@@ -7,12 +11,15 @@ namespace conflux {
 // the previous values 
 template <typename T, typename S>
 void prepend_column(matrix_view<T> mat,
-                    S* indices) {
+                    S* indices, bool check_positive=true) {
+    assert(mat.n_rows >= 0);
+    assert(mat.n_cols >= 1);
     // put the elements of indices[i] -> column 0 of mat
     for (int i = 0; i < mat.n_rows; ++i) {
         // cast from S -> T
         auto el = indices[i];
         auto casted_el = static_cast<T>(el);
+        assert(!check_positive || casted_el >= 0);
         assert(std::abs(casted_el - el) < 1e-12);
         mat(i, 0) = casted_el;
     }
@@ -20,17 +27,17 @@ void prepend_column(matrix_view<T> mat,
 
 // extracts the first column of matrix<T>, casts it to <S> and stores it in a vector
 template <typename T, typename S>
-std::vector<S> column(matrix_view<T> mat, int col) {
-    std::vector<S> column;
-    column.reserve(mat.n_rows);
+void column(matrix_view<T> mat, int col, S* column) {
+    assert(col >= 0);
+    assert(mat.n_cols > col);
     for (int i = 0; i < mat.n_rows; ++i) {
         const auto& el = mat(i, col);
         // cast from T -> S
         auto casted_el = static_cast<S>(el);
+        // assert(casted_el >= 0);
         assert(std::abs(casted_el - el) < 1e-12);
-        column.push_back(casted_el);
+        column[i] = casted_el;
     }
-    return column;
 }
 
 // place i-th row from the input to the perm[i]-th row in the output
@@ -41,6 +48,8 @@ std::vector<S> column(matrix_view<T> mat, int col) {
 template <typename T>
 void permute_rows(matrix_view<T> in, matrix_view<T> out,
                   std::vector<int>& out_perm) {
+    assert(in.n_rows >= 0 && in.n_cols >=0 && out.n_rows >= 0 && out.n_cols >=0);
+    if (in.n_rows == 0 || out.n_rows == 0) return;
     assert(in.n_rows >= out.n_rows);
     assert(in.n_cols >= out.n_cols);
 
@@ -50,7 +59,7 @@ void permute_rows(matrix_view<T> in, matrix_view<T> out,
     int col = in.n_cols - out.n_cols;
     if (in.layout() == order::row_major) {
         // let each thread copy i-th row to perm[i]-th row
-#pragma omp parallel for
+#pragma omp parallel for shared(in, out, out_perm)
         for (int i = 0; i < in.n_rows; ++i) {
             T* in_ptr = &in(i, col);
             T* out_ptr = &out(out_perm[i], 0);
@@ -58,7 +67,7 @@ void permute_rows(matrix_view<T> in, matrix_view<T> out,
         }
     } else {
         // let each thread permute a single column
-#pragma omp parallel for
+#pragma omp parallel for shared(in, out, out_perm)
         for (int c = col; c < in.n_cols; ++c) {
             for (int r = 0; r < in.n_rows; ++r) {
                 T* in_ptr = &in(r, c);
@@ -76,6 +85,8 @@ void permute_rows(matrix_view<T> in, matrix_view<T> out,
 template <typename T>
 void inverse_permute_rows(matrix_view<T> in, matrix_view<T> out,
                   std::vector<int>& in_perm) {
+    assert(in.n_rows >= 0 && in.n_cols >= 0 && out.n_rows >= 0 && out.n_cols >= 0);
+    if (in.n_rows == 0 || out.n_rows == 0) return;
     assert(in.n_rows <= in_perm.size());
     assert(in.n_cols >= out.n_cols);
 
@@ -85,7 +96,7 @@ void inverse_permute_rows(matrix_view<T> in, matrix_view<T> out,
     int col = in.n_cols - out.n_cols;
     if (in.layout() == order::row_major) {
         // let each thread copy i-th row to perm[i]-th row
-#pragma omp parallel for
+#pragma omp parallel for shared(in, out, in_perm)
         for (int i = 0; i < out.n_rows; ++i) {
             T* in_ptr = &in(in_perm[i], col);
             T* out_ptr = &out(i, 0);
@@ -93,7 +104,7 @@ void inverse_permute_rows(matrix_view<T> in, matrix_view<T> out,
         }
     } else {
         // let each thread permute a single column
-#pragma omp parallel for
+#pragma omp parallel for shared(in, out, in_perm)
         for (int c = 0; c < out.n_cols; ++c) {
             for (int r = 0; r < out.n_rows; ++r) {
                 T* in_ptr = &in(in_perm[r], c+col);
@@ -111,6 +122,8 @@ void inverse_permute_rows(T* in, T* out,
                           int n_rows, int n_cols,
                           int new_n_rows, int new_n_cols,
                           order layout, std::vector<int>& perm) {
+    assert(n_rows >= 0 && n_cols >= 0 && new_n_rows >= 0 && new_n_cols >= 0);
+    if (n_rows == 0 || new_n_rows == 0) return;
     int in_stride = n_cols;
     int out_stride = new_n_cols;
     if (layout == order::col_major) {
@@ -131,6 +144,8 @@ void permute_rows(T* in, T* out,
                   int n_rows, int n_cols,
                   int new_n_rows, int new_n_cols,
                   order layout, std::vector<int>& perm) {
+    assert(n_rows >= 0 && n_cols >= 0 && new_n_rows >= 0 && new_n_cols >= 0);
+    if (n_rows == 0 || new_n_rows == 0) return;
     int in_stride = n_cols;
     int out_stride = new_n_cols;
     if (layout == order::col_major) {
