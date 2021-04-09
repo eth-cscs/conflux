@@ -33,6 +33,13 @@ source ./scripts/piz_daint_cpu.sh
 ```
 to load all the modules and then run `cmake` and `make` commands as shown above.
 
+**Running cholesky**
+Run cholesky on Piz Daint with the following command:
+```
+OMP_NUM_THREADS=18
+srun -N 8 -n 16 ./build/examples/cholesky_miniapp --dim=2048 --tile=128 --grid=4,4,1 --run=5
+```
+where *dim* is the matrix dimension, *tile* the tile size *grid* the processor grid dimensions in x,y and z direction, respectively, and *run* the number of repetitions (excluding a mandatory warm up round). *N* and *n* describe the number of nodes and the number of ranks to run the program with, respectively.
 ## Profiling CONFLUX
 
 In order to profile CONFLUX, the `cmake` should be run with the following option:
