@@ -7110,3 +7110,8 @@ cholesky,psychol,8192,8192,8,2x2x2,time,other,227,512,overlap
 cholesky,psychol,8192,8192,8,2x2x2,time,other,235,512,overlap
 cholesky,psychol,8192,8192,8,2x2x2,time,other,248,512,overlap
 cholesky,psychol,8192,8192,8,2x2x2,time,other,234,512,overlap
+cholesky,psychol,65536,65536,8,4x2x1,time,other,32786,1024,overlap-nonsquare
+cholesky,psychol,65536,65536,8,4x2x1,time,other,32858,1024,overlap-nonsquare
+cholesky,psychol,65536,65536,8,4x2x1,time,other,32829,1024,overlap-nonsquare
+cholesky,psychol,65536,65536,8,4x2x1,time,other,32809,1024,overlap-nonsquare
+cholesky,psychol,65536,65536,8,4x2x1,time,other,33156,1024,overlap-nonsquare
