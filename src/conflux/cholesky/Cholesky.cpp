@@ -72,12 +72,11 @@ void conflux::initialize(int argc, char *argv[], uint32_t N, uint32_t v, ProcCoo
 
     int numProc;
     MPI_Comm_size(MPI_COMM_WORLD, &numProc);
-    
     // we choose the grid for the user if the grid is not specified
     if (grid[0] == 0 && grid[1] == 0 && grid[2] == 0) {
 
             // special cases
-        if (numProc == 8 && N < 16384) {
+        if (numProc == 8 && (N < 16384 || N > 32768 )) {
             grid[0] = 2;
             grid[1] = 2;
             grid[2] = 2;
