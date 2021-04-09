@@ -979,11 +979,11 @@ cholesky,psychol,131072,131072,1024,32x32x1,time,strong,12225,256,
 cholesky,psychol,131072,131072,1024,32x32x1,time,strong,12256,256,
 cholesky,psychol,131072,131072,1024,32x32x1,time,strong,12181,256,
 cholesky,psychol,131072,131072,1024,32x32x1,time,strong,12199,256,
-cholesky,psychol,2048,1024,4,2x2,time,weak,17,256,
-cholesky,psychol,2048,1024,4,2x2,time,weak,12,256,
-cholesky,psychol,2048,1024,4,2x2,time,weak,17,256,
-cholesky,psychol,2048,1024,4,2x2,time,weak,12,256,
-cholesky,psychol,2048,1024,4,2x2,time,weak,12,256,
+cholesky,psychol,2048,1024,4,2x2,time,weak,15,256,overlap
+cholesky,psychol,2048,1024,4,2x2,time,weak,11,256,overlap
+cholesky,psychol,2048,1024,4,2x2,time,weak,14,256,overlap
+cholesky,psychol,2048,1024,4,2x2,time,weak,11,256,overlap
+cholesky,psychol,2048,1024,4,2x2,time,weak,11,256,overlap
 cholesky,psychol,4096,1024,16,4x4,time,weak,48,128,
 cholesky,psychol,4096,1024,16,4x4,time,weak,46,128,
 cholesky,psychol,4096,1024,16,4x4,time,weak,49,128,
