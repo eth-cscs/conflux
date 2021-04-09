@@ -37,9 +37,9 @@ to load all the modules and then run `cmake` and `make` commands as shown above.
 Run cholesky on Piz Daint with the following command:
 ```
 export OMP_NUM_THREADS=18
-srun -N 8 -n 16 ./build/examples/cholesky_miniapp --dim=2048 --tile=128 --grid=4,4,1 --run=5
+srun -N 8 -n 16 ./build/examples/cholesky_miniapp --dim=2048 --tile=128 --run=5
 ```
-where *dim* is the matrix dimension, *tile* the tile size *grid* the processor grid dimensions in x,y and z direction, respectively, and *run* the number of repetitions (excluding a mandatory warm up round). *N* and *n* describe the number of nodes and the number of ranks to run the program with, respectively.
+where *dim* is the matrix dimension, *tile* the tile size, and *run* the number of repetitions (excluding a mandatory warm up round). *N* and *n* describe the number of nodes and the number of ranks to run the program with, respectively. You can also specify the grid you want to use by specifying an optional parameter *grid=x,y,z* where x,y,z are the number of processors in x,y,z direction, respectively. Note that x*y*z must match the number of ranks.
 ## Profiling CONFLUX
 
 In order to profile CONFLUX, the `cmake` should be run with the following option:

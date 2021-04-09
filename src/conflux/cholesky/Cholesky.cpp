@@ -72,7 +72,47 @@ void conflux::initialize(int argc, char *argv[], uint32_t N, uint32_t v, ProcCoo
 
     int numProc;
     MPI_Comm_size(MPI_COMM_WORLD, &numProc);
+    
+    // we choose the grid for the user if the grid is not specified
+    if (grid[0] == 0 && grid[1] == 0 && grid[2] == 0) {
 
+            // special cases
+        if (numProc == 8 && N < 16384) {
+            grid[0] = 2;
+            grid[1] = 2;
+            grid[2] = 2;
+        }
+
+        else if (numProc == 32 && (N < 8192 || N > 32768)) {
+            grid[0] = 4;
+            grid[1] = 4;
+            grid[2] = 2;
+        }
+
+        else if (numProc == 128 && N <= 16384) {
+            grid[0] = 8;
+            grid[1] = 8;
+            grid[2] = 2;
+        }
+
+        else if (numProc == 512) {
+            grid[0] = 16;
+            grid[1] = 16;
+            grid[2] = 2;
+        }
+
+        // normal case
+        else {
+            uint32_t PZ = 1;
+            uint32_t powOf2 = log2(numProc);
+            uint32_t PX = powOf2 % 2 == 0 ? 1 << (powOf2/2) : (1 << powOf2/2) * 2;
+            uint32_t PY = 1 << (powOf2 / 2);
+            grid[0] = PX;
+            grid[1] = PY;
+            grid[2] = PZ;
+        }
+
+    }   
     // get the properties for the cholesky factorization algorithm
     prop = new CholeskyProperties(static_cast<ProcRank>(numProc), N, v,
                                   grid[0], grid[1], grid[2]);

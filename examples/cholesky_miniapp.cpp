@@ -70,7 +70,7 @@ int main(int argc, char *argv[])
         ("v,tile", "Dimension of the tiles",
         cxxopts::value<uint32_t>()->default_value("256"))
         ("g,grid", "Processor grid to use for this factorization",
-        cxxopts::value<std::vector<uint32_t>>())
+        cxxopts::value<std::vector<uint32_t>>()->default_value("0,0,0"))
         ("r,run", "The number of runs to perform",
         cxxopts::value<uint32_t>()->default_value("5"))
         ("h,help", "Print usage.");
