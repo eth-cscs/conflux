@@ -7095,11 +7095,11 @@ cholesky,psychol,32768,32769,128,16x8x1,time,other,1458,128,overlap-nonsquare
 cholesky,psychol,32768,32769,128,16x8x1,time,other,1458,128,overlap-nonsquare
 cholesky,psychol,32768,32769,128,16x8x1,time,other,1477,128,overlap-nonsquare
 cholesky,psychol,32768,32769,128,16x8x1,time,other,1480,128,overlap-nonsquare
-cholesky,psychol,65536,65536,128,16x8x1,time,other,2319,256,overlap-nonsquare
-cholesky,psychol,65536,65536,128,16x8x1,time,other,2299,256,overlap-nonsquare
-cholesky,psychol,65536,65536,128,16x8x1,time,other,2302,256,overlap-nonsquare
-cholesky,psychol,65536,65536,128,16x8x1,time,other,2298,256,overlap-nonsquare
-cholesky,psychol,65536,65536,128,16x8x1,time,other,2297,256,overlap-nonsquare
+cholesky,psychol,65536,65536,128,16x8x1,time,other,5823,256,overlap-nonsquare
+cholesky,psychol,65536,65536,128,16x8x1,time,other,5850,256,overlap-nonsquare
+cholesky,psychol,65536,65536,128,16x8x1,time,other,5734,256,overlap-nonsquare
+cholesky,psychol,65536,65536,128,16x8x1,time,other,5832,256,overlap-nonsquare
+cholesky,psychol,65536,65536,128,16x8x1,time,other,5828,256,overlap-nonsquare
 cholesky,psychol,131072,131072,128,16x8x1,time,strong,24856,1024,overlap-nonsquare
 cholesky,psychol,131072,131072,128,16x8x1,time,strong,24867,1024,overlap-nonsquare
 cholesky,psychol,131072,131072,128,16x8x1,time,strong,26400,1024,overlap-nonsquare
