@@ -4,7 +4,7 @@ if(NOT TARGET conflux-cholesky)
                                    CholeskyIO.cpp
                                    CholeskyProperties.cpp
                                    Processor.cpp
-                                   TileMatrix.cpp
+                                   #TileMatrix.cpp
                                )
 
     add_library(conflux-cholesky ${conflux_cholesky_src_files})
