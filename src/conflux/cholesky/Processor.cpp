@@ -97,7 +97,7 @@ conflux::Processor::Processor(CholeskyProperties *prop)
     // reserve memory for the MPI request vectors. Note that all these sizes are
     // upper bounds, and not exact by any means. It is only important to 
     reqUpdateA10.resize(this->rcvBound + this->sndBound);
-    reqScatterA11.resize(this->maxIndexA10 + 1);
+    reqScatterA11.resize(this->maxIndexA10 + this->maxIndexA11i + 2);
     tileCopies.reserve(this->maxIndexA11i + this->maxIndexA11j);
     
     // create a new communicator for all processors along the same z-axis as
