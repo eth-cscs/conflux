@@ -7105,3 +7105,8 @@ cholesky,psychol,131072,131072,128,16x8x1,time,strong,24867,1024,overlap-nonsqua
 cholesky,psychol,131072,131072,128,16x8x1,time,strong,26400,1024,overlap-nonsquare
 cholesky,psychol,131072,131072,128,16x8x1,time,strong,25515,1024,overlap-nonsquare
 cholesky,psychol,131072,131072,128,16x8x1,time,strong,25532,1024,overlap-nonsquare
+cholesky,psychol,8192,8192,8,2x2x2,time,other,230,512,overlap
+cholesky,psychol,8192,8192,8,2x2x2,time,other,227,512,overlap
+cholesky,psychol,8192,8192,8,2x2x2,time,other,235,512,overlap
+cholesky,psychol,8192,8192,8,2x2x2,time,other,248,512,overlap
+cholesky,psychol,8192,8192,8,2x2x2,time,other,234,512,overlap
