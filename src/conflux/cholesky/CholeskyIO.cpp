@@ -171,7 +171,7 @@ void conflux::CholeskyIO::generateInputMatrixDistributed()
         proc->A00[i * prop->v + i] = max;
     }
 
-    if (proc->pz == 0 && proc->px == proc->py) {
+    if (proc->pz == 0) { ///&& proc->px == proc->py) {
         // iterate over all local tiles from A11, compute global indices and check
         // whether iGlob = jGlob. If so, strengthen the diagonal there.
         for (TileIndex i = 0; i < proc->maxIndexA11i; ++i) {
@@ -441,13 +441,13 @@ void conflux::CholeskyIO::dumpMatrix()
 void conflux::CholeskyIO::dumpSingleTileColumn(TileIndex round)
 {
     // if we have an idle processor, let this one dump A00
-    if (prop->P > prop->Kappa - round - 1) {
-        if (proc->rank == prop->Kappa - round - 1) {
-            dumpA00(round);
-        }
-    }
+    //if (prop->P > prop->Kappa - round - 1) {
+     //   if (proc->rank == prop->Kappa - round - 1) {
+      //      dumpA00(round);
+       // }
+    //}
     // otherwise let the last processor handle it
-    else if (proc->rank == prop->P - 1){
+    if (proc->rank == 0){
         dumpA00(round);
     }
 

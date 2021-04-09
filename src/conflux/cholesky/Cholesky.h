@@ -40,10 +40,8 @@
 namespace conflux {
 
 /*********************** Library Function Declarations ***********************/
-void initialize(int argc, char *argv[], uint32_t N);
 void initialize(int argc, char *argv[], uint32_t N, uint32_t v, ProcCoord *grid);
 void finalize(bool clean = false);
-void setOptimalParams();
 void parallelCholesky();
 
 } // namespace conflux

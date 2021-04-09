@@ -91,18 +91,19 @@ def compare(dim: int) -> float:
             for i in range(dim):
                 for j in range(dim):
                     output[i][j] = struct.unpack('<d', f.read(8))[0]
+                    print(output[i][j], end="' ")
                     if (j > i):
                         output[i][j] = 0
-
+                    print('')
         # read result matrix (also set entries above diagonal to 0 to ensure
         # interoperability between python and C++ programs.)
-        with open('data/result_{}.bin'.format(dim), 'rb+') as f:
+        with open('data/input_{}.bin'.format(dim), 'rb+') as f:
             for i in range(dim):
                 for j in range(dim):
                     result[i][j] = struct.unpack('<d', f.read(8))[0]
                     if (j > i):
                         result[i][j] = 0
-
+        result = np.linalg.cholesky(result)
         norm = np.linalg.norm(output - result)
         print("||output-result|| = {}".format(norm))
         return norm
