@@ -21,6 +21,15 @@ class lu_params {
        std::tuple<int, int, int> get_p_grid(int M, int N, int P) {
         double ratio = 1.0 * std::max(M, N) / std::min(M, N);
         int p1 = (int)std::cbrt(P / ratio);
+        int p_square_root = (int)std::sqrt(P / ratio);
+        int p_half_square_root = (int)std::sqrt(P / (2 * ratio));
+
+        // if P a perfect square
+        if (P == p_square_root*p_square_root) {
+            return {p_square_root, p_square_root, 1};
+        } else if (p_half_square_root * p_half_square_root == P/2) {
+            return {p_half_square_root, p_half_square_root, 2};
+        }
 
         int Px = p1;
         int Py = ratio * p1;
@@ -403,6 +412,29 @@ public:
         free_comms();
     }
 
+    /*
+    // copy-constructor not supported
+    lu_params(lu_params& other) = delete;
+    // copy-operator disabled
+    lu_params& operator=(lu_params&) = delete;
+
+    // assignment operators supported
+    lu_params& operator=(lu_params&& other) {
+        if (this != &other) {
+            if (lu_comm != MPI_COMM_NULL) {
+                this->free_comms();
+            }
+            this->lu_comm = other.lu_comm;
+            this->jk_comm = other.jk_comm;
+            this->ik_comm = other.ik_comm;
+            this->ij_comm = other.ij_comm;
+            this->k_comm = other.k_comm;
+            this->i_comm = other.i_comm;
+        }
+        return *this;
+    }
+    */
+
     void free_comms() {
         if (i_comm != MPI_COMM_NULL)
             MPI_Comm_free(&i_comm);
@@ -416,6 +448,13 @@ public:
             MPI_Comm_free(&ik_comm);
         if (lu_comm != MPI_COMM_NULL)
             MPI_Comm_free(&lu_comm);
+
+        i_comm = MPI_COMM_NULL;
+        k_comm = MPI_COMM_NULL;
+        ij_comm = MPI_COMM_NULL;
+        ik_comm = MPI_COMM_NULL;
+        jk_comm = MPI_COMM_NULL;
+        lu_comm = MPI_COMM_NULL;
     }
 };
 }

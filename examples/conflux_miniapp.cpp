@@ -40,9 +40,11 @@ int main(int argc, char *argv[]) {
     cxxopts::Options options("conflux miniapp", 
         "A miniapp computing: LU factorization of A, where dim(A)=N*N");
     options.add_options()
+        /*
         ("M,rows",
             "number of rows of matrix A.", 
             cxxopts::value<int>()->default_value("1000"))
+            */
         ("N,cols",
             "number of cols of matrix A.", 
             cxxopts::value<int>()->default_value("1000"))
@@ -58,6 +60,9 @@ int main(int argc, char *argv[]) {
         ("r,n_rep",
             "number of repetitions.", 
             cxxopts::value<int>()->default_value("2"))
+        ("t,type",
+            "weak or strong scaling",
+             cxxopts::value<std::string>()->default_value("other"))
         ("h,help", "Print usage.")
     ;
     // for some reason, a recent version of cxxopts
@@ -69,62 +74,101 @@ int main(int argc, char *argv[]) {
         return 0;
     }
 
-    auto M = result["M"].as<int>();
+    // auto M = result["M"].as<int>();
     auto N = result["N"].as<int>();
+    auto M = N;
     auto b = result["block_size"].as<int>();
     auto n_rep = result["n_rep"].as<int>();
     auto print_limit = result["print_limit"].as<int>();
     auto p_grid = result["p_grid"].as<std::vector<int>>();
+    auto type = result["type"].as<std::string>(); // type of experiment
 
     bool print_full_matrices = std::max(M, N) < print_limit;
 
+    conflux::lu_params<double>* params; 
+
     MPI_Init(&argc, &argv);
     if (p_grid[0] <= 0 || p_grid[1] <= 0 || p_grid[2] <= 0) {
+        params = new conflux::lu_params<double>(N, N, b, MPI_COMM_WORLD);
+        /*
         int rank;
         MPI_Comm_rank(MPI_COMM_WORLD, &rank);
         if (rank == 0) {
             std::cout << "[ERROR] Use --p_grid=Px,Py,Pz to specify the process grid!" << std::endl;
             MPI_Abort(MPI_COMM_WORLD, 0);
         }
+        */
+    } else {
+        params = new conflux::lu_params<double>(N, N, b, p_grid[0], p_grid[1], p_grid[2], MPI_COMM_WORLD);
     }
-    conflux::lu_params<double> params(M, N, b, 
-                                      p_grid[0], p_grid[1], p_grid[2], 
-                                      MPI_COMM_WORLD);
 
     int rank, P;
-    MPI_Comm_rank(params.lu_comm, &rank);
-    MPI_Comm_size(params.lu_comm, &P);
+    MPI_Comm_rank(params->lu_comm, &rank);
+    MPI_Comm_size(params->lu_comm, &P);
 
     if (rank == 0) {
-        std::cout << "Rank: " << rank << ", M: " << params.M << ", N: " << params.N << ", P:" << params.P
-                  << ", v:" << params.v << ", Px:" << params.Px << ", Py: " << params.Py << ", Pz: " << params.Pz
-                  << ", Nt: " << params.Nt
-                  << ", tA11x: " << params.tA11x << ", tA11y: " << params.tA11y << std::endl;
+        std::cout << "======== INTERNAL PARAMS ========" << std::endl;
+        std::cout << "Rank: " << rank << ", M: " << params->M << ", N: " << params->N << ", P:" << params->P
+                  << ", v:" << params->v << ", Px:" << params->Px << ", Py: " << params->Py << ", Pz: " << params->Pz
+                  << ", Nt: " << params->Nt
+                  << ", tA11x: " << params->tA11x << ", tA11y: " << params->tA11y << std::endl;
+        std::cout << std::endl;
+        std::cout << "To simplify the parsing, after each repetition, the output will be written in the following form: " << std::endl;
+        std::cout << std::endl;
+        std::cout << "======== RESULT FORMAT ========" << std::endl;
+        std::cout << "_result_ lu,conflux,<num_rows>,<num_cols>,<num_ranks>,<process_grid>,time,other,<time_in_ms>,<block_size>" << std::endl;
+        std::cout << std::endl;
+        std::cout << "======== NOTE ========" << std::endl;
+        std::cout << "The warm-up run will not be counted within the specified repetitions and no output will be produced for the warm-up run." << std::endl;
+        std::cout << std::endl;
+        std::cout << "======== RESULTS ========" << std::endl;
     }
 
     // A = input, C = output
-    std::vector<double>& A_buff = params.data;
+    std::vector<double>& A_buff = params->data;
     std::vector<double> C_buff;
 #ifdef CONFLUX_WITH_VALIDATION
     C_buff = std::vector<double>(A_buff.size());
 #endif
-
+ 
     // pivots
-    std::vector<int> pivotIndsBuff(params.M);
-    for (int i = 0; i < n_rep; ++i) {
+    std::vector<int> pivotIndsBuff(params->M);
+    int sqrtP = (int) std::sqrt(params->P);
+    auto N_base = type=="weak" ? params->N/sqrtP : params->N;
+    for (int i = 0; i < n_rep+1; ++i) {
         PC();
         // reinitialize the matrix
-        params.InitMatrix();
-        conflux::LU_rep<double>(
-                               params,
-                               C_buff.data(),
-                               pivotIndsBuff.data()
-                               );
+        params->InitMatrix();
+        std::size_t time = 
+            conflux::LU_rep<double>(
+                                   *params,
+                                   C_buff.data(),
+                                   pivotIndsBuff.data()
+                                   );
+        // if not a warm-up run
+        if (i > 0 && rank == 0) {
+            std::string grid = std::to_string(params->Px) 
+                             + "x" 
+                             + std::to_string(params->Py) 
+                             + "x" 
+                             + std::to_string(params->Pz);
+
+            std::cout << "_result_ lu,conflux,"
+                      << params->N << "," 
+                      << N_base << "," 
+                      << params->P << "," 
+                      << grid 
+                      << ",time,"
+                      << type << "," 
+                      << time << "," 
+                      << params->v 
+                      << std::endl;
+        }
     }
 
 #ifdef CONFLUX_WITH_VALIDATION
-    if (params.pk == 0) {
-        MPI_Comm comm = params.ij_comm;
+    if (params->pk == 0) {
+        MPI_Comm comm = params->ij_comm;
         int rank, P;
         MPI_Comm_rank(comm, &rank);
         MPI_Comm_size(comm, &P);
@@ -134,7 +178,7 @@ int main(int argc, char *argv[]) {
         // we will create with 'R'-ordering
         int my_pi, my_pj;
         std::tie(my_pi, my_pj) = rank_to_coord(comm, rank);
-        int row_major_coord = my_pi * params.Py + my_pj;
+        int row_major_coord = my_pi * params->Py + my_pj;
 
         MPI_Comm row_major_comm;
         MPI_Comm_split(comm, 0, row_major_coord, &row_major_comm);
@@ -146,32 +190,32 @@ int main(int argc, char *argv[]) {
         // create blacs grid from ranks owning data
         // observe that the ordering in comm might be different than in lu_comm
         int ctxt = Csys2blacs_handle(comm);
-        // Cblacs_gridmap(&ctxt, &ranks2[0], params.Px, params.Px, params.Py);
+        // Cblacs_gridmap(&ctxt, &ranks2[0], params->Px, params->Px, params->Py);
         char order = 'R';
-        Cblacs_gridinit(&ctxt, &order, params.Px, params.Py);
+        Cblacs_gridinit(&ctxt, &order, params->Px, params->Py);
 
         // conflux layouts for A and C
         auto A_layout = conflux::conflux_layout(A_buff.data(),
-                                                params.M, params.N, params.v,
+                                                params->M, params->N, params->v,
                                                 'R',
-                                                params.Px, params.Py,
+                                                params->Px, params->Py,
                                                 rank);
         auto C_layout = conflux::conflux_layout(C_buff.data(),
-                                                params.M, params.N, params.v,
+                                                params->M, params->N, params->v,
                                                 'R',
-                                                params.Px, params.Py,
+                                                params->Px, params->Py,
                                                 rank);
 
-        int k = std::min(params.M, params.N);
-        int kl = std::min(params.Ml, params.Nl);
+        int k = std::min(params->M, params->N);
+        int kl = std::min(params->Ml, params->Nl);
 
         // A and C copies in scalapack layout
         std::vector<double> A_scalapack_buff(A_buff.size());
         std::vector<double> C_scalapack_buff(A_buff.size());
 
         // L and U of the result
-        int lld_M = scalapack::max_leading_dimension(params.M, b, params.Px);
-        int lld_N = scalapack::max_leading_dimension(params.N, b, params.Py);
+        int lld_M = scalapack::max_leading_dimension(params->M, b, params->Px);
+        int lld_N = scalapack::max_leading_dimension(params->N, b, params->Py);
         int lld_k = std::max(lld_M, lld_N);
 
         // scalapack descriptors
@@ -184,30 +228,30 @@ int main(int argc, char *argv[]) {
         int info = 0;
         int zero = 0;
 
-        descinit_(&desc_P[0], &params.M, &params.M, 
+        descinit_(&desc_P[0], &params->M, &params->M, 
                  &b, &b, &zero, &zero, &ctxt, &lld_M, &info);
-        if (params.pi == 0 && params.pj == 0 && info != 0) {
+        if (params->pi == 0 && params->pj == 0 && info != 0) {
             std::cout << "error: descinit, argument: " << -info << " has an illegal value!" << std::endl;
         }
-        descinit_(&desc_PA[0], &params.M, &params.N, 
+        descinit_(&desc_PA[0], &params->M, &params->N, 
                  &b, &b, &zero, &zero, &ctxt, &lld_M, &info);
-        if (params.pi == 0 && params.pj == 0 && info != 0) {
+        if (params->pi == 0 && params->pj == 0 && info != 0) {
             std::cout << "error: descinit, argument: " << -info << " has an illegal value!" << std::endl;
         }
-        descinit_(&desc_L[0], &params.M, &k, 
+        descinit_(&desc_L[0], &params->M, &k, 
                  &b, &b, &zero, &zero, &ctxt, &lld_M, &info);
-        if (params.pi == 0 && params.pj == 0 && info != 0) {
+        if (params->pi == 0 && params->pj == 0 && info != 0) {
             std::cout << "error: descinit, argument: " << -info << " has an illegal value!" << std::endl;
         }
 
-        descinit_(&desc_U[0], &k, &params.N,
+        descinit_(&desc_U[0], &k, &params->N,
                  &b, &b, &zero, &zero, &ctxt, &lld_k, &info);
-        if (params.pi == 0 && params.pj == 0 && info != 0) {
+        if (params->pi == 0 && params->pj == 0 && info != 0) {
             std::cout << "ERROR: descinit, argument: " << -info << " has an illegal value!" << std::endl;
         }
-        descinit_(&desc_A[0], &params.M, &params.N,
+        descinit_(&desc_A[0], &params->M, &params->N,
                  &b, &b, &zero, &zero, &ctxt, &lld_M, &info);
-        if (params.pi == 0 && params.pj == 0 && info != 0) {
+        if (params->pi == 0 && params->pj == 0 && info != 0) {
             std::cout << "ERROR: descinit, argument: " << -info << " has an illegal value!" << std::endl;
         }
 
@@ -224,79 +268,79 @@ int main(int argc, char *argv[]) {
         std::vector<double> full_PA_scalapack_buff;
 
         if (rank == 0 && print_full_matrices) {
-            full_A_scalapack_buff = std::vector<double>(params.M * params.N);
-            full_C_scalapack_buff = std::vector<double>(params.M * params.N);
-            full_L_scalapack_buff = std::vector<double>(params.M * k);
-            full_U_scalapack_buff = std::vector<double>(k * params.N);
-            full_P_scalapack_buff = std::vector<double>(params.M * params.M);
-            full_PA_scalapack_buff = std::vector<double>(params.M * params.N);
+            full_A_scalapack_buff = std::vector<double>(params->M * params->N);
+            full_C_scalapack_buff = std::vector<double>(params->M * params->N);
+            full_L_scalapack_buff = std::vector<double>(params->M * k);
+            full_U_scalapack_buff = std::vector<double>(k * params->N);
+            full_P_scalapack_buff = std::vector<double>(params->M * params->M);
+            full_PA_scalapack_buff = std::vector<double>(params->M * params->N);
         }
 
         // A-matrix (result): M x N
         auto A_scalapack_layout = conflux::conflux_layout(A_scalapack_buff.data(),
-                                                params.M, params.N, params.v,
+                                                params->M, params->N, params->v,
                                                 'C',
-                                                params.Px, params.Py,
+                                                params->Px, params->Py,
                                                 rank);
         // C-matrix (result): M x N
         auto C_scalapack_layout = conflux::conflux_layout(C_scalapack_buff.data(),
-                                                params.M, params.N, params.v,
+                                                params->M, params->N, params->v,
                                                 'C',
-                                                params.Px, params.Py,
+                                                params->Px, params->Py,
                                                 rank);
         // M x M permutation matrix
         auto P_scalapack_layout = conflux::conflux_layout(P_scalapack_buff.data(),
-                                                params.M, params.M, params.v,
+                                                params->M, params->M, params->v,
                                                 'C',
-                                                params.Px, params.Py,
+                                                params->Px, params->Py,
                                                 rank);
         // M x M permutation matrix
         auto PA_scalapack_layout = conflux::conflux_layout(PA_scalapack_buff.data(),
-                                                params.M, params.N, params.v,
+                                                params->M, params->N, params->v,
                                                 'C',
-                                                params.Px, params.Py,
+                                                params->Px, params->Py,
                                                 rank);
         // L-matrix: M x min(M, N)
         auto L_scalapack_layout = conflux::conflux_layout(L_scalapack_buff.data(),
-                                                params.M, k, params.v,
+                                                params->M, k, params->v,
                                                 'C',
-                                                params.Px, params.Py,
+                                                params->Px, params->Py,
                                                 rank);
         // U-matrix: min(M, N) x N
         auto U_scalapack_layout = conflux::conflux_layout(U_scalapack_buff.data(),
-                                                k, params.N, params.v,
+                                                k, params->N, params->v,
                                                 'C',
-                                                params.Px, params.Py,
+                                                params->Px, params->Py,
                                                 rank);
 
         // full matrices descriptors
         auto full_A_scalapack_layout = conflux::conflux_layout(full_A_scalapack_buff.data(),
-                                           params.M, params.N, params.M,
+                                           params->M, params->N, params->M,
                                            'C',
                                            1, 1,
                                            rank);
         auto full_C_scalapack_layout = conflux::conflux_layout(full_C_scalapack_buff.data(),
-                                           params.M, params.N, params.M,
+                                           params->M, params->N, params->M,
                                            'C',
                                            1, 1,
                                            rank);
         auto full_L_scalapack_layout = conflux::conflux_layout(full_L_scalapack_buff.data(),
-                                           params.M, k, params.M,
+                                           params->M, k, params->M,
                                            'C',
                                            1, 1,
                                            rank);
         auto full_U_scalapack_layout = conflux::conflux_layout(full_U_scalapack_buff.data(),
-                                           k, params.N, k,
+                                           k, params->N, k,
                                            'C',
                                            1, 1,
                                            rank);
         auto full_P_scalapack_layout = conflux::conflux_layout(full_P_scalapack_buff.data(),
-                                                params.M, params.M, params.M,
+                                                params->M, params->M, params->M,
                                                 'C',
                                                 1, 1,
                                                 rank);
         auto full_PA_scalapack_layout = conflux::conflux_layout(full_PA_scalapack_buff.data(),
-                                                params.M, params.M, params.M,
+                                                params->M, params->M, params->M,
                                                 'C',
                                                 1, 1,
                                                 rank);
@@ -361,7 +405,7 @@ int main(int argc, char *argv[]) {
 
         // permute rows of A to get: PA
         pdgemm_(&no_trans, &no_trans,
-                &params.M, &params.N, &params.M,
+                &params->M, &(params->N), &(params->M),
                 &minus_one, // alpha
                 &P_scalapack_buff[0], &int_one, &int_one, &desc_P[0],
                 &A_scalapack_buff[0], &int_one, &int_one, &desc_A[0], 
@@ -370,7 +414,7 @@ int main(int argc, char *argv[]) {
 
         // compute PA = PA - L*U
         pdgemm_(&no_trans, &no_trans,
-                &params.M, &params.N, &k,
+                &params->M, &(params->N), &k,
                 &one,  // alpha
                 &L_scalapack_buff[0], &int_one, &int_one, &desc_L[0],
                 &U_scalapack_buff[0], &int_one, &int_one, &desc_U[0], 
@@ -383,12 +427,12 @@ int main(int argc, char *argv[]) {
 
         if (print_full_matrices) {
             // local buffers
-            for (int pii = 0; pii < params.Px; pii++) {
-                for (int pjj = 0; pjj < params.Py; pjj++) {
-                    int cur_rank = pii * params.Px + pjj;
+            for (int pii = 0; pii < params->Px; pii++) {
+                for (int pjj = 0; pjj < params->Py; pjj++) {
+                    int cur_rank = pii * params->Px + pjj;
                     if (rank == cur_rank) {
                         std::cout << "Rank [" << pii << ", " << pjj << "], local final result:\n";
-                        conflux::print_matrix(C_buff.data(), 0, params.Ml, 0, params.Nl, params.Nl);
+                        conflux::print_matrix(C_buff.data(), 0, params->Ml, 0, params->Nl, params->Nl);
                         std::cout << std::flush;
                     }
                     MPI_Barrier(comm);
@@ -401,34 +445,34 @@ int main(int argc, char *argv[]) {
                 // full matrix A
                 std::cout << "full-A-matrix on rank 0" << std::endl;
                 conflux::print_matrix(&full_A_scalapack_buff[0],
-                                      0, params.M, 0, params.N,
-                                      params.M, 'C');
+                                      0, params->M, 0, params->N,
+                                      params->M, 'C');
                 std::cout << "======================" << std::endl;
                 // full matrix C
                 std::cout << "full-C-matrix on rank 0" << std::endl;
                 conflux::print_matrix(&full_C_scalapack_buff[0],
-                                      0, params.M, 0, params.N,
-                                      params.M, 'C');
+                                      0, params->M, 0, params->N,
+                                      params->M, 'C');
                 std::cout << "======================" << std::endl;
                 std::cout << "full-L-matrix on rank 0" << std::endl;
                 conflux::print_matrix(&full_L_scalapack_buff[0],
-                                      0, params.M, 0, params.N,
-                                      params.M, 'C');
+                                      0, params->M, 0, params->N,
+                                      params->M, 'C');
                 std::cout << "======================" << std::endl;
                 std::cout << "full-U-matrix on rank 0" << std::endl;
                 conflux::print_matrix(&full_U_scalapack_buff[0],
-                                      0, params.M, 0, params.N,
-                                      params.M, 'C');
+                                      0, params->M, 0, params->N,
+                                      params->M, 'C');
                 std::cout << "======================" << std::endl;
                 std::cout << "full-P-matrix on rank 0" << std::endl;
                 conflux::print_matrix(&full_P_scalapack_buff[0],
-                                      0, params.M, 0, params.N,
-                                      params.M, 'C');
+                                      0, params->M, 0, params->N,
+                                      params->M, 'C');
                 std::cout << "======================" << std::endl;
                 std::cout << "full-Remainder-matrix on rank 0" << std::endl;
                 conflux::print_matrix(&full_PA_scalapack_buff[0],
-                                      0, params.M, 0, params.N,
-                                      params.M, 'C');
+                                      0, params->M, 0, params->N,
+                                      params->M, 'C');
             }
         }
 
@@ -470,7 +514,8 @@ int main(int argc, char *argv[]) {
 
     // free the communicators before finalize
     // since no MPI routine can be called afterwards
-    params.free_comms();
+    params->free_comms();
+    delete params;
     MPI_Finalize();
 
     return 0;
