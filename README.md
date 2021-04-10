@@ -47,7 +47,7 @@ Run LU on Piz Daint with the following command:
 export OMP_NUM_THREADS=18 # set number of omp threads (optimally 18 on daint)
 srun -N 8 -n 16 ./build/examples/conflux_miniapp -N 2048 -r 5
 ```
-where `N` is the matrix dimension and `r` is the number of repetitions (excluding a mandatory warm up round). `N` and `n` describe the number of nodes and the total number of ranks to run the program with, respectively. You can also specify the grid you want to use by specifying an optional parameter `--p_grid=<Px,Py,Pz>` where `Px,Py,Pz` are the number of processors in the `x,y,z` direction, respectively. Another optional parameter is `-b=<tile_size>` specifying the tile size. The default parameters are chosen to yield the optimal performance in most configuration. However, in some configurations, manual tuning might yield more performance.
+where the second `N` (=2048) is the matrix dimension and `r` is the number of repetitions (excluding a mandatory warm up round). `N` and `n` in the `srun` command describe the number of nodes and the total number of ranks to run the program with, respectively. You can also specify the grid you want to use by specifying an optional parameter `--p_grid=<Px,Py,Pz>` where `Px,Py,Pz` are the number of processors in the `x,y,z` direction, respectively. Another optional parameter is `-b=<tile_size>` specifying the tile size. The default parameters are chosen to yield the optimal performance in most configuration. However, in some configurations, manual tuning might yield more performance.
 
 ## Profiling CONFLUX
 
