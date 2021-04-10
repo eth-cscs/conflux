@@ -341,7 +341,7 @@ std::pair<
 g2lnoTile(std::vector<int> &grows, int size, int Px, int v);
 
 template <class T>
-void LU_rep(lu_params<T>& gv,
+std::size_t LU_rep(lu_params<T>& gv,
             T* C,
             int* permutation) {
     PC();
@@ -1803,15 +1803,18 @@ void LU_rep(lu_params<T>& gv,
     }
 
     MPI_Barrier(lu_comm);
+    auto t2 = std::chrono::high_resolution_clock::now();
+    auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(t2 - t1).count();
+
+    /*
     if (rank == print_rank) {
-        auto t2 = std::chrono::high_resolution_clock::now();
-        auto duration = std::chrono::duration_cast<std::chrono::microseconds>(t2 - t1).count();
         std::cout << "Runtime: " << double(duration) / 1000000 << " seconds" << std::endl;
 
         for (auto i = 0; i < 8; ++i) {
             std::cout << "Runtime " << i << ": " << double(timers[i]) / 1000000 << " seconds" << std::endl;
         }
     }
+    */
 
     // MPI_Win_free(&A01Win);
 
@@ -1820,6 +1823,7 @@ void LU_rep(lu_params<T>& gv,
     MPI_Win_fence(0, res_Win);
 #else
 #endif
+    return duration;
 }
 }  // namespace conflux
 
