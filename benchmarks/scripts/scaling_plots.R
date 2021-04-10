@@ -29,7 +29,8 @@ libraries[["Cholesky"]] <- libraries_chol
 #annotl = c("CARMA [21]","CTF [49]","COSMA (this work)", "ScaLAPACK [14]")
 #varPlot = "FLOPS"
 
-FLOPSperNode = 1209 
+# we use two MPI ranks per one node
+FLOPSperNode = 1209 * 2
 
 
 statistics = 0
@@ -44,6 +45,9 @@ source("SPCL_Stats.R")
 # prepare the data 
 #rawData <- read.csv(file=exp_filename, sep=",", stringsAsFactors=FALSE, header=TRUE)
 rawData <- read.csv(file=paste(getwd(), exp_filename, sep = ""), sep=",", stringsAsFactors=FALSE, header=TRUE)
+
+# we use two MPI ranks per one node
+rawData$P <- rawData$P / 2
 
 
 rawData[str_cmp("conflux", rawData$library),]$library = "COnfLUX (this work)"
@@ -193,6 +197,11 @@ for (variant in variantPlots){
         else {
           next
         }
+        annotPointX1 = annotPointX1 / 2
+        annotx = annotx / 2
+     #   annoty = annoty / 2
+        annotPointX2 = annotPointX2 / 2
+      #  annotPointY2 = annotPointY2 / 2
 
         annotPointY1 = c(plot_data[plot_data$P == annotPointX1[1] & plot_data$library == 'MKL [35]',]$value[1],
                         plot_data[plot_data$P == annotPointX1[2] & plot_data$library == 'SLATE [29]',]$value[1],
@@ -230,7 +239,7 @@ for (variant in variantPlots){
             scale_x_continuous(trans='log2',labels=function(x) format(x, big.mark = ",", scientific = FALSE)) +
             #scale_x_log2("# of cores", breaks=c(128, 256, 512, 1024, 2048, 4096, 8192, 16384)) +
             # scale_y_log10(ylabel) +
-            xlab("# of nodes") +
+            xlab("Number of nodes") +
             yscale +
             ggtitle(paste(alg, scaling, size, sep=" ")) +
             ylab(ylabel) +

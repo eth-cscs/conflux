@@ -29,7 +29,10 @@ importantCols = c("algorithm","N_base","library", "P","N","value","unit") #, "V"
 results <- data.frame(matrix(ncol = 5, nrow = 0))
 rescolNames <- append(algorithms, "scenario", after = 0)
 colnames(results) <- rescolNames
-GFLOPSperNode = 1209
+
+# we use two MPI ranks per node
+GFLOPSperNode = 1209 * 2 
+
 S = 5e+09
 
 
@@ -48,8 +51,9 @@ DataColumnsHash['flops'] = c("P", "algLabel", "flops")
 
 
 #--------------------PREPROCESSING-----------------------------#
-#rawData = read.table(exp_filename, header = T, sep = ',',fill = TRUE, stringsAsFactors=FALSE)
 rawData <- read.csv(file=paste(getwd(), exp_filename, sep = ""), sep=",", stringsAsFactors=FALSE, header=TRUE)
+# we use two MPI ranks per node
+rawData$P <- rawData$P / 2
 
 
 rawData[rawData$N_base == "-" & rawData$type == "strong",]$N_base <- rawData[rawData$N_base == "-" & rawData$type == "strong",]$N
@@ -225,7 +229,7 @@ p <- ggplot(data=data, aes(x=as.factor(P), y=as.factor(N),
   geom_text(aes(label = paste("\n", secondBestAlg, sep = ""), fontface = "bold"), position = position_nudge(y=0.05)) +
   scale_x_discrete("Number of nodes") +
   scale_y_discrete("Matrix size") +
-  scale_fill_gradient2("", low = "#FFE9C9", mid = "white", high = "#65FF69", midpoint = 1) + #, limits = c(min_speedup,max_speedup)) +
+  scale_fill_gradient2("", low = "#FFE9C9", mid = "white", high = "#65FF69", midpoint = 1) + #, elimits = c(min_speedup,max_speedup)) +
   theme_bw(20) + theme(legend.position = "none") +
   theme(axis.text.x = element_text(angle = 90))
 print(p)

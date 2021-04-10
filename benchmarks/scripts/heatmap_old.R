@@ -11,8 +11,11 @@ df$totMB = df$aggr_bytes / 1e6
 
 df <- df[c("implementation", "N", "P", "totMB")]
 df <- reshape(df, idvar = c("N", "P"), timevar = "implementation", direction = "wide")
-df$datasrc <- "meassured"    #lets add a column to seperate model and meassurements
+df$datasrc <- "measured"    #lets add a column to seperate model and meassurements
+
+detach("package:dplyr", unload = TRUE)
 df <- rename(df, c("totMB.mkl"="MKL", "totMB.candmc"="CANDMC", "totMB.slate"="SLATE", "totMB.conflux"="Conflux")) #rename the columns to algorithms
+library(dplyr)
 df <- df[!is.na(df$MKL),]
 
 
@@ -74,13 +77,12 @@ data = Nf[Nf$P > 60,]
 
 pdf(file= paste("heatmap_labelled.pdf", sep = ''),  width = w, height = w*aspRatio)
 p <- ggplot(data=data, aes(x=as.factor(P), y=as.factor(N), 
-                      fill=ConfluxRatio, 
-                      label=paste(round(ConfluxRatio,1), 
-                                  best_other_name, sep="\n") )) +
+                      fill=ConfluxRatio))+
+                      # label=paste(round(ConfluxRatio,1), 
+                      #             best_other_name, sep="\n") )) +
   geom_tile() +
-  geom_text() +
- # geom_text(fontface="bold") +
- # geom_point(aes(shape=as.factor(datasrc)), size=3) +
+  geom_text(aes(label = paste(round(ConfluxRatio,1), "x", sep = "")), position = position_nudge(y=0.2)) +
+  geom_text(aes(label = paste("\n", best_other_name, sep = ""), fontface = "bold"), position = position_nudge(y=0.05)) +
   scale_x_discrete("Number of nodes") +
   scale_y_discrete("Matrix size [N]") +
   scale_fill_gradient("", low = "orange", high = "green") +

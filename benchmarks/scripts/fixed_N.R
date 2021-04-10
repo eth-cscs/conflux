@@ -18,10 +18,19 @@ if (nrow(rawData[str_cmp("psychol", rawData$library),]) > 0) {
   rawData[str_cmp("psychol", rawData$library),]$library = "conflux"
 }
 
+rawData <- rawData[rawData$P > 8,]
+
 rawData$case = paste(rawData$algorithm, rawData$N_base,sep ="_")
+
+# take only 128 blocks for slate and mkl
+rawData2 <- rawData[rawData$library != "slate" | rawData$blocksize == 128,]
+rawData2 <- rawData2[rawData2$library != "mkl" | rawData2$blocksize == 128,]
+
+rawData <- rawData2
 # min_df <- as.data.frame(rawData %>% group_by(algorithm, library, N, P, unit, grid) %>% summarise_each(list(min), value))
 # min_df[str_detect(min_df$grid, regex("\\dx\\dx4")) | str_detect(min_df$grid, regex("\\dx\\dx8")),]$library <- 
 #   paste(min_df[str_detect(min_df$grid, regex("\\dx\\dx4")) | str_detect(min_df$grid, regex("\\dx\\dx8")),]$library, "3D", sep = "_")
+
 
 min_df <- as.data.frame(rawData %>% group_by(algorithm, library, N, P, unit) %>% summarise_each(list(min), value))
 
@@ -38,17 +47,20 @@ for (alg in algos) {
   df <- reshape(df, idvar = c("N", "P"), timevar = "library", direction = "wide")
   df$datasrc <- "measured"    #lets add a column to seperate model and meassurements
   # df <- rename(df, c("totMB.mkl"="MKL", "totMB.candmc"="CANDMC", "totMB.candmc_3D"="CANDMC 3D","totMB.slate"="SLATE", "totMB.conflux"="COnfLUX", "totMB.conflux_3D"="COnfLUX 3D")) #rename the columns to algorithms
-  df <- rename(df, c("totMB.mkl"="MKL", "totMB.candmc"="CANDMC", "totMB.slate"="SLATE", "totMB.conflux"="COnfLUX")) #rename the columns to algorithms
+  df <- rename(df, c("totMB.mkl"="MKL", "totMB.candmc"="CAPITAL", "totMB.slate"="SLATE", "totMB.conflux"="COnfCHOX")) #rename the columns to algorithms
   
   
-  extrap_range <- 2^(2:19)
+  extrap_range <- 2^(4:19)
   nP <- rep(extrap_range, each=length(unique(df$N)))
   nN <- rep(unique(df$N), length(extrap_range))
   Nf <- data.frame(N=nN, P=nP)
   Nf$datasrc <- "modelled"
-  Nf$MKL <- model_2D(Nf$N, Nf$P)
-  Nf$CANDMC <- model_candmc(Nf$N, Nf$P)
-  Nf$COnfLUX <- model_conflux(Nf$N, Nf$P)
+  #Nf$MKL <- model_2D(Nf$N, Nf$P)
+  Nf$MKL <- model_2D_chol(Nf$N, Nf$P)
+  #Nf$CANDMC <- model_candmc(Nf$N, Nf$P)
+  Nf$CAPITAL <- model_capital(Nf$N, Nf$P)
+  #Nf$COnfLUX <- model_conflux(Nf$N, Nf$P)
+  Nf$COnfCHOX <- model_psychol(Nf$N, Nf$P)
   
   df <- rbind.fill(df, Nf)  #this overrides the old df with the new extended one
   
@@ -68,8 +80,10 @@ for (alg in algos) {
   # add important machine sizes
   machines=data.frame(name=c("Daint", "Summit",  "Sunway TaihuLight"), nodes=c(1813, 4608, 40960))
   machines$N <- 16384 
-  machines$Conflux <- model_conflux(machines$N, machines$nodes)
-  machines$LibSci <- model_2D(machines$N, machines$nodes)
+  #machines$Conflux <- model_conflux(machines$N, machines$nodes)
+  machines$Conflux <- model_psychol(machines$N, machines$nodes)
+  #machines$LibSci <- model_2D(machines$N, machines$nodes)
+  machines$LibSci <- model_2D_chol(machines$N, machines$nodes)
   machines$speedup = machines$LibSci / machines$Conflux
   print(machines)
   
