@@ -76,13 +76,13 @@ void conflux::initialize(int argc, char *argv[], uint32_t N, uint32_t v, ProcCoo
     if (grid[0] == 0 && grid[1] == 0 && grid[2] == 0) {
 
             // special cases
-        if (numProc == 8 && (N < 16384 || N > 32768 )) {
+        if (numProc == 8 && N < 16384) {
             grid[0] = 2;
             grid[1] = 2;
             grid[2] = 2;
         }
 
-        else if (numProc == 32 && (N < 8192 || N > 32768)) {
+        else if (numProc == 32 && N < 8192) {
             grid[0] = 4;
             grid[1] = 4;
             grid[2] = 2;
@@ -112,6 +112,26 @@ void conflux::initialize(int argc, char *argv[], uint32_t N, uint32_t v, ProcCoo
         }
 
     }   
+    
+    if (v == 0) {
+        double ratio = ((double)N*N * grid[2] /numProc)/1000000.0;
+        if (ratio < 2.5) {
+            v = 128;
+        }
+
+        else if (ratio < 30) {
+            v = 256;
+        }
+
+        else if (ratio < 250) {
+            v = 512;
+        }
+
+        else {
+            v = 1024;
+        }
+
+    }
     // get the properties for the cholesky factorization algorithm
     prop = new CholeskyProperties(static_cast<ProcRank>(numProc), N, v,
                                   grid[0], grid[1], grid[2]);
@@ -847,11 +867,7 @@ void conflux::parallelCholesky()
             break;
 
         case 8:
-            if (prop->N >= 1<<16) {
-                _parallelCholesky2(); // non-overlapping version
-            } else {
-                _parallelCholesky1(); // overlapping version
-            }
+            _parallelCholesky1(); // overlapping version
             break;
 
         case 16:
@@ -863,11 +879,7 @@ void conflux::parallelCholesky()
             break;
 
         case 32:
-            if (prop->N >= 1<<17) {
-                _parallelCholesky2(); // non-overlapping version
-            } else {
-                _parallelCholesky1(); // overlapping version
-            }
+            _parallelCholesky1(); // overlapping version
             break;
 
         case 64:

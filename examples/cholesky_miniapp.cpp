@@ -68,7 +68,7 @@ int main(int argc, char *argv[])
         ("N,dim", "Dimension of input matrix", 
         cxxopts::value<uint32_t>()->default_value("65536"))
         ("v,tile", "Dimension of the tiles",
-        cxxopts::value<uint32_t>()->default_value("256"))
+        cxxopts::value<uint32_t>()->default_value("0"))
         ("g,grid", "Processor grid to use for this factorization",
         cxxopts::value<std::vector<uint32_t>>()->default_value("0,0,0"))
         ("r,run", "The number of runs to perform",
