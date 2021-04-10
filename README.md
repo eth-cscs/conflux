@@ -33,13 +33,22 @@ source ./scripts/piz_daint_cpu.sh
 ```
 to load all the modules and then run `cmake` and `make` commands as shown above.
 
-**Running cholesky**
+## Running Cholesky Factorization
 Run cholesky on Piz Daint with the following command:
 ```
 export OMP_NUM_THREADS=18 # set number of omp threads (optimally 18 on daint)
 srun -N 8 -n 16 ./build/examples/cholesky_miniapp --dim=2048 --run=5
 ```
-where *dim* is the matrix dimension and *run* the number of repetitions (excluding a mandatory warm up round). *N* and *n* describe the number of nodes and the number of ranks to run the program with, respectively. You can also specify the grid you want to use by specifying an optional parameter *grid=<x,y,z>* where x,y,z are the number of processors in x,y,z direction, respectively. Another optional parameter is *tile=<tile_size>* with which you can specify the tile size. These two optimal parameters provide optimal defaults but sometimes some manual fine tuning is needed for maximal performance.
+where `dim` is the matrix dimension and `run` the number of repetitions (excluding a mandatory warm up round). `N` and `n` describe the number of nodes and the number of ranks to run the program with, respectively. You can also specify the grid you want to use by specifying an optional parameter `--grid=<Px,Py,Pz>` where `Px,Py,Pz` are the number of processors in the `x,y,z` direction, respectively. Another optional parameter is `--tile=<tile_size>` with which you can specify the tile size. These two optimal parameters provide optimal defaults but sometimes some manual fine tuning is needed for maximal performance.
+
+## Running LU Factorization
+Run LU on Piz Daint with the following command:
+```
+export OMP_NUM_THREADS=18 # set number of omp threads (optimally 18 on daint)
+srun -N 8 -n 16 ./build/examples/conflux_miniapp -N 2048 -r 5
+```
+where `N` is the matrix dimension and `r` is the number of repetitions (excluding a mandatory warm up round). `N` and `n` describe the number of nodes and the total number of ranks to run the program with, respectively. You can also specify the grid you want to use by specifying an optional parameter `--p_grid=<Px,Py,Pz>` where `Px,Py,Pz` are the number of processors in the `x,y,z` direction, respectively. Another optional parameter is `-b=<tile_size>` specifying the tile size. The default parameters are chosen to yield the optimal performance in most configuration. However, in some configurations, manual tuning might yield more performance.
+
 ## Profiling CONFLUX
 
 In order to profile CONFLUX, the `cmake` should be run with the following option:
