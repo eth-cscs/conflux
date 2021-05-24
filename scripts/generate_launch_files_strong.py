@@ -14,18 +14,18 @@ from datetime import datetime
 
 path_to_launch = './launch/'
 path_to_params = './scripts/params_strong.ini'
-cholesky_section = 'psyCHOL'
+conflux_section = 'conflux'
 
 def createBashPreface(P, algorithm):
     time = datetime.now().time()
     numNodes = math.ceil(P/2)
     return '#!/bin/bash -l \n\
-#SBATCH --job-name=psychol-strong-p%d \n\
-#SBATCH --time=01:00:00 \n\
+#SBATCH --job-name=conflux-524k-p%d \n\
+#SBATCH --time=10:00:00 \n\
 #SBATCH --nodes=%d \n\
-#SBATCH --output=data/benchmarks/psychol-strong-p%d-%s.txt \n\
+#SBATCH --output=conflux-524k-p%d-%s.txt \n\
 #SBATCH --constraint=mc \n\
-#SBATCH --account=g34 \n\n\
+#SBATCH --account=csstaff \n\n\
 export OMP_NUM_THREADS=18 \n\n' % (P, numNodes, P, time)
 
 # parse params.ini
@@ -60,7 +60,7 @@ def readConfig(section):
         grids[P] = grid
 
     try:
-        reps = ast.literal_eval(config[cholesky_section]['reps'])
+        reps = ast.literal_eval(config[conflux_section]['reps'])
     except:
         print("No number of repetitions found, using default 5. If you do not want this, add r= and the number of reps")
         reps = 5
@@ -83,7 +83,7 @@ def generateLaunchFile(N, V, grids, reps, algorithm):
             for cubes in grids[grid]:
                 for n in N:
                     for v in V:
-                        cmd = 'srun -N %d -n %d ./build/examples/cholesky_miniapp --dim=%d --tile=%d --grid=%s --run=%d \n' % (numNodes, grid, n, v, cubes, reps)
+                        cmd = 'srun -N %d -n %d ./build/examples/conflux_miniapp --cols=%d --block_size=%d --p_grid=%s --n_rep=%d \n' % (numNodes, grid, n, v, cubes, reps)
                         f.write(cmd)
     return
 
@@ -96,8 +96,8 @@ if __name__ == "__main__":
 
     # grids is a dict since for each processor size, we have to create a new launch file
     try:
-        Ns, V, grids, reps = readConfig(cholesky_section)
-        generateLaunchFile(Ns, V, grids, reps, 'psychol')
+        Ns, V, grids, reps = readConfig(conflux_section)
+        generateLaunchFile(Ns, V, grids, reps, 'conflux')
         print("successfully generated launch files")
     except:
         pass
