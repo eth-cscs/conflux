@@ -53,6 +53,8 @@ where the second `N` (=2048) is the matrix dimension and `r` is the number of re
 
 All the necessary launch scripts can be found in the folder `launch`. After having run `source ./scripts/piz_daint_cpu.sh` and after building and compiling the project as described above, you can load the necessary python module `module load cray-python`. Now, you can run `python3 scripts/launch_on_daint.py` from the root folder which will put all the benchmarking experiments into the queue of Piz Daint.
 
+If you want to run a specific experiment, you can use `sbatch <path_to_launchscript>` from the root folder.
+
 ## Estimated time needed for the measurements
 In general, it is difficult to give a time estimate since the node allocation mechanisms Sof Piz Daint are intransparent. However, the experiment that will run the longest is `launch_weak_conflux_256` which we estimate to take roughly 3.5 hours
 

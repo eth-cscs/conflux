@@ -8,9 +8,9 @@
 
 export OMP_NUM_THREADS=18 
 
-srun -N 2 -n 4 ./build/examples/conflux_miniapp --dim=2048 --run=5 
-srun -N 2 -n 4 ./build/examples/conflux_miniapp --dim=4096 --run=5 
-srun -N 2 -n 4 ./build/examples/conflux_miniapp --dim=8192 --run=5 
-srun -N 2 -n 4 ./build/examples/conflux_miniapp --dim=16384 --run=5 
-srun -N 2 -n 4 ./build/examples/conflux_miniapp --dim=32768 --run=5 
-srun -N 2 -n 4 ./build/examples/conflux_miniapp --dim=65536 --run=5 
+srun -N 2 -n 4 ./build/examples/conflux_miniapp -N 2048 -r 5 
+srun -N 2 -n 4 ./build/examples/conflux_miniapp -N 4096 -r 5 
+srun -N 2 -n 4 ./build/examples/conflux_miniapp -N 8192 -r 5 
+srun -N 2 -n 4 ./build/examples/conflux_miniapp -N 16384 -r 5 
+srun -N 2 -n 4 ./build/examples/conflux_miniapp -N 32768 -r 5 
+srun -N 2 -n 4 ./build/examples/conflux_miniapp -N 65536 -r 5 
