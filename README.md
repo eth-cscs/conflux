@@ -49,6 +49,35 @@ srun -N 8 -n 16 ./build/examples/conflux_miniapp -N 2048 -r 5
 ```
 where the second `N` (=2048) is the matrix dimension and `r` is the number of repetitions (excluding a mandatory warm up round). `N` and `n` in the `srun` command describe the number of nodes and the total number of ranks to run the program with, respectively. You can also specify the grid you want to use by specifying an optional parameter `--p_grid=<Px,Py,Pz>` where `Px,Py,Pz` are the number of processors in the `x,y,z` direction, respectively. Another optional parameter is `-b=<tile_size>` specifying the tile size. The default parameters are chosen to yield the optimal performance in most configuration. However, in some configurations, manual tuning might yield more performance.
 
+# Reproducing the benchmarks on Piz Daint
+
+All the necessary launch scripts can be found in the folder `launch`. After having run `source ./scripts/piz_daint_cpu.sh` and after building and compiling the project as described above, you can load the necessary python module `module load cray-python`. Now, you can run `python3 scripts/launch_on_daint.py` from the root folder which will put all the benchmarking experiments into the queue of Piz Daint.
+
+## Estimated time needed for the measurements
+In general, it is difficult to give a time estimate since the node allocation mechanisms Sof Piz Daint are intransparent. However, the experiment that will run the longest is `launch_weak_conflux_256` which we estimate to take roughly 3.5 hours
+
+## Benchmark outputs
+The output files containing the timeouts can be found in `./data/benchmarks/`. Each algorithm (*confchox, conflux*) has one file for each number of ranks tested with the algorithm and the number of ranks displayed in the file name. All experiment outputs corresponding to this particular algorithm and number of ranks can be found in this file.
+
+
+## Experiment overview
+The following table displays all combinations of matrix dimensions (all square matrices) and number of ranks that we ran experiments on. In particular, we give the interval of matrix sizes, meaning that we benchmarked all power of 2's within this interval including the boundaries:
+
+| Number of Ranks | Matrix size interval 
+--- | ---
+4 | [2048, 65536]
+8 | [4096, 65536]
+16 | [4096, 131072]
+32 | [8192, 131072]
+64 | [8192, 262144]
+128 | [16384, 262144]
+256 | [32768, 524288]
+512 | [65536, 524288]
+1024 | [131072, 524288]
+
+
+
+
 ## Profiling CONFLUX
 
 In order to profile CONFLUX, the `cmake` should be run with the following option:

@@ -14,7 +14,8 @@ from datetime import datetime
 
 path_to_launch = './launch/'
 path_to_params = './scripts/params_weak.ini'
-cholesky_section = 'psyCHOL'
+cholesky_section = 'confchox'
+conflux_section = 'conflux'
 
 def createBashPreface(P, algorithm):
     time = datetime.now().time()
@@ -74,17 +75,20 @@ def readConfig(section):
 
 
 def generateLaunchFile(N, V, grids, reps, algorithm):
+    if algorithm == 'confchox':
+        app_string = 'cholesky_miniapp'
+    else:
+        app_string = 'conflux_miniapp'
     for idx, grid in enumerate(grids):
         filename = path_to_launch + 'launch_weak_%s_%d.sh' %(algorithm, grid)
         with open(filename, 'w') as f:
             numNodes = math.ceil(grid/2)
             f.write(createBashPreface(grid, algorithm))
             # next we iterate over all possibilities and write the bash script
-            for cubes in grids[grid]:
-                for n in N[idx]:
-                    for v in V:
-                        cmd = 'srun -N %d -n %d ./build/examples/cholesky_miniapp --dim=%d --tile=%d --grid=%s --run=%d \n' % (numNodes, grid, n, v, cubes, reps)
-                        f.write(cmd)
+            for n in N[idx]:
+                for v in V:
+                    cmd = 'srun -N %d -n %d ./build/examples/%s --dim=%d --run=%d \n' % (numNodes, grid,app_string, n, reps)
+                    f.write(cmd)
     return
 
 # We use the convention that we ALWAYS use n nodes and 2n ranks
@@ -95,12 +99,14 @@ if __name__ == "__main__":
     os.makedirs("launch", exist_ok=True)
 
     # grids is a dict since for each processor size, we have to create a new launch file
-    try:
-        Ns, V, grids, reps = readConfig(cholesky_section)
-        generateLaunchFile(Ns, V, grids, reps, 'psychol')
-        print("successfully generated launch files")
-    except:
-        pass
+    #try:
+    Ns, V, grids, reps = readConfig(cholesky_section)
+    generateLaunchFile(Ns, V, grids, reps, 'confchox')
+    Ns, V, grids, reps = readConfig(conflux_section)
+    generateLaunchFile(Ns, V, grids, reps, 'conflux')
+    print("successfully generated launch files")
+#except:
+#    pass
 
     
 
