@@ -56,7 +56,7 @@ All the necessary launch scripts can be found in the folder `launch`. After havi
 If you want to run a specific experiment, you can use `sbatch <path_to_launchscript>` from the root folder.
 
 ## Estimated time needed for the measurements
-In general, it is difficult to give a time estimate since the node allocation mechanisms Sof Piz Daint are intransparent. However, the experiment that will run the longest is `launch_weak_conflux_256` which we estimate to take roughly 3.5 hours
+In general, it is difficult to give a time estimate since the node allocation mechanisms of Piz Daint are intransparent. However, the experiment that will run the longest (excluding queueing time) is `launch_weak_conflux_256` which we estimate to take roughly 3.5 hours
 
 ## Benchmark outputs
 The output files containing the timeouts can be found in `./data/benchmarks/`. Each algorithm (*confchox, conflux*) has one file for each number of ranks tested with the algorithm and the number of ranks displayed in the file name. All experiment outputs corresponding to this particular algorithm and number of ranks can be found in this file.
