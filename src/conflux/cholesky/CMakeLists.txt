@@ -9,6 +9,8 @@ if(NOT TARGET conflux-cholesky)
 
     add_library(conflux-cholesky ${conflux_cholesky_src_files})
 
+    set_property(TARGET conflux-cholesky PROPERTY INTERPROCEDURAL_OPTIMIZATION TRUE)
+
     target_include_directories(conflux-cholesky PUBLIC $<BUILD_INTERFACE:${conflux_SOURCE_DIR}/src>)
     target_compile_features(conflux-cholesky PUBLIC cxx_std_17)
     target_link_libraries(conflux-cholesky PUBLIC  MPI::MPI_CXX
