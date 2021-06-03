@@ -79,6 +79,9 @@ The following table displays all combinations of matrix dimensions (all square m
 
 
 
+## Generating your own launchfiles
+In order to generate your own run files, you need to edit `scripts/params_weak.ini`. Check the instructions within this file on how to fill it out. After having filled the file with parameters, you can generate run scripts with `python3 scripts/generate_launch_files_weak.py`. The scripts can be found in the `launch` folder and run as described above. For large jobs, you might have to adapt the time parameter in the launch file.
+
 
 ## Profiling CONFLUX
 

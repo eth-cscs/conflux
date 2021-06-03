@@ -77,8 +77,12 @@ def readConfig(section):
 def generateLaunchFile(N, V, grids, reps, algorithm):
     if algorithm == 'confchox':
         app_string = 'cholesky_miniapp'
+        dim_arg = '--dim='
+        run_arg = '--run='
     else:
         app_string = 'conflux_miniapp'
+        dim_arg = '-N '
+        run_arg = '-r '
     for idx, grid in enumerate(grids):
         filename = path_to_launch + 'launch_weak_%s_%d.sh' %(algorithm, grid)
         with open(filename, 'w') as f:
@@ -87,7 +91,7 @@ def generateLaunchFile(N, V, grids, reps, algorithm):
             # next we iterate over all possibilities and write the bash script
             for n in N[idx]:
                 for v in V:
-                    cmd = 'srun -N %d -n %d ./build/examples/%s --dim=%d --run=%d \n' % (numNodes, grid,app_string, n, reps)
+                    cmd = 'srun -N %d -n %d ./build/examples/%s %s%d %s%d \n' % (numNodes, grid,app_string, dim_arg, n, run_arg, reps)
                     f.write(cmd)
     return
 
