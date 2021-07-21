@@ -165,3 +165,9 @@ _p_     dgemm                      8       0.000       0.000     0.0
 _p_   init                         1       0.000       0.000     0.0
 _p_     A11copy                    1       0.000       0.000     0.0
 ```
+
+## Questions?
+
+For questions, feel free to open an issue on this repository or simply drop us an email:
+- For questions regarding the theory, contact Grzegorz Kwasniewski (gkwasnie@inf.ethz.ch).
+- For questions regarding the implementation, contact Marko Kabic (marko.kabic@cscs.ch).
