@@ -1,9 +1,10 @@
-## CONFLUX
-Communication-Optimal LU-factorization Algorithm
+## CONFLUX and CONFCHOX
 
-## Building CONFLUX
+Communication-Optimal LU-factorization (CONFLUX) and Cholesky Factorization (CONFCHOX) Algorithms. The repo is named CONFLUX, but it still includes both of these algorithms.
 
-The library can be built by doing the following:
+## Building the Libraries
+
+The libraries can be built by doing the following:
 ```bash
 ###############
 # get CONFLUX
@@ -23,19 +24,42 @@ export CXX=`which CC`
 cmake -DCONFLUX_BLAS=MKL -DCONFLUX_SCALAPACK=MKL ..
 make -j 8
 ```
-Other available blas backends include: `CRAY_LIBSCI, OPENBLAS, CUSTOM`.
+> !! Note the --recursive flag !!
+> 
+The available blas backends include: `MKL, CRAY_LIBSCI, OPENBLAS, CUSTOM`. The scalapack backend is optional and can be set to `OFF, MKL, CRAY_LIBSCI, CUSTOM`.
 
-### On Piz Daint supercomputer:
+## The Dependencies
 
-First run:
-```bash
-source ./scripts/piz_daint_cpu.sh
-```
-to load all the modules and then run `cmake` and `make` commands as shown above.
+This is a CMake project and requires a recent CMake(>=3.12).
 
-## Profiling CONFLUX
+External dependencies: 
 
-In order to profile CONFLUX, the `cmake` should be run with the following option:
+- `MPI 3`: (required)
+- `BLAS`: the blas library for local CPU computations, which can be one of the following:
+     - `MKL` (default): BLAS API as provided by Intel MPI. Requires the environment variable `MKL_ROOT` to be set to the MKL's root directory.
+     - `OPENBLAS`: BLAS API as provided by OPENBLAS. Requires the environment variable `OPENBLAS_ROOT` to point to the openblas installation.
+     - `CRAY_LIBSCI`: `Cray-libsci` or `Cray-libsci_acc` (GPU-accelerated). 
+     - `CUSTOM`: user-provided BLAS API. 
+- `SCALAPACK` (optional, for scalapack wrappers): the scalapack library, which can be one of the following:
+     - `MKL` (default)
+     - `CRAY_LIBSCI`: `Cray-libsci` or `Cray-libsci_acc` (GPU-accelerated)
+     - `CUSTOM`: user-provided BLAS API. Requires the variable `SCALAPACK_ROOT` to point to the scalapack installation.
+     - `OFF`: turned off.
+
+Some dependencies are bundled as submodules and need not be installed explicitly:
+- `COSTA` - distributed matrix reshuffle and transpose algorithm.
+- `semiprof`(optional) - profiling utlility.
+- `gtest_mpi` - MPI utlility wrapper over GoogleTest (unit testing library)
+
+## Building on Cray Systems
+
+There are already prepared scripts for loading the necessary dependencies on Cray-Systems:
+
+Cray XC40 (CPU-only version): source ./scripts/piz_daint_cpu.sh loads MKL and other neccessary modules.
+
+## Profiling the Library
+
+In order to profile the code, the `cmake` should be run with the following option:
 ```bash
 cmake -DCONFLUX_BLAS=MKL -DCONFLUX_SCALAPACK=MKL -DCONFLUX_WITH_PROFILING=ON ..
 make -j 8
