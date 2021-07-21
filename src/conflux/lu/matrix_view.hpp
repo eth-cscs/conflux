@@ -1,5 +1,4 @@
 #pragma once
-#include <experimental/memory>
 
 namespace conflux {
 
@@ -20,7 +19,7 @@ template <typename T>
 class matrix_view {
 public:
     // pointer which memory is managed outside (an observer pointer)
-    std::experimental::observer_ptr<T> data = nullptr;
+    T* data = nullptr;
 
     // dimensions of the view
     int n_rows = 0;
@@ -71,7 +70,7 @@ public:
         assert(data != nullptr);
         assert(row >= 0 && row < n_rows);
         assert(col >= 0 && col < n_cols);
-        return data.get()[row * row_stride + col * col_stride];
+        return data[row * row_stride + col * col_stride];
     }
 
     T operator() (int row, int col) const { 
@@ -79,7 +78,7 @@ public:
         assert(data != nullptr);
         assert(row >= 0 && row < n_rows);
         assert(col >= 0 && col < n_cols);
-        return data.get()[row * row_stride + col * col_stride];
+        return data[row * row_stride + col * col_stride];
     }
 
     // 2 matrix views are equal if they have equal:
@@ -91,7 +90,7 @@ public:
         }
         for (int i = 0; i < n_rows; ++i) {
             for (int j = 0; j < n_cols; ++j) {
-                if (std::abs(operator()(i, j) != other(i, j)) > 1e-12) {
+                if (std::abs(operator()(i, j) - other(i, j)) > 1e-12) {
                     return false;
                 }
             }
