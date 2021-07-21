@@ -8,8 +8,7 @@ path = './launch/'
 if __name__ == "__main__":
     os.system('source scripts/piz_daint_cpu.sh')
     for launch_file in os.listdir(path):
-        if "psychol" in launch_file:
+        if "conflux" or "confchox" in launch_file:
             os.system('chmod +x %s' %(path + launch_file))
             os.system("sbatch " + path + launch_file)
-            os.system("rm " + path + launch_file)
         

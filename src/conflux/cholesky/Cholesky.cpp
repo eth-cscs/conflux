@@ -1,33 +1,10 @@
 /**
- * Copyright (C) 2020, ETH Zurich
- *
- * This product includes software developed at the Scalable Parallel Computing
- * Lab (SPCL) at ETH Zurich, headed by Prof. Torsten Hoefler. It was developped
- * as a part of the "Design of Parallel- and High-Performance Computing"
- * lecture. For more information, visit http://spcl.inf.ethz.ch/. Unless you 
- * have an agreement with ETH Zurich for a separate license, the following
- * terms and conditions apply:
- *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License along 
- * with this program. If not, see http://www.gnu.org/licenses.
-
  * @file Cholesky.cpp
  * 
  * @brief implementation of near communication-optimal parallel Cholesky
  * factorization algorithm
  * 
- * @authors Jens Eirik Saethre, Andre Gaillard, Pascal Müller, Marc Styger
- * Contact: {saethrej, andrega, stygerma, pamuelle}@student.ethz.ch
+ * @authors Anonymized Authors
  * 
  * @date 14.11.2020
  */
@@ -95,7 +72,66 @@ void conflux::initialize(int argc, char *argv[], uint32_t N, uint32_t v, ProcCoo
 
     int numProc;
     MPI_Comm_size(MPI_COMM_WORLD, &numProc);
+    // we choose the grid for the user if the grid is not specified
+    if (grid[0] == 0 && grid[1] == 0 && grid[2] == 0) {
 
+            // special cases
+        if (numProc == 8 && N < 16384) {
+            grid[0] = 2;
+            grid[1] = 2;
+            grid[2] = 2;
+        }
+
+        else if (numProc == 32 && N < 8192) {
+            grid[0] = 4;
+            grid[1] = 4;
+            grid[2] = 2;
+        }
+
+        else if (numProc == 128 && N <= 16384) {
+            grid[0] = 8;
+            grid[1] = 8;
+            grid[2] = 2;
+        }
+
+        else if (numProc == 512) {
+            grid[0] = 16;
+            grid[1] = 16;
+            grid[2] = 2;
+        }
+
+        // normal case
+        else {
+            uint32_t PZ = 1;
+            uint32_t powOf2 = log2(numProc);
+            uint32_t PX = powOf2 % 2 == 0 ? 1 << (powOf2/2) : (1 << powOf2/2) * 2;
+            uint32_t PY = 1 << (powOf2 / 2);
+            grid[0] = PX;
+            grid[1] = PY;
+            grid[2] = PZ;
+        }
+
+    }   
+    
+    if (v == 0) {
+        double ratio = ((double)N*N * grid[2] /numProc)/1000000.0;
+        if (ratio < 2.5) {
+            v = 128;
+        }
+
+        else if (ratio < 30) {
+            v = 256;
+        }
+
+        else if (ratio < 250) {
+            v = 512;
+        }
+
+        else {
+            v = 1024;
+        }
+
+    }
     // get the properties for the cholesky factorization algorithm
     prop = new CholeskyProperties(static_cast<ProcRank>(numProc), N, v,
                                   grid[0], grid[1], grid[2]);
@@ -298,7 +334,6 @@ void computeA11(const conflux::TileIndex k, const MPI_Comm &world)
 {
     // iterate over all tiles below (inclusive) the diagonal that this processor
     // owns and update them via low-rank update.
-    // TODO: algo descriptions says that indices start from k/P, which imo is wrong (saethrej)
     for (conflux::TileIndex iLoc = k / prop->PX; iLoc < proc->maxIndexA11i; ++iLoc) {
         for (conflux::TileIndex jLoc = k / prop->PY; jLoc < proc->maxIndexA11j; ++jLoc) {
             // compute global index and skip tile if at least one index is <= k
@@ -832,11 +867,7 @@ void conflux::parallelCholesky()
             break;
 
         case 8:
-            if (prop->N >= 1<<16) {
-                _parallelCholesky2(); // non-overlapping version
-            } else {
-                _parallelCholesky1(); // overlapping version
-            }
+            _parallelCholesky1(); // overlapping version
             break;
 
         case 16:
@@ -848,11 +879,7 @@ void conflux::parallelCholesky()
             break;
 
         case 32:
-            if (prop->N >= 1<<17) {
-                _parallelCholesky2(); // non-overlapping version
-            } else {
-                _parallelCholesky1(); // overlapping version
-            }
+            _parallelCholesky1(); // overlapping version
             break;
 
         case 64:

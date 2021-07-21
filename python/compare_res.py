@@ -2,7 +2,7 @@
 
 '''
 Project: Parallel Cholesky Factorization
-Authors: Jens Eirik Saethre, André Gaillard, Pascal Müller, Marc Styger
+Authors: Anonymized Authors
 Date: 15.12.2020
 Description: utility script for the creation or comparison of matrices
 
