@@ -5,7 +5,18 @@ library(reshape2)
 library(dplyr)
 library(hash)
 library(gmodels)
+library(scales)
 
+
+scale_x_log2 <- function(...) {
+  scale_x_continuous(..., trans = scales::log2_trans())
+}
+
+#' @rdname scale_x_log2
+#' @export
+scale_y_log2 <- function(...) {
+  scale_y_continuous(..., trans = scales::log2_trans())
+}
 
 
 #-------------------------SETUP----------------------#
@@ -228,9 +239,15 @@ p <- ggplot(data=data, aes(x=as.factor(P), y=as.factor(N),
   geom_text(aes(label = paste(round(maxSpeedup,1), "x", sep = "")), position = position_nudge(y=0.2)) +
   geom_text(aes(label = paste("\n", secondBestAlg, sep = ""), fontface = "bold"), position = position_nudge(y=0.05)) +
   scale_x_discrete("Number of nodes") +
-  scale_y_discrete("Matrix size") +
+   scale_y_discrete("Matrix size") +
+  # scale_x_log2("Number of nodes",
+  #               breaks = trans_breaks("log2", function(x) 2^x),
+  #               labels = trans_format("log2", math_format(2^.x))) +
+  # scale_y_log2("Matrix size",
+  #               breaks = trans_breaks("log2", function(x) 2^x),
+  #               labels = trans_format("log2", math_format(2^.x))) +
   scale_fill_gradient2("", low = "#FFE9C9", mid = "white", high = "#65FF69", midpoint = 1) + #, elimits = c(min_speedup,max_speedup)) +
-  theme_bw(20) + theme(legend.position = "none") +
+  theme_bw(20) + theme(legend.position = "none") + 
   theme(axis.text.x = element_text(angle = 90))
 print(p)
 ggsave(file="../chol_heatmap_labelled_filtered_compacted.svg", plot=p, width=w, height=h)
